@@ -40,6 +40,8 @@ use DateTime;
 use CommonDBChild;
 use CommonDBRelation;
 use Computer;
+use Computer_Item as ComputerItemModel;
+use Printer as PrinterModel;
 use Contact as LegacyContact;
 use Contact_Supplier as ContactSupplierModel;
 use DBAdapter;
@@ -104,6 +106,139 @@ require_once __DIR__ . '/../fixtures/ScalarReadProbe.php';
 
 class Transfer extends DbTestCase
 {
+    public function testSharedPrinterTransferCopiesRequiredPortChildren(): void
+    {
+        global $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $plugins->setValue(null, [...$savedPlugins, 'transfer_port_copy_fixture']);
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection) use ($savedHooks): void {
+                global $PLUGIN_HOOKS;
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                foreach ([[1, false, false, true], [2, false, false, true], [1, true, false, true], [2, true, false, true], [2, false, true, true], [1, true, false, false], [2, true, false, false]] as [$keep, $empty, $refuse, $typed]) {
+                    $PLUGIN_HOOKS = $savedHooks;
+                    $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                    $remaining = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $source]);
+                    $printer = $this->createItem(PrinterModel::class, [
+                        'name' => $this->getUniqueString(), 'entities_id' => $source, 'is_global' => 1, 'is_recursive' => 0,
+                    ]);
+                    foreach ([$computer, $remaining] as $owner) {
+                        $this->createItem(ComputerItemModel::class, [
+                            'computers_id' => $owner->getID(), 'itemtype' => 'Printer', 'items_id' => $printer->getID(),
+                        ]);
+                    }
+                    $outlet = $empty ? null : $this->createItem(NetpointModel::class, [
+                        'name' => $this->getUniqueString(), 'entities_id' => $source,
+                    ]);
+                    $port = new NetworkPortModel();
+                    $portID = (int)$port->add([
+                        'name' => $this->getUniqueString(), 'itemtype' => 'Printer', 'items_id' => $printer->getID(),
+                        'netpoints_id' => $outlet?->getID() ?? 0, '_create_children' => true,
+                    ] + ($typed ? ['instantiation_type' => 'NetworkPortEthernet'] : []));
+                    $this->integer($portID)->isGreaterThan(0);
+                    $this->boolean($port->getFromDB($portID))->isTrue();
+                    $sourcePort = $connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$portID]);
+                    $sourceChild = $connection->fetchAssociative('SELECT * FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]);
+                    if ($typed) {
+                        $this->array($sourceChild)->isNotEmpty();
+                    } else {
+                        $this->variable($sourceChild)->isIdenticalTo(false);
+                        $this->variable($port->getField('instantiation_type'))->isNull();
+                    }
+                    $events = [];
+                    $refusedPort = null;
+                    $PLUGIN_HOOKS['pre_item_add']['transfer_port_copy_fixture'][EthernetModel::class] = static function (EthernetModel $child) use (&$events, &$refusedPort, $refuse): void {
+                        $events[] = 'child-prepare';
+                        if ($refuse) {
+                            $refusedPort = $child->input['networkports_id'];
+                            $child->input = false;
+                        }
+                    };
+                    $PLUGIN_HOOKS['item_empty']['transfer_port_copy_fixture'][EthernetModel::class] = static function (EthernetModel $child) use (&$refusedPort): void {
+                        if ($refusedPort !== null) {
+                            // An empty-model hook cannot substitute for a successful persisted child load.
+                            $child->fields['networkports_id'] = $refusedPort;
+                        }
+                    };
+                    $PLUGIN_HOOKS['item_add']['transfer_port_copy_fixture'][EthernetModel::class] = static function () use (&$events): void {
+                        $events[] = 'child-add';
+                    };
+                    $PLUGIN_HOOKS['item_add']['transfer_port_copy_fixture'][NetworkPortModel::class] = static function () use (&$events): void {
+                        $events[] = 'parent-add';
+                    };
+                    $tables = ['glpi_computers', 'glpi_printers', 'glpi_computers_items', 'glpi_networkports', 'glpi_networkportethernets', 'glpi_netpoints'];
+                    $before = [];
+                    foreach ($tables as $table) {
+                        $before[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                    }
+                    $manager = Orm::create($database);
+                    $dirty = $manager->find(ComputerEntity::class, $remaining->getID());
+                    $dirty->name = 'Pending computer outside transfer';
+                    $level = $connection->getTransactionNestingLevel();
+                    $transfer = new LegacyTransfer();
+                    $result = $transfer->moveItems(['Computer' => [$computer->getID()]], $target, [
+                        'keep_dc_printer' => 1, 'keep_networklink' => $keep, 'clean_dc_printer' => 0,
+                    ]);
+                    $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+                    $this->boolean($manager->contains($dirty))->isTrue();
+                    $this->string($dirty->name)->isIdenticalTo('Pending computer outside transfer');
+                    if ($refuse) {
+                        $this->boolean($result)->isFalse();
+                        $this->array($events)->isIdenticalTo(['child-prepare', 'parent-add']);
+                        foreach ($tables as $table) {
+                            $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'))->isIdenticalTo($before[$table]);
+                        }
+                        $this->array($transfer->already_transfer)->isEmpty();
+                    } else {
+                        $this->boolean($result)->isTrue();
+                        $this->array($events)->isIdenticalTo($typed ? ['child-prepare', 'child-add', 'parent-add'] : ['parent-add']);
+                        $copyID = (int)$connection->fetchOne('SELECT items_id FROM glpi_computers_items WHERE computers_id=? AND itemtype=?', [$computer->getID(), 'Printer']);
+                        $this->integer($copyID)->isGreaterThan(0)->isNotIdenticalTo((int)$printer->getID());
+                        $copiedPrinter = new PrinterModel();
+                        $this->boolean($copiedPrinter->getFromDB($copyID))->isTrue();
+                        $this->integer((int)$copiedPrinter->getEntityID())->isIdenticalTo($target);
+                        $copies = $connection->fetchAllAssociative('SELECT * FROM glpi_networkports WHERE items_id=? AND itemtype=?', [$copyID, 'Printer']);
+                        $this->array($copies)->hasSize(1);
+                        $copiedPortID = (int)$copies[0]['id'];
+                        $this->integer((int)$copies[0]['entities_id'])->isIdenticalTo($target);
+                        $this->integer((int)$copies[0]['is_recursive'])->isIdenticalTo((int)$copiedPrinter->isRecursive());
+                        $copiedPort = new NetworkPortModel();
+                        $this->boolean($copiedPort->getFromDB($copiedPortID))->isTrue();
+                        $child = $copiedPort->getInstantiation();
+                        if ($typed) {
+                            $this->boolean($child !== false && !$child->isNewID($child->getID()))->isTrue();
+                            $this->integer((int)$child->getID())->isIdenticalTo($copiedPortID);
+                            if ($empty) {
+                                $this->variable($connection->fetchOne('SELECT netpoints_id FROM glpi_networkportethernets WHERE networkports_id=?', [$copiedPortID]))->isNull();
+                            } else {
+                                $outletID = (int)$child->getField('netpoints_id');
+                                $this->integer($outletID)->isGreaterThan(0)->isNotIdenticalTo((int)$outlet->getID());
+                                $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_netpoints WHERE id=?', [$outletID]))->isIdenticalTo($target);
+                            }
+                        } else {
+                            $this->variable($child)->isIdenticalTo(false);
+                            $this->variable($copiedPort->getField('instantiation_type'))->isNull();
+                            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networkportethernets WHERE networkports_id=?', [$copiedPortID]))->isIdenticalTo(0);
+                        }
+                        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networkports_networkports WHERE networkports_id_1=? OR networkports_id_2=?', [$copiedPortID, $copiedPortID]))->isIdenticalTo(0);
+                    }
+                    $this->array($connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$portID]))->isIdenticalTo($sourcePort);
+                    $this->variable($connection->fetchAssociative('SELECT * FROM glpi_networkportethernets WHERE networkports_id=?', [$portID]))->isIdenticalTo($sourceChild);
+                    $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_printers WHERE id=?', [$printer->getID()]))->isIdenticalTo($source);
+                    $manager->clear();
+                }
+            });
+        } finally {
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testNetworkTransferReusesCurrentScopedOutletAndKeepsLiveOwners(): void
     {
         $this->login();

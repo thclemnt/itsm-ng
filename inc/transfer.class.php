@@ -3192,6 +3192,25 @@ class Transfer extends CommonDBTM
     }
 
 
+    /** Require the declared copied child; generic migration ports have no instantiation. */
+    private function requireCopiedPortInstantiation(NetworkPort $port, int $id): void
+    {
+        $kind = $port->fields['instantiation_type'] ?? null;
+        if ($kind === null || $kind === '') {
+            return;
+        }
+
+        $instantiation = $this->checkedTransferResult($port->getInstantiation());
+        if ($instantiation === false
+            || !$this->checkedTransferResult($instantiation->getFromDB($id))
+            || $instantiation->isNewID($instantiation->getID())
+            || (int)$instantiation->getID() !== $id
+            || (int)$port->getID() !== $id) {
+            throw new TransferCancelled('Copied network port instantiation was not created');
+        }
+    }
+
+
     /**
      * Transfer network links
      *
@@ -3260,13 +3279,15 @@ class Transfer extends CommonDBTM
                     } else { // Copy -> copy netports
                         while ($data = $iterator->next()) {
                             $data             = Toolbox::addslashes_deep($data);
-                            unset($data['id']);
+                            unset($data['id'], $data['entities_id'], $data['is_recursive']);
                             $data['items_id'] = $newID;
+                            $data['_create_children'] = true;
                             $data['netpoints_id']
                                               = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
                             unset($np->fields);
-                            $this->addForTransfer($np, Toolbox::addslashes_deep($data));
+                            $portID = $this->addForTransfer($np, Toolbox::addslashes_deep($data));
+                            $this->requireCopiedPortInstantiation($np, $portID);
                         }
                     }
                     break;
@@ -3276,13 +3297,15 @@ class Transfer extends CommonDBTM
                     // Copy -> Copy netpoints (do not keep links)
                     if ($ID != $newID) {
                         while ($data = $iterator->next()) {
-                            unset($data['id']);
+                            unset($data['id'], $data['entities_id'], $data['is_recursive']);
                             $data['items_id'] = $newID;
+                            $data['_create_children'] = true;
                             $data['netpoints_id']
                                               = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
                             unset($np->fields);
-                            $this->addForTransfer($np, Toolbox::addslashes_deep($data));
+                            $portID = $this->addForTransfer($np, Toolbox::addslashes_deep($data));
+                            $this->requireCopiedPortInstantiation($np, $portID);
                         }
                     } else {
                         while ($data = $iterator->next()) {
