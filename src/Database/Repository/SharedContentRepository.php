@@ -7,12 +7,10 @@ namespace itsmng\Database\Repository;
 use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
 use itsmng\Database\Entity;
-use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedRowProjection;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\SharedContentAccess;
@@ -25,23 +23,19 @@ final class SharedContentRepository
     }
 
     /** Complete audience rows grouped by group identity, in link-ID order. */
-    public function rssfeedGroups(mixed $rssfeed, ?string $table = null): array
+    public function rssfeedGroups(mixed $rssfeed): array
     {
-        return $this->rssfeedAudience(Entity\GroupRSSFeed::class, 'groups_id', $rssfeed, $table);
+        return $this->rssfeedAudience(Entity\GroupRSSFeed::class, 'groups_id', $rssfeed);
     }
 
     /** Complete audience rows grouped by profile identity, in link-ID order. */
-    public function rssfeedProfiles(mixed $rssfeed, ?string $table = null): array
+    public function rssfeedProfiles(mixed $rssfeed): array
     {
-        return $this->rssfeedAudience(Entity\ProfileRSSFeed::class, 'profiles_id', $rssfeed, $table);
+        return $this->rssfeedAudience(Entity\ProfileRSSFeed::class, 'profiles_id', $rssfeed);
     }
 
-    private function rssfeedAudience(string $class, string $audienceKey, mixed $rssfeed, ?string $table): array
+    private function rssfeedAudience(string $class, string $audienceKey, mixed $rssfeed): array
     {
-        // Legacy forceTable/subclass routes still resolve their registered mapping.
-        if ($table !== null) {
-            $class = EntityRegistry::tables()[$table];
-        }
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->select('r')->from($class, 'r');
         // Keep the public helpers' existing NULL, scalar and structured-criteria language.
@@ -50,25 +44,11 @@ final class SharedContentRepository
             throw $rejection;
         }
         $audience = [];
-        // Custom identity maps and post-load dispatch keep ordinary entity hydration.
-        if ($this->em->getUnitOfWork()->size() === 0
-            && count($metadata->identifier) === 1
-            && $metadata->hasField($metadata->getSingleIdentifierFieldName())
-            && !$metadata->hasLifecycleCallbacks(Events::postLoad)
-            && empty($metadata->entityListeners[Events::postLoad])
-            && !$this->em->getEventManager()->hasListeners(Events::postLoad)) {
-            $projection = new MappedRowProjection($this->em, $metadata);
-            $projection->select($query);
-            foreach ($query->getQuery()->toIterable([], Query::HYDRATE_ARRAY) as $values) {
-                $row = $projection->toRow($values);
-                $audience[$row[$audienceKey]][] = $row;
-            }
-        } else {
-            $records = new RecordRepository($this->em);
-            foreach ($query->getQuery()->toIterable() as $record) {
-                $row = $records->toRow($record);
-                $audience[$row[$audienceKey]][] = $row;
-            }
+        $projection = new MappedRowProjection($this->em, $metadata);
+        $projection->select($query);
+        foreach ($query->getQuery()->toIterable([], Query::HYDRATE_ARRAY) as $values) {
+            $row = $projection->toRow($values);
+            $audience[$row[$audienceKey]][] = $row;
         }
         return $audience;
     }

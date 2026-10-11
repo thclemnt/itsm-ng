@@ -34,10 +34,10 @@
 namespace tests\units;
 
 use DbTestCase;
-use Doctrine\ORM\Events;
 use Group_RSSFeed;
 use Profile_RSSFeed;
 use ReflectionProperty;
+use itsmng\Database\Entity\GroupRSSFeed as GroupRSSFeedEntity;
 use itsmng\Database\Entity\RSSFeed as RSSFeedEntity;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SharedContentRepository;
@@ -256,19 +256,18 @@ class RSSFeed extends DbTestCase
                 $this->string($retained->comment)->isIdenticalTo($retainedComment);
             }
 
-            // Supplied-manager repositories retain their existing post-load dispatch and live entities.
-            $listener = new class () {
-                public int $loads = 0;
-                public function postLoad(): void
-                {
-                    ++$this->loads;
-                }
-            };
-            $external->getEventManager()->addEventListener([Events::postLoad], $listener);
+            // Complete audience values reflect native rows without touching a supplied dirty owner.
+            $groupRows = Group_RSSFeed::getGroups($feedId);
+            $dirtyAudience = $external->find(
+                GroupRSSFeedEntity::class,
+                (int)$groupRows[(int)$group->getID()][0]['id']
+            );
+            $dirtyAudience->is_recursive = false;
             $repository = new SharedContentRepository($external);
-            $this->array($repository->rssfeedGroups($feedId))->isIdenticalTo(Group_RSSFeed::getGroups($feedId));
+            $this->array($repository->rssfeedGroups($feedId))->isIdenticalTo($groupRows);
             $this->array($repository->rssfeedProfiles($feedId))->isIdenticalTo(Profile_RSSFeed::getProfiles($feedId));
-            $this->integer($listener->loads)->isGreaterThanOrEqualTo(2);
+            $this->boolean($external->contains($dirtyAudience))->isTrue();
+            $this->boolean($dirtyAudience->is_recursive)->isFalse();
             $this->boolean($external->contains($retained))->isTrue();
 
             $this->boolean($otherFeed->delete(['id' => $otherFeedId], true))->isTrue();

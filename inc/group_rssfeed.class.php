@@ -66,9 +66,9 @@ class Group_RSSFeed extends CommonDBRelation
 
         return Orm::readPrepared(
             $DB,
-            static fn (): array => [$rssfeeds_id, self::getTable()],
-            static fn (EntityManager $em, array $prepared): array =>
-                (new SharedContentRepository($em))->rssfeedGroups($prepared[0], $prepared[1])
+            static fn (): mixed => $rssfeeds_id,
+            static fn (EntityManager $em, mixed $prepared): array =>
+                (new SharedContentRepository($em))->rssfeedGroups($prepared)
         );
     }
 }
