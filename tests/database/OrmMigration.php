@@ -5,6 +5,8 @@
 namespace tests\integration;
 
 use itsmng\Database\Migration\NonnullableFlags;
+use itsmng\Database\Migration\NotepadParents;
+use itsmng\Database\Migration\NotepadParents\Definition as NoteParentDefinition;
 use ArrayObject;
 use DBAdapter;
 use DBConnection;
@@ -250,7 +252,7 @@ class OrmMigration extends GLPITestCase
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
         $this->boolean(Ledger::state($connection, Baseline::PHASE)['installation_complete'])->isTrue();
-        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION, ComponentParentExpansions::VERSION, NonnullableFlags::VERSION]);
+        $this->array(History::versions())->isIdenticalTo(['2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION, NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION, ComponentParentExpansions::VERSION, NonnullableFlags::VERSION, NotepadParents::VERSION]);
         $this->string($connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'itsmdbversion']))->isIdenticalTo(ITSM_SCHEMA_VERSION);
         // Readiness must bootstrap its own adapter in a fresh process, without
         // relying on this test runner's already-loaded database functions.
@@ -490,6 +492,9 @@ class OrmMigration extends GLPITestCase
             $this->boolean(Ledger::state($connection, GraphicCardParents::VERSION)['complete'])->isTrue();
             $this->boolean(Ledger::state($connection, ComponentParents::VERSION)['complete'])->isTrue();
             $this->boolean(Ledger::state($connection, ComponentParentExpansions::VERSION)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, NonnullableFlags::VERSION)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, NotepadParents::VERSION)['complete'])->isTrue();
+            $this->boolean(Ledger::state($connection, NoteParentDefinition::PHASE)['complete'])->isTrue();
             $this->array((new PhysicalReferenceIndexes())->plan($connection)['sql'])->isEmpty();
             $this->array(Ledger::state($connection, SensorSubjectDefinition::PHASE)['policy'])->hasKeys(['projection', 'check']);
             $this->assertCurrentPrefixNativeVerification($connection);
@@ -979,6 +984,7 @@ class OrmMigration extends GLPITestCase
         $flags = new NonnullableFlags();
         $flags->apply($connection);
         $flags->verify($connection);
+        $this->assertNotepadParentRetry($connection);
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         $this->fixtureCompleted = true;
     }
@@ -1822,6 +1828,117 @@ class OrmMigration extends GLPITestCase
         $states = Ledger::states($connection);
         $release->apply($connection, static fn () => throw new LogicException('Completed component expansion replayed'));
         $this->array(Ledger::states($connection))->isIdenticalTo($states);
+    }
+
+    private function assertNotepadParentRetry(Connection $connection): void
+    {
+        $connection->insert('glpi_computers', ['id' => 9000, 'name' => 'Actual note owner', 'entities_id' => 0]);
+        $author = (int)$connection->fetchOne('SELECT MIN(id) FROM glpi_users WHERE id>0');
+        $this->integer($author)->isGreaterThan(0);
+        foreach ([9000 => ['Computer', 9000], 9001 => ['Computer', 0], 9002 => [null, -7],
+            9003 => ['', 0], 9004 => ['PluginOpaqueNoteParent', -9], 9005 => ['computer', 9000]] as $id => [$kind, $owner]) {
+            $connection->insert('glpi_notepads', ['id' => $id, 'itemtype' => $kind, 'items_id' => $owner,
+                'content' => $id === 9000 ? null : 'Actual note payload ' . $id,
+                'date' => '2024-01-02 03:04:05', 'date_mod' => $id === 9000 ? null : '2024-01-03 04:05:06',
+                'users_id' => $author, 'users_id_lastupdater' => $id === 9000 ? null : $author]);
+        }
+        $columns = implode(
+            ',',
+            array_map(
+                $connection->quoteIdentifier(...),
+                ['id', 'itemtype', 'items_id', 'content', 'date', 'date_mod', 'users_id', 'users_id_lastupdater']
+            )
+        );
+        $read = static fn (): array => $connection->fetchAllAssociative('SELECT ' . $columns . ' FROM glpi_notepads ORDER BY id');
+        $source = $read();
+        $indexes = $connection->createSchemaManager()->listTableIndexes('glpi_notepads');
+        $prior = Ledger::states($connection);
+        $definition = new NoteParentDefinition();
+        $release = new NotepadParents();
+        $connection->update('glpi_notepads', ['items_id' => -1], ['id' => 9000]);
+        $this->exception(static fn () => $release->plan($connection))->isInstanceOf(RuntimeException::class);
+        $this->boolean($connection->createSchemaManager()->introspectTable('glpi_notepads')->hasColumn('computers_id'))->isFalse();
+        $this->array(Ledger::states($connection))->isIdenticalTo($prior);
+        $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM glpi_computers');
+        $connection->update('glpi_notepads', ['items_id' => $orphan], ['id' => 9000]);
+        $this->exception(static fn () => $release->apply($connection))->isInstanceOf(RuntimeException::class);
+        $this->boolean($connection->createSchemaManager()->introspectTable('glpi_notepads')->hasColumn('computers_id'))->isFalse();
+        $this->array(Ledger::states($connection))->isIdenticalTo($prior);
+        $connection->update('glpi_notepads', ['items_id' => 9000], ['id' => 9000]);
+        $hash = null;
+        foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
+            $message = 'Actual note adoption stop at ' . $phase;
+            $this->exception(
+                static fn () => $release->apply(
+                    $connection,
+                    static function (string $stage) use ($phase, $message): void {
+                        if ($stage === $phase) {
+                            throw new RuntimeException($message);
+                        }
+                    }
+                )
+            )->isInstanceOf(RuntimeException::class)->hasMessage($message);
+            $this->array($read())->isIdenticalTo($source);
+            foreach ($prior as $key => $state) {
+                $this->array(Ledger::state($connection, $key))->isIdenticalTo($state);
+            }
+            $state = Ledger::state($connection, NoteParentDefinition::PHASE);
+            if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+                $this->boolean($state['complete'])->isFalse();
+                $hash ??= $state['source_hash'];
+                $this->string($state['source_hash'])->isIdenticalTo($hash);
+                $this->boolean($connection->createSchemaManager()->introspectTable('glpi_notepads')->hasColumn('computers_id'))->isTrue();
+                if ($phase !== 'columns') {
+                    $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_notepads WHERE id=9000'))->isIdenticalTo(9000);
+                    $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_notepads WHERE id=9000'))->isNull();
+                }
+            } else {
+                $this->variable($state)->isNull();
+                $this->boolean($connection->createSchemaManager()->introspectTable('glpi_notepads')->hasColumn('computers_id'))->isFalse();
+            }
+        }
+        $release->apply($connection);
+        $release->verify($connection);
+        $this->boolean(Ledger::state($connection, NoteParentDefinition::PHASE)['complete'])->isTrue();
+        $this->array($read())->isIdenticalTo($source);
+        $table = $connection->createSchemaManager()->introspectTable('glpi_notepads');
+        foreach ($indexes as $name => $index) {
+            $actual = $table->getIndex($name);
+            $this->array($actual->getUnquotedColumns())->isIdenticalTo($index->getUnquotedColumns());
+            $this->boolean($actual->isUnique())->isIdenticalTo($index->isUnique());
+            $this->array($actual->getFlags())->isIdenticalTo($index->getFlags());
+            $this->array($actual->getOptions())->isIdenticalTo($index->getOptions());
+        }
+        $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_notepads WHERE id=9000'))->isIdenticalTo(9000);
+        foreach ([9001, 9002, 9003, 9004, 9005] as $id) {
+            $this->variable($connection->fetchOne('SELECT computers_id FROM glpi_notepads WHERE id=?', [$id]))->isNull();
+        }
+        $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_notepads WHERE id=9001'))->isNull();
+        foreach ([9002 => -7, 9003 => 0, 9004 => -9, 9005 => 9000] as $id => $identity) {
+            $this->integer((int)$connection->fetchOne('SELECT opaque_parent_id FROM glpi_notepads WHERE id=?', [$id]))->isIdenticalTo($identity);
+        }
+        $before = $connection->fetchAllAssociative('SELECT * FROM glpi_notepads ORDER BY id');
+        foreach ([['computers_id' => $orphan], ['computers_id' => 0], ['computers_id' => -1],
+            ['opaque_parent_id' => 9000], ['itemtype' => null], ['itemtype' => null, 'computers_id' => null]] as $invalid) {
+            $this->exception(static fn () => $connection->transactional(static fn () =>
+                $connection->update('glpi_notepads', $invalid, ['id' => 9000])))->isInstanceOf(DbalException::class);
+            $this->array($connection->fetchAllAssociative('SELECT * FROM glpi_notepads ORDER BY id'))->isIdenticalTo($before);
+        }
+        $this->exception(static fn () => $connection->transactional(static fn () =>
+            $connection->delete('glpi_computers', ['id' => 9000])))->isInstanceOf(DbalException::class);
+        $this->assertGeneratedIdentityNullPreservesRows($connection, 'glpi_notepads', 9000);
+        $states = Ledger::states($connection);
+        $callbacks = [];
+        $release->apply(
+            $connection,
+            static function (string $stage) use (&$callbacks): void {
+                $callbacks[] = $stage;
+            }
+        );
+        $release->verify($connection);
+        $this->array($callbacks)->isEmpty();
+        $this->array(Ledger::states($connection))->isIdenticalTo($states);
+        $this->array($read())->isIdenticalTo($source);
     }
 
 }

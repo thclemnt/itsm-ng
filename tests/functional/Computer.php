@@ -66,6 +66,11 @@ use itsmng\Database\Repository\AssetRepository;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\TransactionOwnershipMismatch;
 use Log;
+use Notepad as NotepadModel;
+use Session;
+use itsmng\Database\Entity\Notepad as NoteRecord;
+use PluginNotepadOwnershipParent;
+use Doctrine\DBAL\Exception as NoteDatabaseException;
 use Monitor;
 use Peripheral;
 use Phone;
@@ -99,6 +104,7 @@ use LogicException;
 use mock\DBmysql as ComputerItemAdapterProbe;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
+require_once dirname(__DIR__) . '/fixtures/notepadownership.php';
 
 /* Test for inc/computer.class.php */
 
@@ -2226,6 +2232,170 @@ class Computer extends DbTestCase
         ]);
         $this->integer(count($softwares))->isidenticalTo(1);
     }
+
+    public function testNotesRetainTypedOwnerOpaqueAliasesCloneAndPublicPurge(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity(0, true);
+        $connection = $DB->getDoctrineConnection();
+        $prefix = $this->getUniqueString();
+        $parent = $this->createItem(ComputerModel::class, ['name' => $prefix, 'entities_id' => 0]);
+        $second = $this->createItem(ComputerModel::class, ['name' => $prefix . '-second', 'entities_id' => 0]);
+        $rows = [];
+        foreach ([1, 2] as $number) {
+            $note = $this->createItem(NotepadModel::class, ['itemtype' => ComputerModel::class, 'items_id' => $parent->getID(), 'content' => $prefix]);
+            $this->integer((int)$note->fields['computers_id'])->isIdenticalTo((int)$parent->getID());
+            $this->variable($note->fields['opaque_parent_id'])->isNull();
+            $rows[] = $note;
+        }
+        $this->integer(NotepadModel::countForItem($parent))->isIdenticalTo(2);
+        $this->array(array_column(NotepadModel::getAllForItem($parent), 'id'))->isIdenticalTo([$rows[1]->getID(), $rows[0]->getID()]);
+        $this->boolean($rows[0]->update(['id' => $rows[0]->getID(), 'content' => null]))->isTrue();
+        $this->boolean($rows[0]->getFromDB($rows[0]->getID()))->isTrue();
+        $this->variable($rows[0]->fields['content'])->isNull();
+        $connection->update('glpi_notepads', ['content' => 'native fresh', 'users_id_lastupdater' => null, 'date_mod' => null], ['id' => $rows[1]->getID()]);
+        $fresh = array_column(NotepadModel::getAllForItem($parent), null, 'id');
+        $this->string($fresh[$rows[1]->getID()]['content'])->isIdenticalTo('native fresh');
+        $this->variable($fresh[$rows[1]->getID()]['picture'])->isNull();
+        $this->variable($fresh[$rows[1]->getID()]['date_mod'])->isNull();
+        $independent = Orm::create($DB);
+        try {
+            $dirty = $independent->find(NoteRecord::class, (int)$rows[1]->getID());
+            $dirty->content = 'Unflushed independent note';
+            $snapshot = array_column(NotepadModel::getAllForItem($parent), null, 'id');
+            $this->string($snapshot[$rows[1]->getID()]['content'])->isIdenticalTo('native fresh');
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->string($dirty->content)->isIdenticalTo('Unflushed independent note');
+            Orm::read($DB, function (EntityManager $outer) use ($parent, $rows): void {
+                $pending = $outer->find(NoteRecord::class, (int)$rows[1]->getID());
+                $pending->content = 'Unflushed outer note';
+                $snapshot = array_column(NotepadModel::getAllForItem($parent), null, 'id');
+                $this->string($snapshot[$rows[1]->getID()]['content'])->isIdenticalTo('native fresh');
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->content)->isIdenticalTo('Unflushed outer note');
+            });
+        } finally {
+            $independent->clear();
+        }
+        $this->integer((int)$rows[0]->fields['users_id_lastupdater'])->isIdenticalTo((int)Session::getLoginUserID());
+        $alias = $this->createItem(NotepadModel::class, ['itemtype' => 'computer', 'items_id' => $parent->getID(), 'content' => $prefix . '-alias']);
+        $this->string($alias->fields['itemtype'])->isIdenticalTo('computer');
+        $this->variable($alias->fields['computers_id'])->isNull();
+        $this->integer((int)$alias->fields['opaque_parent_id'])->isIdenticalTo((int)$parent->getID());
+        $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notepads WHERE itemtype=? AND items_id=?', [ComputerModel::class, $parent->getID()]);
+        $this->integer(NotepadModel::countForItem($parent))->isIdenticalTo($count);
+        $this->array(NotepadModel::getAllForItem($parent))->hasSize($count);
+        $orphan = (int)$connection->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM glpi_computers');
+        foreach ([['computers_id' => $orphan], ['computers_id' => 0], ['computers_id' => -1],
+            ['opaque_parent_id' => $parent->getID()], ['itemtype' => null], ['itemtype' => null, 'computers_id' => null]] as $invalid) {
+            $this->exception(static fn () => $connection->transactional(static fn () =>
+                $connection->update('glpi_notepads', $invalid, ['id' => $rows[0]->getID()])))->isInstanceOf(NoteDatabaseException::class);
+        }
+        $this->exception(static fn () => $connection->transactional(static fn () =>
+            $connection->delete('glpi_computers', ['id' => $parent->getID()])))->isInstanceOf(NoteDatabaseException::class);
+        foreach ([null, '', 'PluginOpaqueNoteParent'] as $kind) {
+            $note = $this->createItem(NotepadModel::class, ['itemtype' => $kind, 'items_id' => -7, 'content' => $prefix]);
+            $this->variable($note->fields['itemtype'])->isIdenticalTo($kind);
+            $this->integer((int)$note->fields['opaque_parent_id'])->isIdenticalTo(-7);
+            $this->variable($note->fields['computers_id'])->isNull();
+            $this->boolean($note->update(['id' => $note->getID(), 'content' => $prefix . '-changed']))->isTrue();
+            $this->boolean($note->getFromDB($note->getID()))->isTrue();
+            $this->variable($note->fields['itemtype'])->isIdenticalTo($kind);
+        }
+        $custom = $this->createItem(PluginNotepadOwnershipParent::class, ['name' => $prefix . '-custom', 'entities_id' => 0]);
+        $customNote = $this->createItem(NotepadModel::class, ['itemtype' => PluginNotepadOwnershipParent::class, 'items_id' => $custom->getID(), 'content' => $prefix]);
+        $this->string($customNote->fields['itemtype'])->isIdenticalTo(PluginNotepadOwnershipParent::class);
+        $factory = getItemForItemtype($customNote->fields['itemtype']);
+        $this->object($factory)->isInstanceOf(PluginNotepadOwnershipParent::class);
+        $this->boolean($factory->getFromDB($custom->getID()))->isTrue();
+        $this->integer((int)$customNote->fields['opaque_parent_id'])->isIdenticalTo((int)$factory->getID());
+        $this->variable($customNote->fields['computers_id'])->isNull();
+        $this->integer(NotepadModel::countForItem($custom))->isIdenticalTo(1);
+        $this->array(NotepadModel::getAllForItem($custom))->hasSize(1);
+        $this->boolean($custom->delete(['id' => $custom->getID()], true))->isTrue();
+        $this->boolean($customNote->getFromDB($customNote->getID()))->isFalse();
+        $stock = $this->createItem(NotepadModel::class, ['itemtype' => ComputerModel::class, 'items_id' => 0, 'content' => $prefix]);
+        $this->variable($stock->fields['computers_id'])->isNull();
+        $this->variable($stock->fields['opaque_parent_id'])->isNull();
+        $this->integer((int)$stock->fields['items_id'])->isIdenticalTo(0);
+        $cloned = (int)$parent->clone(['name' => $prefix . '-clone']);
+        $this->integer($cloned)->isGreaterThan(0);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notepads WHERE itemtype=? AND computers_id=?', [ComputerModel::class, $cloned]))->isIdenticalTo(2);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notepads WHERE itemtype=? AND computers_id IS NULL AND opaque_parent_id=?', ['computer', $cloned]))->isIdenticalTo($count - 2);
+        $level = error_reporting();
+        try {
+            error_reporting($level & ~E_USER_DEPRECATED);
+            NotepadModel::cloneItem(ComputerModel::class, $parent->getID(), $second->getID());
+        } finally {
+            error_reporting($level);
+        }
+        $this->integer(NotepadModel::countForItem($second))->isIdenticalTo($count);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_notepads WHERE computers_id=?', [$second->getID()]))->isIdenticalTo(2);
+        $this->boolean($parent->delete(['id' => $parent->getID()], true))->isTrue();
+        foreach ($rows as $note) {
+            $this->boolean($note->getFromDB($note->getID()))->isFalse();
+        }
+        $this->integer(NotepadModel::countForItem($second))->isIdenticalTo($count);
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users WHERE id=?', [Session::getLoginUserID()]))->isIdenticalTo(1);
+    }
+
+    public function testNoteRetargetUsesBothTypeNoteRightsAndActualFinalWrites(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $first = $this->createItem(ComputerModel::class, ['name' => $prefix, 'entities_id' => 0]);
+            $second = $this->createItem(ComputerModel::class, ['name' => $prefix . '-second', 'entities_id' => 0]);
+            $phone = $this->createItem(Phone::class, ['name' => $prefix, 'entities_id' => 0]);
+            $note = $this->createItem(NotepadModel::class, ['itemtype' => ComputerModel::class, 'items_id' => $first->getID(), 'content' => $prefix]);
+            $_SESSION['glpiactiveprofile']['computer'] = UPDATENOTE;
+            $_SESSION['glpiactiveprofile']['phone'] = 0;
+            $this->boolean($note->can($note->getID(), UPDATE))->isTrue();
+            $this->boolean($note->update(['id' => $note->getID(), 'content' => 'only note rights']))->isTrue();
+            $this->boolean($note->update(['id' => $note->getID(), 'items_id' => (string)$second->getID()]))->isTrue();
+            $before = $DB->getDoctrineConnection()->fetchAssociative('SELECT * FROM glpi_notepads WHERE id=?', [$note->getID()]);
+            $this->boolean($note->update(['id' => $note->getID(), 'itemtype' => Phone::class, 'items_id' => $phone->getID()]))->isFalse();
+            $this->hasSessionMessages(INFO, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            $this->array($DB->getDoctrineConnection()->fetchAssociative('SELECT * FROM glpi_notepads WHERE id=?', [$note->getID()]))->isIdenticalTo($before);
+            $prepared = new NotepadPreparedParent();
+            $this->boolean($prepared->getFromDB($note->getID()))->isTrue();
+            $prepared->finalKind = Phone::class;
+            $prepared->finalIdentity = (int)$phone->getID();
+            $this->boolean($prepared->update(['id' => $note->getID(), 'content' => 'late denial']))->isFalse();
+            $this->integer($prepared->calls)->isIdenticalTo(1);
+            $this->hasSessionMessages(INFO, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            $this->array($DB->getDoctrineConnection()->fetchAssociative('SELECT * FROM glpi_notepads WHERE id=?', [$note->getID()]))->isIdenticalTo($before);
+            $prepared = new NotepadPreparedParent();
+            $this->boolean($prepared->getFromDB($note->getID()))->isTrue();
+            $prepared->cancelParent = true;
+            // The proposed same-type move is admitted before the late callback cancels it.
+            $this->boolean($prepared->update(['id' => $note->getID(), 'items_id' => $first->getID(), 'content' => 'cancelled parent']))->isTrue();
+            $this->integer($prepared->calls)->isIdenticalTo(1);
+            $this->boolean($note->getFromDB($note->getID()))->isTrue();
+            $this->integer((int)$note->fields['items_id'])->isIdenticalTo((int)$second->getID());
+            $this->string($note->fields['content'])->isIdenticalTo('cancelled parent');
+            $_SESSION['glpiactiveprofile']['computer'] = 0;
+            $_SESSION['glpiactiveprofile']['phone'] = UPDATENOTE;
+            $this->boolean($note->update(['id' => $note->getID(), 'itemtype' => Phone::class, 'items_id' => $phone->getID()]))->isFalse();
+            $this->hasSessionMessages(INFO, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            $_SESSION['glpiactiveprofile']['computer'] = UPDATENOTE;
+            $this->boolean($note->update(['id' => $note->getID(), 'itemtype' => Phone::class, 'items_id' => $phone->getID()]))->isTrue();
+            $this->boolean($note->getFromDB($note->getID()))->isTrue();
+            $this->string($note->fields['itemtype'])->isIdenticalTo(Phone::class);
+            $this->variable($note->fields['computers_id'])->isNull();
+            $this->integer((int)$note->fields['opaque_parent_id'])->isIdenticalTo((int)$phone->getID());
+            foreach ([null, '', 'UnknownNoteParent'] as $kind) {
+                $this->boolean($note->update(['id' => $note->getID(), 'itemtype' => $kind, 'items_id' => 0]))->isFalse();
+                $this->hasSessionMessages(INFO, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
 }
 
 
@@ -2267,5 +2437,35 @@ class ComputerItemFilter extends SQLFilter
     public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
     {
         return $targetEntity->name === ComputerItemRecord::class ? '1 = 0' : '';
+    }
+}
+
+/** Real public note callbacks; no custom parent factory or raw native producer. */
+class NotepadPreparedParent extends NotepadModel
+{
+    public ?string $finalKind = null;
+    public int $finalIdentity = 0;
+    public bool $cancelParent = false;
+    public int $calls = 0;
+
+    public static function getTable($classname = null)
+    {
+        return NotepadModel::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        ++$this->calls;
+        $columns = ['itemtype', 'items_id', 'computers_id', 'opaque_parent_id'];
+        if ($this->cancelParent) {
+            $this->updates = array_values(array_diff($this->updates, $columns));
+        } elseif ($this->finalKind !== null) {
+            $this->fields['itemtype'] = $this->finalKind;
+            $this->fields['items_id'] = $this->finalIdentity;
+            $this->fields['computers_id'] = $this->finalKind === ComputerModel::class ? $this->finalIdentity : null;
+            $this->fields['opaque_parent_id'] = $this->finalKind === ComputerModel::class ? null : $this->finalIdentity;
+            $this->updates = array_values(array_unique([...$this->updates, ...$columns]));
+        }
     }
 }

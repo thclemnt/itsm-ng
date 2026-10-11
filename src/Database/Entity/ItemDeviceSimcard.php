@@ -45,7 +45,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('groups_id', ['groups_id'], postgresqlName: 'glpi_items_devicesimcards_groups_id')]
 class ItemDeviceSimcard implements LegacyInput
 {
-    use OpenComponentParent;
+    use OpenParentInput;
 
     #[ORM\ManyToOne(targetEntity: DeviceSimcard::class)]
     #[ORM\JoinColumn(name: 'devicesimcards_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_items_devicesimcards_devicesimcards_id')]

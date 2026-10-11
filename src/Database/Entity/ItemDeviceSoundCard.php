@@ -39,7 +39,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('states_id', ['states_id'], postgresqlName: 'glpi_items_devicesoundcards_states_id')]
 class ItemDeviceSoundCard implements LegacyInput
 {
-    use OpenComponentParent;
+    use OpenParentInput;
 
     #[ORM\ManyToOne(targetEntity: DeviceSoundCard::class)]
     #[ORM\JoinColumn(name: 'devicesoundcards_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_items_devicesoundcards_devicesoundcards_id')]

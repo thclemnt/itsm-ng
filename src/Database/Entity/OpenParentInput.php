@@ -12,8 +12,8 @@ use Stringable;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use itsmng\Database\Mapping\DiscriminatorKey;
 
-/** Input for the component's declared single adopted parent and opaque fallback. */
-trait OpenComponentParent
+/** Input for declared owning parents and an opaque fallback. */
+trait OpenParentInput
 {
     /** Read the parent policy from its owning property attributes, without a registry. */
     private static function parentBindings(): array

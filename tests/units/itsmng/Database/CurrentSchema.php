@@ -32,6 +32,8 @@ use ReflectionProperty;
 use RuntimeException;
 use atoum\atoum\test;
 use itsmng\Database\BaselineSchema;
+use itsmng\Database\Entity\Notepad as NoteRecord;
+use itsmng\Database\Migration\NotepadParents\Definition as NoteParentDefinition;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\CurrentSchema as Projection;
 use itsmng\Database\Entity\BudgetType;
@@ -3062,6 +3064,41 @@ class CurrentSchema extends test
                 $invalid[$table]['items_id']['expression'] = str_replace('coalesce(`networkports_id`,0)', 'coalesce(`networkports_id`,1)', $columns[$table]['items_id']['expression']);
                 $this->array(NativeSubjectSchema::compare($selected, $invalid, $checks, false))->isIdenticalTo([$projectionError]);
             }
+        }
+    }
+
+    public function testNoteOwnerPolicyDerivesNullable100AndRetainsOpaqueIdentities(): void
+    {
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            $manager = $this->manager($platform);
+            $builder = new BaselineSchema($manager);
+            $builder->build($platform);
+            $metadata = $manager->getClassMetadata(NoteRecord::class);
+            $this->array($builder->subjectPolicies()['glpi_notepads']['items_id'])->isIdenticalTo(NoteParentDefinition::policy($platform));
+            $this->boolean($metadata->getFieldMapping('itemtype')->nullable)->isTrue();
+            $this->integer($metadata->getFieldMapping('itemtype')->length)->isIdenticalTo(100);
+            $association = $metadata->associationMappings['computer'];
+            $this->boolean($association->isToOneOwningSide())->isTrue();
+            $this->string($association->targetEntity)->isIdenticalTo((new ReflectionProperty(NoteRecord::class, 'computer'))->getType()->getName());
+            $this->string($association->joinColumns[0]->name)->isIdenticalTo('computers_id');
+        }
+        $record = new NoteRecord();
+        foreach ([0, 123] as $id) {
+            $value = $record->normalizeInput(['itemtype' => 'Computer', 'items_id' => $id]);
+            $this->variable($value['computers_id'])->isIdenticalTo($id === 0 ? null : $id);
+            $this->variable($value['opaque_parent_id'])->isNull();
+            $this->array($record->normalizeInput($value))->isIdenticalTo($value);
+        }
+        foreach ([null, '', 'computer', 'PluginOpaqueNoteParent'] as $kind) {
+            $value = $record->normalizeInput(['itemtype' => $kind, 'items_id' => -7]);
+            $this->variable($value['itemtype'])->isIdenticalTo($kind);
+            $this->variable($value['computers_id'])->isNull();
+            $this->integer($value['opaque_parent_id'])->isIdenticalTo(-7);
+        }
+        foreach ([['itemtype' => 'Computer', 'items_id' => -1], ['itemtype' => 'Computer', 'items_id' => null],
+            ['itemtype' => 'Computer', 'computers_id' => 123, 'opaque_parent_id' => 123],
+            ['itemtype' => null, 'computers_id' => 123, 'opaque_parent_id' => 0]] as $invalid) {
+            $this->exception(static fn () => $record->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
         }
     }
 

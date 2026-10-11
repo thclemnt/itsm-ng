@@ -39,7 +39,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('states_id', ['states_id'], postgresqlName: 'glpi_items_devicepcis_states_id')]
 class ItemDevicePci implements LegacyInput
 {
-    use OpenComponentParent;
+    use OpenParentInput;
 
     #[ORM\ManyToOne(targetEntity: DevicePci::class)]
     #[ORM\JoinColumn(name: 'devicepcis_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_items_devicepcis_devicepcis_id')]

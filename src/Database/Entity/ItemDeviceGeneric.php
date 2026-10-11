@@ -38,7 +38,7 @@ use itsmng\Database\Mapping\SchemaOwner;
 #[SchemaIndex('otherserial', ['otherserial'], postgresqlName: 'glpi_items_devicegenerics_otherserial')]
 class ItemDeviceGeneric implements LegacyInput
 {
-    use OpenComponentParent;
+    use OpenParentInput;
 
     #[ORM\ManyToOne(targetEntity: DeviceGeneric::class)]
     #[ORM\JoinColumn(name: 'devicegenerics_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0], foreignKeyName: 'fk_items_devicegenerics_devicegenerics_id')]
