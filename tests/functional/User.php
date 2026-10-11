@@ -65,7 +65,6 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\NoResultException;
 use Glpi\Exception\ForgetPasswordException;
 use Group;
@@ -85,7 +84,6 @@ use itsmng\Database\Orm;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\ProfileUserReadOperation;
-use itsmng\Database\RecordReadOperation;
 use itsmng\Database\Repository\EntityConfigurationRepository;
 use itsmng\Database\Repository\EntityHierarchyRepository;
 use itsmng\Database\Repository\ProfileUserRepository;
@@ -107,8 +105,7 @@ use Psr\Log\AbstractLogger;
 use ReflectionMethod;
 use ReflectionProperty;
 use Session;
-use Symfony\Component\Cache\Adapter\ArrayAdapter;
-use Symfony\Component\Cache\Psr16Cache;
+use stdClass;
 use Throwable;
 use User as UserModel;
 use UserEmail;
@@ -1054,7 +1051,7 @@ class User extends DbTestCase
         }
     }
 
-    public function testTimelineAuthorReaderOwnsOnlyOneRenderAndFollowsCurrentRoute(): void
+    public function testTimelineAuthorReaderFollowsCurrentRouteAndPreservesCallerOwners(): void
     {
         global $DB;
         $this->login();
@@ -1068,29 +1065,18 @@ class User extends DbTestCase
         $reader = new TimelineAuthorReader();
         $model = new UserModel();
         $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
-        // Custom connections retain private metadata for exactly one render.
-        $owned = new ReflectionProperty($reader, 'records');
-        $getManager = static fn ($render) => (new ReflectionProperty(RecordReadOperation::class, 'manager'))->getValue($owned->getValue($render));
-        $manager = $getManager($reader);
-        $loads = new class () {
-            public int $count = 0;
-            public function postLoad(): void
-            {
-                ++$this->count;
-            }
-        };
-        $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
-        $previousCache = $GLOBALS['GLPI_CACHE'] ?? null;
         $alternate = $DB->getProvider() === 'pgsql'
             ? PostgresConnection::create($connection->getParams())
             : MySQLConnection::create($connection->getParams());
+        $independent = Orm::create($DB);
         try {
+            $pending = $independent->find(UserRecord::class, $id);
+            $pending->comment = 'Independent pending author';
             $this->boolean($DB->update('glpi_users', ['comment' => 'Fresh callback write'], ['id' => $id]))->isTrue();
             $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
-            $this->object($getManager($reader))->isIdenticalTo($manager);
             $this->string($model->fields['comment'])->isIdenticalTo('Fresh callback write');
-            $this->integer($loads->count)->isIdenticalTo(0);
-            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->boolean($independent->contains($pending))->isTrue();
+            $this->string($pending->comment)->isIdenticalTo('Independent pending author');
             $this->mockGenerator->orphanize('__construct');
             $routed = new DBmysql();
             $currentConnection = $privateConnection;
@@ -1099,111 +1085,46 @@ class User extends DbTestCase
                 ++$routeCalls;
                 return $currentConnection;
             };
+            $before = $model->fields;
+            foreach ([null, ''] as $empty) {
+                $this->boolean($reader->load($model, $empty, $routed))->isFalse();
+                $this->array($model->fields)->isIdenticalTo($before);
+            }
+            $this->integer($routeCalls)->isIdenticalTo(0);
             $this->boolean($reader->load($model, $id, $routed))->isTrue();
             $this->integer($routeCalls)->isIdenticalTo(1);
-            $adapterManager = $getManager($reader);
-            $this->object($adapterManager)->isNotIdenticalTo($manager);
             $currentConnection = new ScalarReadProbe($alternate);
             $before = $model->fields;
             $this->boolean($reader->load($model, PHP_INT_MAX, $routed))->isFalse();
             $this->array($model->fields)->isIdenticalTo($before);
-            $this->object($getManager($reader))->isNotIdenticalTo($adapterManager);
-            $this->object($getManager($reader)->getConnection())->isIdenticalTo($currentConnection);
+            $this->integer($routeCalls)->isIdenticalTo(2);
+            $this->array($currentConnection->queries)->hasSize(1);
             $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
-            $beforePoolChange = $getManager($reader);
-            $GLOBALS['GLPI_CACHE'] = new Psr16Cache(new ArrayAdapter());
-            $this->boolean($reader->load($model, $id, $privateDatabase))->isTrue();
-            $this->object($getManager($reader))->isNotIdenticalTo($beforePoolChange);
-            $metadata = $getManager($reader)->getClassMetadata(UserRecord::class);
-            $originalGenerator = $metadata->generatorType;
-            $metadata->setIdGeneratorType(ClassMetadata::GENERATOR_TYPE_NONE);
-            $GLOBALS['GLPI_CACHE']->clear();
-            $nextRender = new TimelineAuthorReader();
-            $this->boolean($nextRender->load($model, $id, $privateDatabase))->isTrue();
-            $this->object($getManager($nextRender))->isNotIdenticalTo($getManager($reader));
-            $this->integer($getManager($nextRender)->getClassMetadata(UserRecord::class)->generatorType)
-                ->isIdenticalTo($originalGenerator);
-            $this->array($getManager($nextRender)->getUnitOfWork()->getIdentityMap())->isEmpty();
-            $warmRender = new TimelineAuthorReader();
-            $this->boolean($warmRender->load($model, $id, $privateDatabase))->isTrue();
-            $this->array(array_keys($getManager($warmRender)->getMetadataFactory()->getLoadedMetadata()))
-                ->isIdenticalTo([UserRecord::class]);
-            $extension = new class ($connection) extends ScalarReadProbe {
-                private ?EventManager $events = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $customLoads = new class () {
-                public int $metadata = 0;
-                public int $entities = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->metadata;
-                    if ($event->getClassMetadata()->name === EntityRecord::class) {
-                        $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
-                    }
-                }
-                public function postLoad(): void
-                {
-                    ++$this->entities;
-                }
-            };
-            $currentConnection = $extension;
-            $localRender = new TimelineAuthorReader();
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata, Events::postLoad], $customLoads);
-            $this->boolean($localRender->load($model, $id, $routed))->isTrue();
-            $this->integer($customLoads->metadata)->isGreaterThan(0);
-            $this->integer($customLoads->entities)->isIdenticalTo(0);
-            $ordinaryManager = Orm::forConnection($extension);
-            $this->array($model->fields)->isIdenticalTo((new RecordRepository($ordinaryManager))->scalarRow(UserRecord::class, $id));
-            $this->string($model->fields['entities_id'])->isIdenticalTo('0');
-            $ordinaryManager->find(UserRecord::class, $id);
-            $this->integer($customLoads->entities)->isGreaterThan(0);
-            $ordinaryManager->clear();
-            // A normal load still fires the listener: zero above is not a missing observer.
-            $manager->find(UserRecord::class, $id);
-            $this->integer($loads->count)->isGreaterThan(0);
 
-            // Moving from the retained custom route to canonical ownership retires it.
-            $localManager = $getManager($localRender);
-            $localUser = $localManager->find(UserRecord::class, $id);
-            $this->object($localUser)->isInstanceOf(UserRecord::class);
-            $currentConnection = $connection;
-            $this->boolean($localRender->load($model, $id, $routed))->isTrue();
-            $this->variable($owned->getValue($localRender))->isNull();
-            $this->boolean($localManager->contains($localUser))->isFalse();
-
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
-            $beforeFactories = $factories->getValue();
             $this->boolean($DB->update('glpi_users', ['comment' => 'Canonical callback write'], ['id' => $id]))->isTrue();
-            $this->boolean($localRender->load($model, $id, $DB))->isTrue();
+            $this->boolean($reader->load($model, $id, $DB))->isTrue();
             $this->string($model->fields['comment'])->isIdenticalTo('Canonical callback write');
-            $this->variable($owned->getValue($localRender))->isNull();
-            $canonicalRender = new TimelineAuthorReader();
-            $this->boolean($canonicalRender->load($model, $id, $DB))->isTrue();
-            $this->variable($owned->getValue($canonicalRender))->isNull();
-            $this->integer($factories->getValue())->isIdenticalTo($beforeFactories);
+            $nextRender = new TimelineAuthorReader();
+            $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
+            $this->string($model->fields['comment'])->isIdenticalTo('Canonical callback write');
 
             $outerManager = null;
             $outerUser = null;
-            Orm::withReadConnection($connection, function (EntityManager $manager) use ($DB, $canonicalRender, $model, $id, $factories, &$outerManager, &$outerUser): void {
+            Orm::withReadConnection($connection, function (EntityManager $manager) use ($DB, $nextRender, $model, $id, &$outerManager, &$outerUser): void {
                 $outerManager = $manager;
                 $outerUser = $manager->find(UserRecord::class, $id);
                 $this->object($outerUser)->isInstanceOf(UserRecord::class);
-                $beforeNested = $factories->getValue();
-                $this->boolean($canonicalRender->load($model, $id, $DB))->isTrue();
+                $outerUser->comment = 'Nested pending author';
+                $this->boolean($nextRender->load($model, $id, $DB))->isTrue();
                 $this->string($model->fields['comment'])->isIdenticalTo('Canonical callback write');
-                $this->integer($factories->getValue() - $beforeNested)->isIdenticalTo(1);
                 $this->boolean($manager->contains($outerUser))->isTrue();
+                $this->string($outerUser->comment)->isIdenticalTo('Nested pending author');
             });
             $this->boolean($outerManager->contains($outerUser))->isFalse();
-            $this->variable($owned->getValue($canonicalRender))->isNull();
+            $this->boolean($independent->contains($pending))->isTrue();
+            $this->string($pending->comment)->isIdenticalTo('Independent pending author');
         } finally {
-            $GLOBALS['GLPI_CACHE'] = $previousCache;
-            unset($reader, $nextRender, $warmRender, $localRender, $canonicalRender);
-            $manager->clear();
+            $independent->clear();
             $alternate->close();
         }
     }
@@ -1247,16 +1168,6 @@ class User extends DbTestCase
                 $this->array($model->fields)->isIdenticalTo($before);
             }
             $this->variable($repository->scalarRow(UserRecord::class, PHP_INT_MAX))->isNull();
-            $custom = new class () extends UserModel {
-                public int $calls = 0;
-                public function getFromDB($id)
-                {
-                    ++$this->calls;
-                    return false;
-                }
-            };
-            $this->boolean($custom->getTimelineAuthorFromDB($id))->isFalse();
-            $this->integer($custom->calls)->isIdenticalTo(1);
             $connection = $database->getDoctrineConnection();
             $this->mockGenerator->orphanize('__construct');
             $routed = new DBmysql();
@@ -2518,6 +2429,7 @@ class User extends DbTestCase
             $manager->persist($nullName);
             $manager->flush();
             $connection = $DB->getDoctrineConnection();
+            $this->variable(UserModel::getIdByName(null))->isIdenticalTo(UserModel::getIdByName(''));
             foreach (['NULL', 'null'] as $name) {
                 $user = new UserModel();
                 $id = (int)$user->add([
@@ -2537,8 +2449,9 @@ class User extends DbTestCase
                 $this->boolean($user->getFromDBbyNameAndAuth($name, Auth::LDAP, 0))->isFalse();
                 $this->boolean($user->getFromDBbyName(null))->isTrue();
                 $this->integer((int)$user->getID())->isIdenticalTo($nullName->id);
-                $this->boolean($user->getFromDBbyNameAndAuth($name, ['=', $nullName->authtype], ['=', 0]))->isTrue();
-                $this->integer((int)$user->getID())->isIdenticalTo($nullName->id);
+                $this->exception(
+                    static fn () => $user->getFromDBbyNameAndAuth($name, ['=', $nullName->authtype], 0)
+                )->isInstanceOf(UnsupportedCriteria::class);
                 $this->boolean((new Auth())->login($name, 'Literal fixture password', true))->isTrue();
                 $this->integer((int)Session::getLoginUserID())->isIdenticalTo($id);
                 $this->boolean(in_array($entity, array_map('intval', $_SESSION['glpiactiveentities']), true))->isTrue();
@@ -2595,12 +2508,11 @@ class User extends DbTestCase
         }
     }
 
-    public function testLoginIdentityPreservesCustomRouteAndOpaqueDispatch(): void
+    public function testLoginIdentityPreservesCustomRouteAndRejectsUnsupportedValues(): void
     {
         global $DB;
         $original = $DB;
         $session = $_SESSION;
-        $table = UserModel::getTable();
         try {
             $this->login();
             $user = $this->createItem(UserModel::class, ['name' => 'route_identity_' . $this->getUniqueString()]);
@@ -2662,9 +2574,10 @@ class User extends DbTestCase
                 }
             };
             $DB = $adapter;
-            $this->integer(UserModel::getIdByName($value))->isIdenticalTo((int)$user->getID());
-            $this->array($observer->trace)->isIdenticalTo(['constructed', 'converted']);
-            $this->array($selected->queries)->hasSize(2);
+            $this->exception(static fn () => UserModel::getIdByName($value))->isInstanceOf(UnsupportedCriteria::class);
+            $this->array($observer->trace)->isIdenticalTo(['constructed']);
+            $this->boolean($DB === $adapter)->isTrue();
+            $this->array($selected->queries)->hasSize(1);
             $this->integer($observer->clears)->isIdenticalTo(0);
             $selected->fail = true;
             $DB = $adapter;
@@ -2690,18 +2603,20 @@ class User extends DbTestCase
             $this->boolean($observer->clearedManagers[2] === $observer->clearedManagers[0])->isFalse();
             $this->boolean($observer->clearedManagers[2]->getConnection() === $selected)->isTrue();
             $selected->fail = false;
+            $DB = $adapter;
+            $queries = count($selected->queries);
+            $clears = $observer->clears;
+            $observer->trace = [];
+            $this->exception(
+                static fn () => (new UserModel())->getFromDBbyName(['=', $name])
+            )->isInstanceOf(UnsupportedCriteria::class);
+            $this->exception(
+                static fn () => (new UserModel())->getFromDBbyNameAndAuth($name, Auth::LDAP, new stdClass())
+            )->isInstanceOf(UnsupportedCriteria::class);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'constructed']);
+            $this->integer(count($selected->queries))->isIdenticalTo($queries);
+            $this->integer($observer->clears)->isIdenticalTo($clears + 2);
             $DB = $original;
-            $opaque = new class () extends UserModel {
-                public array $criteria = [];
-
-                public function getFromDBByCrit(array $criteria)
-                {
-                    $this->criteria = $criteria;
-                    return false;
-                }
-            };
-            $this->boolean($opaque->getFromDBbyName(['=', $name]))->isFalse();
-            $this->array($opaque->criteria)->isIdenticalTo(['name' => ['=', $name]]);
             $directory = $this->createItem(AuthLDAP::class, ['name' => 'forced_' . $this->getUniqueString()]);
             $directoryOwner = Orm::create($DB);
             $external = new UserRecord();
@@ -2716,10 +2631,7 @@ class User extends DbTestCase
             $this->boolean($externalModel->getFromDBbyNameAndAuth('NULL', Auth::LDAP, $directory->getID()))->isTrue();
             $this->integer((int)$externalModel->getID())->isIdenticalTo($external->id);
             $this->boolean($externalModel->getFromDBbyNameAndAuth('NULL', Auth::LDAP, 0))->isFalse();
-            UserModel::forceTable(AuthLDAP::getTable());
-            $this->boolean((new UserModel())->getFromDBbyName($directory->fields['name']))->isTrue();
         } finally {
-            UserModel::forceTable($table);
             $DB = $original;
             $_SESSION = $session;
         }

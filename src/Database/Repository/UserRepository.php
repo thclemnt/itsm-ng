@@ -22,8 +22,10 @@ use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\LegacyValues;
 use itsmng\Database\MappedRowProjection;
 use itsmng\Database\RecordCriteria;
+use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 use Search;
 
@@ -469,21 +471,43 @@ final class UserRepository
         return $row === null ? null : (int)$row['id'];
     }
 
-    /** Login is domain text; authentication-source criteria retain their existing operators. */
-    private function loginQuery(string $name, array $source): QueryBuilder
+    /** Fixed login and optional authentication identity; no query-language inputs. */
+    private function loginQuery(?string $name, array $source): QueryBuilder
     {
         $metadata = $this->em->getClassMetadata(User::class);
         $query = $this->em->createQueryBuilder()->from(User::class, 'r');
-        $query->where('r.' . $metadata->getFieldName('name') . ' = :login_name')
-            ->setParameter('login_name', $name, $metadata->getTypeOfField($metadata->getFieldName('name')));
-        if ($source) {
-            $query->andWhere((new RecordCriteria($query, $metadata))->where($source));
+        $login = 'r.' . $metadata->getFieldName('name');
+        if ($name === null) {
+            $query->where($login . ' IS NULL');
+        } else {
+            $query->where($login . ' = :login_name')
+                ->setParameter('login_name', $name, $metadata->getTypeOfField($metadata->getFieldName('name')));
+        }
+        foreach ($source as $column => $value) {
+            if (
+                !in_array($column, ['authtype', 'auths_id'], true)
+                || ($value !== null && !is_scalar($value))
+            ) {
+                throw new UnsupportedCriteria('User authentication identity requires scalar authtype and auths_id values.');
+            }
+            $field = 'r.' . $metadata->getFieldName($column);
+            // Authentication source keeps its existing legacy empty/sentinel contract.
+            if ($value === null || (is_string($value) && strtolower($value) === 'null')) {
+                $query->andWhere($field . ' IS NULL');
+                continue;
+            }
+            $value = LegacyValues::decode($value);
+            $query->andWhere($field . ' = :' . $column)->setParameter(
+                $column,
+                $column === 'authtype' ? (int)$value : (string)$value,
+                $column === 'authtype' ? Types::INTEGER : Types::BIGINT
+            );
         }
         return $query;
     }
 
     /** Completed identities before the public User model reload; ambiguity never selects one. */
-    public function loginIdentities(string $name, array $source = []): array
+    public function loginIdentities(?string $name, array $source = []): array
     {
         $rows = $this->loginQuery($name, $source)->select('r.id')->setMaxResults(2)
             ->getQuery()->getScalarResult();
@@ -491,7 +515,7 @@ final class UserRepository
     }
 
     /** Count and sole identity are one current snapshot; a duplicate never reaches model reload. */
-    public function loginMatch(string $name, array $source = []): array
+    public function loginMatch(?string $name, array $source = []): array
     {
         $row = $this->loginQuery($name, $source)->select('COUNT(r.id) AS matches, MIN(r.id) AS identity')
             ->getQuery()->getSingleResult(Query::HYDRATE_SCALAR);

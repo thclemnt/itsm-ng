@@ -58,6 +58,7 @@ use itsmng\Database\Repository\UserRepository;
 use itsmng\Database\Repository\UserSelectionRepository;
 use itsmng\Database\RowIterator;
 use itsmng\Database\TimelineAuthorReader;
+use itsmng\Database\UnsupportedCriteria;
 use itsmng\Domain\Authentication\AuthenticationCompletion;
 use Sabre\VObject;
 
@@ -89,10 +90,6 @@ class User extends CommonDBTM
     public function getTimelineAuthorFromDB($id): bool
     {
         global $DB;
-        // Custom User models retain their own loading/lifecycle dispatch.
-        if (static::class !== self::class) {
-            return $this->getFromDB($id);
-        }
         return (new TimelineAuthorReader())->load($this, $id, $DB);
     }
 
@@ -488,24 +485,24 @@ class User extends CommonDBTM
     }
 
 
-    /** Primitive login names are text; custom models and criteria retain their public dispatch. */
+    /** Login identities are values, not arbitrary record predicates. */
     private function getFromDBByLogin($name, array $source)
     {
         global $DB;
 
-        if (
-            static::class !== self::class || !is_string($name)
-            || array_filter($source, static fn ($value): bool => $value !== null && !is_scalar($value))
-        ) {
-            return $this->getFromDBByCrit(['name' => $name] + $source);
-        }
-        $database = $DB;
-        // Exact core User uses the inherited pure cached getter. Forced routes stay legacy.
-        if ($this->getTable() !== 'glpi_users') {
-            return $this->getFromDBByCrit(['name' => $name] + $source);
-        }
-        $match = Orm::read($database, static fn (EntityManager $manager): array =>
-            (new UserRepository($manager))->loginMatch(LegacyValues::decodeString($name), $source), clearCustomManager: true);
+        $match = Orm::read(
+            $DB,
+            static function (EntityManager $manager) use ($name, $source): array {
+                if ($name !== null && !is_scalar($name)) {
+                    throw new UnsupportedCriteria('User login must be scalar text or PHP null.');
+                }
+                return (new UserRepository($manager))->loginMatch(
+                    $name === null ? null : LegacyValues::decodeString((string)$name),
+                    $source
+                );
+            },
+            clearCustomManager: true
+        );
         if ($match['count'] === 1) {
             return $this->getFromDB($match['id']);
         }
@@ -4742,11 +4739,14 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        if (!is_string($name)) {
-            return self::getIdByField('name', $name);
-        }
         return Orm::read($DB, static function (EntityManager $manager) use ($name): ?int {
-            $ids = (new UserRepository($manager))->loginIdentities(LegacyValues::decodeString(addslashes($name)));
+            if ($name !== null && !is_scalar($name)) {
+                throw new UnsupportedCriteria('User name must be scalar text or PHP null.');
+            }
+            // This public name-ID lookup historically treats PHP null as empty text.
+            $ids = (new UserRepository($manager))->loginIdentities(
+                LegacyValues::decodeString(addslashes((string)$name))
+            );
             return count($ids) === 1 ? $ids[0] : null;
         }) ?? false;
     }
