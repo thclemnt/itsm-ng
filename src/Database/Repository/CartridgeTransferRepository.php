@@ -51,19 +51,16 @@ final class CartridgeTransferRepository
     }
 
     /** Reuse an unordered same-name model, including deleted models, in the destination. */
-    public function reusableTransferModel(int $entity, ?string $name): int|string|null
+    public function reusableTransferModel(int $entity, string $name): int|string|null
     {
         $quote = $this->connection->getDatabasePlatform()->quoteIdentifier(...);
         $query = $this->connection->createQueryBuilder()
             ->select($quote('id'))
             ->from($quote('glpi_cartridgeitems'))
             ->where($quote('entities_id') . ' = :entity')
-            ->setParameter('entity', $entity, Types::BIGINT);
-        if ($name === null) {
-            $query->andWhere($quote('name') . ' IS NULL');
-        } else {
-            $query->andWhere($quote('name') . ' = :name')->setParameter('name', $name, Types::STRING);
-        }
+            ->andWhere($quote('name') . ' = :name')
+            ->setParameter('entity', $entity, Types::BIGINT)
+            ->setParameter('name', $name, Types::STRING);
         $id = $query->executeQuery()->fetchOne();
         if ($id === false) {
             return null;

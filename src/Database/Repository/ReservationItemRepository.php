@@ -7,7 +7,6 @@ namespace itsmng\Database\Repository;
 use DateTime;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use InvalidArgumentException;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -15,16 +14,6 @@ final class ReservationItemRepository
 {
     public function __construct(private EntityManager $em)
     {
-    }
-
-    public static function supports(string $type): bool
-    {
-        try {
-            Entity\ReservationItem::referenceAssociation($type);
-            return true;
-        } catch (InvalidArgumentException) {
-            return false;
-        }
     }
 
     public function types(array $entities): array
