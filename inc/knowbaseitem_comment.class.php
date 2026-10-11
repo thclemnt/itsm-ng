@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use itsmng\Database\LegacyValues;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
@@ -136,8 +137,15 @@ class KnowbaseItem_Comment extends CommonDBTM
                 ];
             }
 
-            $nb = (new KnowledgeBaseRepository(Orm::create($DB)))
-                ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
+            $nb = Orm::readPrepared(
+                $DB,
+                static fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                    (int)$where['knowbaseitems_id'],
+                    $where['language']
+                ),
+                static fn (EntityManager $manager, array $arguments): int =>
+                    (new KnowledgeBaseRepository($manager))->commentCount(...$arguments)
+            );
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
     }
@@ -175,8 +183,15 @@ class KnowbaseItem_Comment extends CommonDBTM
         $kbitem = new KnowbaseItem();
         $kbitem->getFromDB($kbitem_id);
 
-        $number = (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
+        $number = Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                (int)$where['knowbaseitems_id'],
+                $where['language']
+            ),
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new KnowledgeBaseRepository($manager))->commentCount(...$arguments)
+        );
 
         $cancomment = $kbitem->canComment();
         if ($cancomment) {
@@ -305,8 +320,16 @@ class KnowbaseItem_Comment extends CommonDBTM
     {
         global $DB;
 
-        return (new KnowledgeBaseRepository(Orm::create($DB)))
-            ->comments((int)$kbitem_id, LegacyValues::decode($lang), $parent === null ? null : (int)$parent);
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (int $article, ?string $language, ?int $parent): array => [$article, $language, $parent])(
+                (int)$kbitem_id,
+                LegacyValues::decode($lang),
+                $parent === null ? null : (int)$parent
+            ),
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new KnowledgeBaseRepository($manager))->comments(...$arguments)
+        );
     }
 
     public function cleanDBonPurge()
