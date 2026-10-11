@@ -3684,8 +3684,15 @@ class Ticket extends CommonITILObject
         global $DB;
 
         $totalcost = 0;
-        $costs = (new TicketAssetRepository(Orm::create($DB)))
-            ->costs($item->getType(), (int)$item->getID());
+        $costs = Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (string $type, int $id): array => [$type, $id])(
+                $item->getType(),
+                (int)$item->getID()
+            ),
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new TicketAssetRepository($manager))->costs(...$arguments)
+        );
         foreach ($costs as $data) {
             $totalcost += TicketCost::computeTotalCost($data['actiontime'], $data['cost_time'], $data['cost_fixed'], $data['cost_material']);
         }

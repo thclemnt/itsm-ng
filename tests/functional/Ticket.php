@@ -38,6 +38,7 @@ use ChangeTask;
 use CommonITILActor;
 use CommonITILObject;
 use CommonITILTask;
+use Computer;
 use DateTime;
 use DateTimeImmutable;
 use DbTestCase;
@@ -60,6 +61,7 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\NoResultException;
@@ -73,6 +75,7 @@ use Group_Ticket;
 use Html;
 use ITILFollowup;
 use ITILSolution;
+use Item_Ticket;
 use LogicException;
 use Plugin;
 use Problem;
@@ -81,10 +84,12 @@ use Project as LegacyProject;
 use ProjectTask as LegacyProjectTask;
 use ReflectionProperty;
 use RequestType;
+use RuntimeException;
 use Session;
 use Supplier;
 use Supplier_Ticket;
 use Ticket as LegacyTicket;
+use TicketCost;
 use TicketSatisfaction;
 use Ticket_User;
 use UserEmail;
@@ -97,6 +102,7 @@ use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\SupplierTicket;
 use itsmng\Database\Entity\Ticket as TicketEntity;
+use itsmng\Database\Entity\TicketCost as CostRecord;
 use itsmng\Database\Entity\TicketSatisfaction as SatisfactionRecord;
 use itsmng\Database\Entity\TicketUser;
 use itsmng\Database\Entity\User as UserEntity;
@@ -135,6 +141,215 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Ticket extends DbTestCase
 {
+    public function testAssetTcoFollowsActualCostLifecycleAndRetainsDirtyOwners(): void
+    {
+        global $DB, $CFG_GLPI;
+        $session = $_SESSION;
+        $decimals = $CFG_GLPI['decimal_number'];
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $CFG_GLPI['decimal_number'] = 2;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $ticket = $this->createItem(LegacyTicket::class, [
+                'name' => $this->getUniqueString(), 'content' => 'Actual linked cost lifecycle',
+                'entities_id' => $entity, '_disablenotif' => true,
+            ]);
+            $assets = [];
+            for ($index = 0; $index < 2; ++$index) {
+                $asset = $this->createItem(Computer::class, [
+                    'name' => $this->getUniqueString(), 'entities_id' => $entity,
+                ]);
+                $link = new Item_Ticket();
+                $this->integer($link->add([
+                    'tickets_id' => $ticket->getID(), 'itemtype' => Computer::class, 'items_id' => $asset->getID(),
+                ]))->isGreaterThan(0);
+                $this->variable(LegacyTicket::computeTco($asset))->isIdenticalTo(0);
+                $assets[] = $asset;
+            }
+            $makeCost = function (int $seconds, string $rate, string $fixed, string $material) use ($ticket): TicketCost {
+                $cost = new TicketCost();
+                $id = $cost->add([
+                    'tickets_id' => $ticket->getID(), 'name' => $this->getUniqueString(),
+                    'actiontime' => $seconds, 'cost_time' => $rate, 'cost_fixed' => $fixed, 'cost_material' => $material,
+                ]);
+                $this->integer($id)->isGreaterThan(0);
+                $this->boolean($cost->getFromDB($id))->isTrue();
+                return $cost;
+            };
+            $cost = $makeCost(HOUR_TIMESTAMP, '10.0000', '5.0000', '2.0000');
+            foreach ($assets as $asset) {
+                $this->boolean($asset->getFromDB($asset->getID()))->isTrue();
+                $this->string($asset->getField('ticket_tco'))->isIdenticalTo('17.0000');
+            }
+            $credit = $makeCost(0, '0.0000', '4.0000', '-1.0000');
+            $excluded = $makeCost(0, '0.0000', '-100.0000', '0.0000');
+            $this->boolean($cost->update(['id' => $cost->getID(), 'cost_fixed' => '8.0000']))->isTrue();
+            foreach ($assets as $asset) {
+                $this->boolean($asset->getFromDB($asset->getID()))->isTrue();
+                $this->string($asset->getField('ticket_tco'))->isIdenticalTo('23.0000');
+            }
+            $connection = $DB->getDoctrineConnection();
+            $connection->update('glpi_ticketcosts', ['cost_fixed' => '9.0000'], ['id' => $cost->getID()]);
+            $this->float(LegacyTicket::computeTco($assets[0]))->isIdenticalTo(24.0);
+            $independent = Orm::create($DB);
+            $dirty = $independent->find(CostRecord::class, (int)$cost->getID());
+            $dirty->cost_fixed = '99.0000';
+            $this->float(LegacyTicket::computeTco($assets[0]))->isIdenticalTo(24.0);
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->string($dirty->cost_fixed)->isIdenticalTo('99.0000');
+            Orm::read($DB, function (EntityManager $owner) use ($cost, $assets): void {
+                $dirty = $owner->find(CostRecord::class, (int)$cost->getID());
+                $dirty->cost_material = '77.0000';
+                $this->float(LegacyTicket::computeTco($assets[0]))->isIdenticalTo(24.0);
+                $this->boolean($owner->contains($dirty))->isTrue();
+                $this->string($dirty->cost_material)->isIdenticalTo('77.0000');
+            });
+            $this->boolean($credit->delete(['id' => $credit->getID()], 1))->isTrue();
+            foreach ($assets as $asset) {
+                $this->boolean($asset->getFromDB($asset->getID()))->isTrue();
+                $this->string($asset->getField('ticket_tco'))->isIdenticalTo('21.0000');
+            }
+            $this->boolean($cost->delete(['id' => $cost->getID()], 1))->isTrue();
+            foreach ($assets as $asset) {
+                $this->variable(LegacyTicket::computeTco($asset))->isIdenticalTo(0);
+                $this->boolean($asset->getFromDB($asset->getID()))->isTrue();
+                $this->string($asset->getField('ticket_tco'))->isIdenticalTo('0.0000');
+            }
+            $this->boolean($excluded->getFromDB($excluded->getID()))->isTrue();
+            $independent->clear();
+        } finally {
+            $CFG_GLPI['decimal_number'] = $decimals;
+            $_SESSION = $session;
+        }
+    }
+
+    public function testAssetTcoPreparationKeepsCustomRouteCallbacksAndRecovery(): void
+    {
+        global $DB, $CFG_GLPI;
+        $original = $DB;
+        $session = $_SESSION;
+        $decimals = $CFG_GLPI['decimal_number'];
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $CFG_GLPI['decimal_number'] = 2;
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $ticket = $this->createItem(LegacyTicket::class, [
+                'name' => $this->getUniqueString(), 'content' => 'Custom cost projection',
+                'entities_id' => $entity, '_disablenotif' => true,
+            ]);
+            $asset = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $this->integer((new Item_Ticket())->add([
+                'tickets_id' => $ticket->getID(), 'itemtype' => Computer::class, 'items_id' => $asset->getID(),
+            ]))->isGreaterThan(0);
+            $cost = new TicketCost();
+            $this->integer($cost->add([
+                'tickets_id' => $ticket->getID(), 'name' => $this->getUniqueString(), 'cost_fixed' => '10.0000',
+            ]))->isGreaterThan(0);
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+
+                public function postLoad(PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof CostRecord) {
+                        $this->trace[] = 'loaded';
+                        $event->getObject()->cost_fixed = '12.0000';
+                    }
+                }
+
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $events = new EventManager();
+            $events->addEventListener(['postLoad', 'onClear'], $observer);
+            $selected = new class ($connection, $events, $observer) extends ScalarReadProbe {
+                public function __construct($connection, private EventManager $events, private object $observer)
+                {
+                    parent::__construct($connection);
+                }
+
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $other = new ScalarReadProbe($connection);
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new TimelineCountAdapter();
+            $alternate = new TimelineCountAdapter();
+            $this->calling($adapter)->getDoctrineConnection = $selected;
+            $this->calling($alternate)->getDoctrineConnection = $other;
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $this->calling($alternate)->getProvider = $original->getProvider();
+            $kind = new class ($observer, $alternate) {
+                public function __construct(private object $observer, private object $alternate)
+                {
+                }
+
+                public function __toString(): string
+                {
+                    $this->observer->trace[] = 'converted';
+                    $GLOBALS['DB'] = $this->alternate;
+                    return Computer::class;
+                }
+            };
+            $probe = new class ((int)$asset->getID(), $observer) extends Computer {
+                public static object $observer;
+                public static mixed $kind;
+                public ?RuntimeException $failure = null;
+
+                public function __construct(private int $id, object $observer)
+                {
+                    self::$observer = $observer;
+                }
+
+                public static function getType()
+                {
+                    self::$observer->trace[] = 'type';
+                    return self::$kind;
+                }
+
+                public function getID()
+                {
+                    self::$observer->trace[] = 'id';
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                    return $this->id;
+                }
+            };
+            $probe::$kind = $kind;
+            $DB = $adapter;
+            $this->float(LegacyTicket::computeTco($probe))->isIdenticalTo(12.0);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'type', 'id', 'converted', 'loaded']);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->array($other->queries)->isEmpty();
+            $this->array($selected->queries)->hasSize(1);
+            $observer->trace = [];
+            $probe->failure = new RuntimeException('Cost item callback failure');
+            $DB = $adapter;
+            $this->exception(static fn () => LegacyTicket::computeTco($probe))->isIdenticalTo($probe->failure);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'type', 'id']);
+            $this->array($selected->queries)->hasSize(1);
+            $probe->failure = null;
+            $probe::$kind = Computer::class;
+            $this->float(LegacyTicket::computeTco($probe))->isIdenticalTo(12.0);
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->string($connection->fetchOne('SELECT cost_fixed FROM glpi_ticketcosts WHERE id=?', [$cost->getID()]))
+                ->isIdenticalTo('10.0000');
+        } finally {
+            $DB = $original;
+            $CFG_GLPI['decimal_number'] = $decimals;
+            $_SESSION = $session;
+        }
+    }
+
     public function testActivityCountsKeepPublicPrivacyAndCurrentCoreParents(): void
     {
         global $DB;
