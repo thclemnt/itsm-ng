@@ -12,11 +12,11 @@ use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use LogicException;
-use Throwable;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\ChainAdapter;
 use Symfony\Component\Cache\Adapter\ProxyAdapter;
+use Throwable;
 
 /** @internal Private implementation shared only by final read operation owners. */
 trait PrivateReadOwnership

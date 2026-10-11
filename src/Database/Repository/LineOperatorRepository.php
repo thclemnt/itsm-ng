@@ -18,7 +18,9 @@ final class LineOperatorRepository
     {
         $quote = $this->connection->getDatabasePlatform()->quoteIdentifier(...);
         $query = $this->connection->createQueryBuilder()
-            ->select('1')->from($quote($this->table))->setMaxResults(1);
+            ->select('1')
+            ->from($quote($this->table))
+            ->setMaxResults(1);
         foreach (['mcc' => $country, 'mnc' => $network] as $field => $code) {
             if ($code === null) {
                 $query->andWhere($quote($field) . ' IS NULL');

@@ -2057,10 +2057,12 @@ class Config extends DbTestCase
         $id = (int)$connection->fetchOne('SELECT id FROM glpi_configs WHERE context = ?', [$context]);
         $events = new EventManager();
         $probe = new class ($connection, $events) extends ScalarReadProbe {
+
             public function __construct($selected, private EventManager $events)
             {
                 parent::__construct($selected);
             }
+
             public function getEventManager(): EventManager
             {
                 return $this->events;
@@ -2071,6 +2073,7 @@ class Config extends DbTestCase
             public array $cleared = [];
             public ?Throwable $primary = null;
             public ?Throwable $cleanup = null;
+
             public function postLoad(PostLoadEventArgs $event): void
             {
                 $this->loaded[] = $event->getObjectManager();
@@ -2078,6 +2081,7 @@ class Config extends DbTestCase
                     throw $this->primary;
                 }
             }
+
             public function onClear(OnClearEventArgs $event): void
             {
                 $this->cleared[] = $event->getObjectManager();
@@ -2107,7 +2111,10 @@ class Config extends DbTestCase
 
             $primary = new RuntimeException('Actual fallback operation failure');
             $cleanup = new RuntimeException('Actual fallback cleanup failure');
-            foreach ([[$primary, null], [null, $cleanup], [$primary, $cleanup], [$primary, $primary]] as [$operationError, $cleanupError]) {
+            foreach ([
+                [$primary, null], [null, $cleanup],
+                [$primary, $cleanup], [$primary, $primary]
+            ] as [$operationError, $cleanupError]) {
                 $observer->primary = $operationError;
                 $observer->cleanup = $cleanupError;
                 $before = count($observer->cleared);

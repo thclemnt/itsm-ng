@@ -450,10 +450,12 @@ class Dropdown extends DbTestCase
         $id = (int)$budget->getID();
         $events = new EventManager();
         $probe = new class ($connection, $events) extends ScalarReadProbe {
+
             public function __construct($selected, private EventManager $events)
             {
                 parent::__construct($selected);
             }
+
             public function getEventManager(): EventManager
             {
                 return $this->events;
@@ -462,10 +464,12 @@ class Dropdown extends DbTestCase
         $observer = new class () {
             public array $loaded = [];
             public array $cleared = [];
+
             public function postLoad(PostLoadEventArgs $event): void
             {
                 $this->loaded[] = $event->getObjectManager();
             }
+
             public function onClear(OnClearEventArgs $event): void
             {
                 $this->cleared[] = $event->getObjectManager();

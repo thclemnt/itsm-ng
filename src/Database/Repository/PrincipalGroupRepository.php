@@ -47,7 +47,13 @@ final class PrincipalGroupRepository
     public function taskChildIds(int|string|null $parent, EntityRestriction $scope): array
     {
         $query = $this->taskGroups($scope);
-        $this->selection($query, $this->reference('g', $this->group, 'groups'), $parent, 'parent', $this->group->getTypeOfField('id'));
+        $this->selection(
+            $query,
+            $this->reference('g', $this->group, 'groups'),
+            $parent,
+            'parent',
+            $this->group->getTypeOfField('id')
+        );
         return $this->groupRows($query);
     }
 
@@ -63,7 +69,13 @@ final class PrincipalGroupRepository
                 'm',
                 $this->field('u', $this->user, 'id') . ' = ' . $this->reference('m', $this->membership, 'users'),
             );
-        $this->selection($query, $this->reference('m', $this->membership, 'groups'), $group, 'group', $this->group->getTypeOfField('id'));
+        $this->selection(
+            $query,
+            $this->reference('m', $this->membership, 'groups'),
+            $group,
+            'group',
+            $this->group->getTypeOfField('id')
+        );
         return $query->executeQuery()->fetchAllAssociative();
     }
 
@@ -72,8 +84,15 @@ final class PrincipalGroupRepository
     {
         $query = $this->taskGroups($scope);
         $user = $this->connection->createQueryBuilder()
-            ->select($this->field('u', $this->user, 'id'))->from($this->table($this->user), 'u');
-        $this->selection($user, $this->field('u', $this->user, 'name'), $username, 'username', $this->user->getTypeOfField('name'));
+            ->select($this->field('u', $this->user, 'id'))
+            ->from($this->table($this->user), 'u');
+        $this->selection(
+            $user,
+            $this->field('u', $this->user, 'name'),
+            $username,
+            'username',
+            $this->user->getTypeOfField('name')
+        );
         $query->innerJoin(
             'g',
             $this->table($this->membership),
@@ -92,7 +111,13 @@ final class PrincipalGroupRepository
         $query = $this->connection->createQueryBuilder()
             ->select($this->field('g', $this->group, 'id') . ' AS id')
             ->from($this->table($this->group), 'g');
-        $this->selection($query, $this->field('g', $this->group, 'is_task'), true, 'task', $this->group->getTypeOfField('is_task'));
+        $this->selection(
+            $query,
+            $this->field('g', $this->group, 'is_task'),
+            true,
+            'task',
+            $this->group->getTypeOfField('is_task')
+        );
         if ($scope->entities !== null) {
             $column = $this->reference('g', $this->group, 'entities');
             $direct = $this->entitySelection($query, $column, $scope->entities, $scope->entityList, 'entity');
@@ -144,7 +169,9 @@ final class PrincipalGroupRepository
     private function reference(string $alias, ClassMetadata $metadata, string $property): string
     {
         return $alias . '.' . $this->quote->getJoinColumnName(
-            $metadata->associationMappings[$property]->joinColumns[0], $metadata, $this->connection->getDatabasePlatform(),
+            $metadata->associationMappings[$property]->joinColumns[0],
+            $metadata,
+            $this->connection->getDatabasePlatform(),
         );
     }
 

@@ -138,9 +138,11 @@ class LineOperator extends DbTestCase
         $model = new LegacyLineOperator();
         $country = new class ($code) implements Stringable {
             public int $calls = 0;
+
             public function __construct(private int $code)
             {
             }
+
             public function __toString(): string
             {
                 ++$this->calls;
@@ -233,9 +235,11 @@ class LineOperator extends DbTestCase
             $this->calling($adapter)->getDoctrineConnection = $probe;
             $value = new class ($original, $code + 1) implements Stringable {
                 public int $calls = 0;
+
                 public function __construct(private object $database, private int $code)
                 {
                 }
+
                 public function __toString(): string
                 {
                     ++$this->calls;
@@ -253,9 +257,11 @@ class LineOperator extends DbTestCase
             $this->integer((int)$connection->fetchOne('SELECT mnc FROM glpi_lineoperators WHERE id=?', [$id]))->isIdenticalTo(42);
             $failure = new RuntimeException('Code callback failure');
             $throwing = new class ($failure) implements Stringable {
+
                 public function __construct(private RuntimeException $failure)
                 {
                 }
+
                 public function __toString(): string
                 {
                     throw $this->failure;

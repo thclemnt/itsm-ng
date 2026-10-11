@@ -75,10 +75,12 @@ class Server extends DbTestCase
                 'name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_task' => 0, 'groups_id' => $parent->getID(),
             ]);
             $recursive = $this->createItem(Group::class, [
-                'name' => $this->getUniqueString(), 'entities_id' => 0, 'is_recursive' => 1, 'is_task' => 1, 'groups_id' => $parent->getID(),
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+                'is_recursive' => 1, 'is_task' => 1, 'groups_id' => $parent->getID(),
             ]);
             $this->createItem(Group::class, [
-                'name' => $this->getUniqueString(), 'entities_id' => 0, 'is_recursive' => 0, 'is_task' => 1, 'groups_id' => $parent->getID(),
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+                'is_recursive' => 0, 'is_task' => 1, 'groups_id' => $parent->getID(),
             ]);
             $tech = (int)getItemByTypeName(User::class, 'tech', true);
             $this->createItem(GroupUser::class, ['groups_id' => $parent->getID(), 'users_id' => $tech]);
@@ -209,7 +211,10 @@ class Server extends DbTestCase
             });
             $this->boolean($owner->contains($dirty))->isTrue();
             $this->string($dirty->name)->isIdenticalTo('Unflushed CalDAV owner');
-            $this->variable($connection->fetchOne('SELECT name FROM glpi_computers WHERE id = ?', [$computer->getID()]))->isIdenticalTo($computer->fields['name']);
+            $this->variable($connection->fetchOne(
+                'SELECT name FROM glpi_computers WHERE id = ?',
+                [$computer->getID()]
+            ))->isIdenticalTo($computer->fields['name']);
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
             $DB = $original;

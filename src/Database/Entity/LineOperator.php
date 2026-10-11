@@ -6,21 +6,21 @@ namespace itsmng\Database\Entity;
 
 use AbstractQuery;
 use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
 use InvalidArgumentException;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\LegacyInput;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
 use QueryExpression;
 use QueryParam;
 use Stringable;
-use itsmng\Database\Mapping\LegacyInput;
-use Doctrine\ORM\Mapping as ORM;
-use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
-use Doctrine\DBAL\Types\Types;
-use itsmng\Database\Mapping\BooleanStorage;
-use itsmng\Database\Mapping\PlatformOptions;
-use itsmng\Database\Mapping\SchemaIndex;
-use itsmng\Database\Mapping\SchemaOwner;
-use itsmng\Database\Mapping\NativeTimestamp;
-use itsmng\Database\Mapping\ReferenceKind;
-use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_lineoperators')]

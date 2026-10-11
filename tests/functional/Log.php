@@ -34,45 +34,45 @@
 namespace tests\units;
 
 use AuthLDAP;
-use Doctrine\DBAL\Statement;
-use itsmng\Database\Entity\Computer as ComputerRecord;
-use LogicException;
-use Doctrine\ORM\Event\PrePersistEventArgs;
-use Doctrine\ORM\Event\PostPersistEventArgs;
-use Computer;
 use Closure;
+use Computer;
+use DBConnection;
+use DbTestCase;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Statement;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Event\PostPersistEventArgs;
+use Doctrine\ORM\Event\PrePersistEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Filter\SQLFilter;
-use itsmng\Database\AuthenticationType;
-use itsmng\Database\Entity\Log as LogRecord;
-use itsmng\Database\Entity\Entity as EntityRecord;
-use itsmng\Database\Entity\User as UserRecord;
-use itsmng\Database\Repository\HistoryRepository;
-use Symfony\Component\Cache\Adapter\ArrayAdapter;
-use Symfony\Component\Cache\Adapter\TraceableAdapter;
-use mock\DBmysql as HistoryAdapter;
-use DbTestCase;
-use DBConnection;
-use Doctrine\DBAL\ParameterType;
 use Dropdown;
+use Entity;
+use itsmng\Database\AuthenticationType;
+use itsmng\Database\Entity\Computer as ComputerRecord;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Log as LogRecord;
+use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\HistoryRepository;
+use Log as LegacyLog;
+use LogicException;
+use mock\DBmysql as HistoryAdapter;
 use ReflectionProperty;
 use Session;
-use Entity;
-use Log as LegacyLog;
-use User;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TraceableAdapter;
 use tests\fixtures\ScalarReadProbe;
+use User;
 
 require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
@@ -88,7 +88,11 @@ class Log extends DbTestCase
             $this->login();
             $computer = $this->createComputer();
             $connection = $DB->getDoctrineConnection();
-            $connection->update('glpi_computers', ['serial' => 'Before serial', 'otherserial' => 'Before inventory'], ['id' => $computer->getID()]);
+            $connection->update(
+                'glpi_computers',
+                ['serial' => 'Before serial', 'otherserial' => 'Before inventory'],
+                ['id' => $computer->getID()]
+            );
             $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
             $this->boolean($computer->update([
                 'id' => $computer->getID(), 'serial' => 'After serial', 'otherserial' => 'After inventory',
@@ -138,9 +142,11 @@ class Log extends DbTestCase
             $connection = $DB->getDoctrineConnection();
             $kind = new class ($this, $connection, (int)$computer->getID()) {
                 public int $nested = 0;
+
                 public function __construct(private object $test, private Connection $connection, private int $id)
                 {
                 }
+
                 public function __toString(): string
                 {
                     $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isTrue();
@@ -161,6 +167,7 @@ class Log extends DbTestCase
             $this->array(array_column($rows, 'old_value'))->isIdenticalTo(['Inner before', 'Outer before']);
             $this->array(array_column($rows, 'new_value'))->isIdenticalTo(['Inner after', 'Outer after']);
             $bad = new class () {
+
                 public function __toString(): string
                 {
                     throw new LogicException('History assignment failure');
@@ -170,15 +177,20 @@ class Log extends DbTestCase
                 ->isInstanceOf(LogicException::class)->hasMessage('History assignment failure');
             $this->integer($_SESSION['glpi_maxhistory'])->isIdenticalTo($id);
             $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
-            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype=? AND items_id=?', [Computer::class, $computer->getID()]))
+            $this->integer((int)$connection->fetchOne(
+                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype=? AND items_id=?',
+                [Computer::class, $computer->getID()]
+            ))
                 ->isIdenticalTo(2);
             $flushFailure = new LogicException('History post-insert flush failure');
             $observer = new class ($flushFailure) {
                 public ?EntityManager $manager = null;
                 public ?int $insertedId = null;
+
                 public function __construct(private LogicException $failure)
                 {
                 }
+
                 public function postPersist(PostPersistEventArgs $event): void
                 {
                     if ($event->getObject() instanceof LogRecord) {
@@ -227,6 +239,7 @@ class Log extends DbTestCase
             $observer = new class () {
                 public array $trace = [];
                 public int $clears = 0;
+
                 public function prePersist(PrePersistEventArgs $event): void
                 {
                     if ($event->getObject() instanceof LogRecord) {
@@ -234,6 +247,7 @@ class Log extends DbTestCase
                         $event->getObject()->new_value = 'Custom lifecycle value';
                     }
                 }
+
                 public function onClear(): void
                 {
                     ++$this->clears;
@@ -243,35 +257,43 @@ class Log extends DbTestCase
             $selected = new class ($connection) extends ScalarReadProbe {
                 public EventManager $events;
                 public object $observer;
+
                 public function getEventManager(): EventManager
                 {
                     $this->observer->trace[] = 'constructed';
                     return $this->events;
                 }
+
                 public function prepare(string $sql): Statement
                 {
                     return $this->selected->prepare($sql);
                 }
+
                 public function lastInsertId(): int|string
                 {
                     return $this->selected->lastInsertId();
                 }
+
                 public function beginTransaction(): void
                 {
                     $this->selected->beginTransaction();
                 }
+
                 public function commit(): void
                 {
                     $this->selected->commit();
                 }
+
                 public function rollBack(): void
                 {
                     $this->selected->rollBack();
                 }
+
                 public function getTransactionNestingLevel(): int
                 {
                     return $this->selected->getTransactionNestingLevel();
                 }
+
                 public function isTransactionActive(): bool
                 {
                     return $this->selected->isTransactionActive();
@@ -290,9 +312,11 @@ class Log extends DbTestCase
             $this->calling($adapter)->getProvider = $original->getProvider();
             $DB = $adapter;
             $kind = new class ($observer, $other, $route) {
+
                 public function __construct(private object $observer, private Connection $other, private Connection &$route)
                 {
                 }
+
                 public function __toString(): string
                 {
                     $this->observer->trace[] = 'converted';
