@@ -1931,20 +1931,6 @@ class CommonDBTM extends DbTestCase
             $this->boolean($manager->contains($managed))->isTrue();
             $this->integer($loads->count)->isIdenticalTo(1);
 
-            // Subclasses retain their complete custom model-loading boundary.
-            $custom = new class () extends Infocom {
-                public array $calls = [];
-                public function getFromDBforDevice($itemtype, $ID)
-                {
-                    $this->calls[] = [$itemtype, $ID];
-                    $this->fields['comment'] = 'Custom loaded fields';
-                    return true;
-                }
-            };
-            $this->boolean($custom->isActivatedForDevice('Computer', $id))->isTrue();
-            $this->array($custom->calls)->isIdenticalTo([['Computer', $id]]);
-            $this->string($custom->fields['comment'])->isIdenticalTo('Custom loaded fields');
-
             // Resolve the actual current adapter at each caller operation.
             $this->mockGenerator->orphanize('__construct');
             $routed = new DBmysql();

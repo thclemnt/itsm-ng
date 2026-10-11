@@ -32,8 +32,6 @@
  */
 
 use Doctrine\ORM\EntityManager;
-use itsmng\Database\EntityRegistry;
-use itsmng\Database\Entity\Infocom as InfocomEntity;
 use itsmng\Database\InfocomPresenceReadOperation;
 use itsmng\Database\MappedReads;
 use itsmng\Database\Orm;
@@ -283,10 +281,6 @@ class Infocom extends CommonDBChild
     {
         global $DB;
 
-        if (static::class !== self::class
-            || (EntityRegistry::tables()[$this->getTable()] ?? null) !== InfocomEntity::class) {
-            return $this->getFromDBforDevice($itemtype, $ID);
-        }
         $activated = InfocomPresenceReadOperation::forDatabase($DB)
             ->forItem($itemtype, (int)$ID);
         if (!$activated) {
