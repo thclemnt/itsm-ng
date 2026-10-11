@@ -194,6 +194,12 @@ class ReminderTranslation extends DbTestCase
         $text_fr = 'Traduction 1 pour Note1';
         $this->addTranslation($reminder1, $text_orig);
         $this->addTranslation($reminder1, $text_fr, 'fr_FR');
+        $baseTranslation = (new LegacyReminderTranslation())->find([
+            'reminders_id' => $reminder1->getID(), 'language' => null,
+        ]);
+        $this->array($baseTranslation)->hasSize(1);
+        $this->variable(reset($baseTranslation)['language'])->isNull();
+        $this->string(reset($baseTranslation)['text'])->isIdenticalTo($text_orig);
 
         $nb = countElementsInTable(
             'glpi_remindertranslations'
@@ -218,7 +224,7 @@ class ReminderTranslation extends DbTestCase
      *
      * @return void
      */
-    private function addTranslation(\Reminder $reminder, $text, $lang = 'NULL')
+    private function addTranslation(\Reminder $reminder, $text, $lang = null)
     {
         $this->login();
         $trans = new \ReminderTranslation();

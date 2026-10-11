@@ -42,6 +42,7 @@ use itsmng\Database\Entity\KnowbaseItem as ArticleRecord;
 use itsmng\Database\Entity\KnowbaseItemComment as CommentRecord;
 use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
 use KnowbaseItem as ApplicationArticle;
 use KnowbaseItem_Comment as ApplicationComment;
 use KnowbaseItemTranslation as ArticleTranslation;
@@ -58,6 +59,39 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
  */
 class KnowbaseItem_Comment extends DbTestCase
 {
+    public function testPublicNullableLanguageWritesKeepLiteralTextDistinct(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $article = getItemByTypeName(ApplicationArticle::getType(), '_knowbaseitem01');
+            $connection = $DB->getDoctrineConnection();
+            $repository = new KnowledgeBaseRepository(Orm::create($DB));
+            foreach ([null, 'NULL', 'null', '', 'fr_FR'] as $language) {
+                $comment = new ApplicationComment();
+                $id = $comment->add([
+                    'knowbaseitems_id' => $article->getID(), 'comment' => 'Nullable language producer', 'language' => $language,
+                ]);
+                $this->integer((int)$id)->isGreaterThan(0);
+                $this->boolean($comment->getFromDB($id))->isTrue();
+                $this->variable($comment->getField('language'))->isIdenticalTo($language);
+                $this->variable($connection->fetchOne('SELECT language FROM glpi_knowbaseitems_comments WHERE id=?', [$id]))->isIdenticalTo($language);
+                $this->array(array_column($repository->comments((int)$article->getID(), $language), 'id'))->contains((int)$id);
+                $this->boolean(in_array((int)$id, array_column($repository->comments((int)$article->getID(), null), 'id'), true))
+                    ->isIdenticalTo($language === null);
+                $updated = $language === null ? 'NULL' : null;
+                $this->boolean($comment->update(['id' => $id, 'language' => $updated]))->isTrue();
+                $this->variable($connection->fetchOne('SELECT language FROM glpi_knowbaseitems_comments WHERE id=?', [$id]))->isIdenticalTo($updated);
+                $this->array(array_column($repository->comments((int)$article->getID(), $updated), 'id'))->contains((int)$id);
+                $this->boolean(in_array((int)$id, array_column($repository->comments((int)$article->getID(), null), 'id'), true))
+                    ->isIdenticalTo($updated === null);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testMaterializedCommentsKeepLanguagesAndLiveOwners(): void
     {
         global $DB;
@@ -296,7 +330,7 @@ class KnowbaseItem_Comment extends DbTestCase
      *
      * @return void
      */
-    private function addComments(\KnowbaseItem $kb, $lang = 'NULL')
+    private function addComments(\KnowbaseItem $kb, $lang = null)
     {
         $this->login();
         $kbcom = new \KnowbaseItem_Comment();
