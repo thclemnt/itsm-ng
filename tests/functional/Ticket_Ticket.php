@@ -38,7 +38,6 @@ use Ticket as LegacyTicket;
 use Ticket_Ticket as LegacyTicketLink;
 use itsmng\Database\Entity\Ticket as TicketEntity;
 use itsmng\Database\Orm;
-
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
