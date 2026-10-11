@@ -34,10 +34,82 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\ORM\EntityManager;
+use Location as LegacyLocation;
+use Netpoint as LegacyNetpoint;
+use itsmng\Database\Entity\Netpoint as OutletRecord;
+use itsmng\Database\Orm;
+use mock\DBmysql as OutletPageAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Location extends DbTestCase
 {
+    public function testNetworkOutletTabKeepsPageValuesAndLiveOwners(): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $get = $_GET;
+        $writer = null;
+        try {
+            $this->login();
+            $entity = getItemByTypeName('Entity', '_test_root_entity', true);
+            $location = $this->createItem(LegacyLocation::class, ['name' => 'outlet-location-' . $this->getUniqueString(), 'entities_id' => $entity]);
+            $other = $this->createItem(LegacyLocation::class, ['name' => 'other-outlet-location-' . $this->getUniqueString(), 'entities_id' => $entity]);
+            $first = $this->createItem(LegacyNetpoint::class, ['name' => 'A-outlet-page', 'comment' => 'first outlet comment', 'entities_id' => $entity, 'locations_id' => $location->getID()]);
+            $second = $this->createItem(LegacyNetpoint::class, ['name' => 'B-outlet-page', 'comment' => 'second outlet comment', 'entities_id' => $entity, 'locations_id' => $location->getID()]);
+            $third = $this->createItem(LegacyNetpoint::class, ['name' => 'B-outlet-page', 'comment' => 'third outlet comment', 'entities_id' => $entity, 'locations_id' => $location->getID()]);
+            $this->createItem(LegacyNetpoint::class, ['name' => 'other location outlet', 'entities_id' => $entity, 'locations_id' => $other->getID()]);
+            $_SESSION['glpilist_limit'] = 2;
+            $_GET['start'] = 1;
+            $this->output(static fn () => LegacyNetpoint::displayTabContentForItem($location))->contains('second outlet comment')->contains('third outlet comment')->notContains('first outlet comment')->notContains('other location outlet');
+            $ids = array_map('intval', $_SESSION['glpilistitems']['Netpoint']);
+            sort($ids);
+            $expected = [(int)$second->getID(), (int)$third->getID()];
+            sort($expected);
+            $this->array($ids)->isIdenticalTo($expected);
+            $writer = Orm::create($DB);
+            $live = $writer->find(OutletRecord::class, (int)$first->getID());
+            $live->name = 'Independent pending outlet';
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => 'Z-current-outlet']))->isTrue();
+            $original->getDoctrineConnection()->update('glpi_netpoints', ['comment' => null], ['id' => $second->getID()]);
+            $_SESSION['glpilist_limit'] = 0;
+            $_GET['start'] = 20;
+            $this->output(static fn () => LegacyNetpoint::displayTabContentForItem($location))->contains('Z-current-outlet')->contains('third outlet comment')->notContains('A-outlet-page')->notContains('second outlet comment')->notContains('Independent pending outlet');
+            $this->array($_SESSION['glpilistitems']['Netpoint'])->hasSize(3);
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($location, $first): void {
+                    $owned = $outer->find(OutletRecord::class, (int)$first->getID());
+                    $owned->name = 'Outer pending outlet';
+                    $this->output(static fn () => LegacyNetpoint::displayTabContentForItem($location))->contains('Z-current-outlet')->notContains('Outer pending outlet');
+                    $this->boolean($outer->contains($owned))->isTrue();
+                    $this->string($owned->name)->isIdenticalTo('Outer pending outlet');
+                }
+            );
+            $probe = new ScalarReadProbe($original->getDoctrineConnection());
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new OutletPageAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = $probe;
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $this->output(static fn () => LegacyNetpoint::displayTabContentForItem($location))->contains('Z-current-outlet')->notContains('other location outlet');
+            $pageQueries = array_values(array_filter($probe->queries, static fn (array $query): bool => isset($query['params']['location'])));
+            $this->array($pageQueries)->hasSize(1);
+            $this->integer((int)$pageQueries[0]['params']['location'])->isIdenticalTo((int)$location->getID());
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Independent pending outlet');
+        } finally {
+            $DB = $original;
+            $writer?->clear();
+            $_SESSION = $session;
+            $_GET = $get;
+        }
+    }
+
     public function testImportExternal()
     {
         $locations_id = \Dropdown::importExternal(
