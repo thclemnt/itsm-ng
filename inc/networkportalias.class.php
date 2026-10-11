@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Repository\NetworkPortOriginChoiceRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -111,31 +113,27 @@ class NetworkPortAlias extends NetworkPortInstantiation
         global $DB;
 
         $lastItem = $recursiveItems[count($recursiveItems) - 1];
+        $possible_ports = [];
         $netport_types = ['NetworkPortEthernet', 'NetworkPortWifi'];
         foreach ($netport_types as $netport_type) {
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
-            ]);
+            $database = $DB;
+            $parentID = $lastItem->getID();
+            $parentType = $lastItem->getType();
+            if ((!is_int($parentID) && (!is_string($parentID) || !preg_match('/^[+-]?[0-9]+$/D', trim($parentID))))
+                || !is_string($parentType)) {
+                throw new InvalidArgumentException('Alias origins require a scalar parent ID and string item type.');
+            }
+            $rows = (new NetworkPortOriginChoiceRepository($database->getDoctrineConnection()))
+                ->availableForAlias($parentType, $parentID, $netport_type);
 
-            if (count($iterator)) {
+            if (count($rows)) {
                 $array_element_name = call_user_func(
                     [$netport_type, 'getTypeName'],
-                    count($iterator)
+                    count($rows)
                 );
                 $possible_ports[$array_element_name] = [];
 
-                while ($portEntry = $iterator->next()) {
+                foreach ($rows as $portEntry) {
                     $macAddresses[$portEntry['id']] = $portEntry['mac'];
                     if (!empty($portEntry['mac'])) {
                         $portEntry['name'] = sprintf(
@@ -150,7 +148,7 @@ class NetworkPortAlias extends NetworkPortInstantiation
         }
         $checklistOptions = [];
         foreach ($possible_ports as $key => $value) {
-            $checklistOptions = array_merge($checklistOptions, $value);
+            $checklistOptions += $value;
         }
 
         return [

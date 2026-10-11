@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DateTime;
+use mock\DBmysql as AliasOriginRoute;
+use Computer;
 use DbTestCase;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
@@ -902,6 +904,110 @@ class NetworkPort extends DbTestCase
         $back = CloneInput::merge('glpi_networknames', $custom, ['itemtype' => 'NetworkPort', 'items_id' => 0]);
         $this->integer($back['items_id'])->isIdenticalTo(0);
         $this->variable($back['opaque_parent_id'])->isNull();
+    }
+
+    public function testAliasOriginFormPreservesPortIDsAndCurrentParentChoices(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $computer = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $other = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $ports = [];
+        foreach ([['NetworkPortEthernet', 9, null], ['NetworkPortEthernet', 2, ''], ['NetworkPortWifi', 1, '00:24:81:eb:c7:41']] as [$kind, $number, $mac]) {
+            $ports[] = $this->createItem(LegacyNetworkPort::class, [
+                'items_id' => $computer->getID(), 'itemtype' => Computer::getType(),
+                'name' => 'Same origin name', 'logical_number' => $number, 'mac' => $mac,
+                'instantiation_type' => $kind, 'entities_id' => 0,
+            ]);
+        }
+        $decoy = $this->createItem(LegacyNetworkPort::class, [
+            'items_id' => $other->getID(), 'itemtype' => Computer::getType(),
+            'name' => 'Foreign origin', 'instantiation_type' => 'NetworkPortEthernet', 'entities_id' => 0,
+        ]);
+        $parent = $this->createItem(LegacyNetworkPort::class, [
+            'items_id' => $computer->getID(), 'itemtype' => Computer::getType(),
+            'name' => 'Alias form parent', 'instantiation_type' => 'NetworkPortAlias', 'entities_id' => 0,
+        ]);
+        $alias = new NetworkPortAlias();
+        $this->integer((int)$alias->add([
+            'networkports_id' => $parent->getID(), 'networkports_id_alias' => $ports[0]->getID(),
+        ]))->isGreaterThan(0);
+        // This model's public index is networkports_id, distinct from its insert row ID.
+        $this->boolean($alias->getFromDB($parent->getID()))->isTrue();
+        // The existing query intentionally includes deleted origin ports on the same asset.
+        $this->boolean($ports[1]->delete(['id' => $ports[1]->getID()]))->isTrue();
+        $owner = Orm::create($database);
+        try {
+            $dirty = $owner->find(NetworkPortEntity::class, $ports[0]->getID());
+            $dirty->name = 'Pending alias origin';
+            $form = Orm::read($database, function (EntityManager $outer) use ($alias, $parent, $computer, $ports): array {
+                $live = $outer->find(NetworkPortEntity::class, $ports[0]->getID());
+                $live->name = 'Pending enclosing origin';
+                $form = $alias->showInstantiationForm($parent, [], [$computer]);
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing origin');
+                return $form;
+            });
+            $choices = $form[$alias->getTypeName()]['inputs'][__('Origin port')]['values'];
+            $this->array(array_keys($choices))->isIdenticalTo([(int)$ports[1]->getID(), (int)$ports[0]->getID(), (int)$ports[2]->getID()]);
+            $this->string($choices[$ports[0]->getID()])->isIdenticalTo('Same origin name');
+            $this->string($choices[$ports[2]->getID()])->contains('00:24:81:eb:c7:41');
+            $this->array($choices)->notHasKey($decoy->getID())->notHasKey($parent->getID());
+            $this->boolean($alias->update(['networkports_id' => $parent->getID(), 'networkports_id_alias' => $ports[2]->getID()]))->isTrue();
+            $this->integer((int)$connection->fetchOne('SELECT networkports_id_alias FROM glpi_networkportaliases WHERE networkports_id = ?', [$parent->getID()]))->isIdenticalTo((int)$ports[2]->getID());
+            $this->boolean($parent->getFromDB($parent->getID()))->isTrue();
+            $this->string($parent->fields['mac'])->isIdenticalTo('00:24:81:eb:c7:41');
+            $connection->update('glpi_networkports', ['name' => 'Current origin name'], ['id' => $ports[0]->getID()]);
+            $empty = $this->createItem(Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $probe = new ScalarReadProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $route = new AliasOriginRoute();
+            $this->calling($route)->getDoctrineConnection = $probe;
+            $DB = $route;
+            $current = $alias->showInstantiationForm($parent, [], [$computer]);
+            $this->string($current[$alias->getTypeName()]['inputs'][__('Origin port')]['values'][$ports[0]->getID()])->isIdenticalTo('Current origin name');
+            $this->array($probe->queries)->hasSize(2);
+            $invalid = clone $computer;
+            $invalid->fields['id'] = ['>', 0];
+            $this->exception(static fn () => $alias->showInstantiationForm($parent, [], [$invalid]))
+                ->isInstanceOf(InvalidArgumentException::class);
+            $this->array($probe->queries)->hasSize(2);
+            $secondProbe = new ScalarReadProbe($connection);
+            $secondRoute = new AliasOriginRoute();
+            $this->calling($secondRoute)->getDoctrineConnection = $secondProbe;
+            $changingParent = new class () extends Computer {
+                public static array $trace = [];
+                public static $nextRoute;
+
+                public function getID()
+                {
+                    self::$trace[] = 'id';
+                    return parent::getID();
+                }
+
+                public static function getType()
+                {
+                    self::$trace[] = 'type';
+                    $GLOBALS['DB'] = self::$nextRoute;
+                    return Computer::getType();
+                }
+            };
+            $changingParent->fields = $computer->fields;
+            $changingParent::$nextRoute = $secondRoute;
+            $alias->showInstantiationForm($parent, [], [$changingParent]);
+            $this->array($changingParent::$trace)->isIdenticalTo(['id', 'type', 'id', 'type']);
+            $this->array($probe->queries)->hasSize(3);
+            $this->array($secondProbe->queries)->hasSize(1);
+            $blank = $alias->showInstantiationForm($parent, [], [$empty]);
+            $this->array($blank[$alias->getTypeName()]['inputs'][__('Origin port')]['values'])->isEmpty();
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Pending alias origin');
+        } finally {
+            $DB = $database;
+            $owner->clear();
+        }
     }
 
     public function testAliasCopiesMacFromOriginPort()
