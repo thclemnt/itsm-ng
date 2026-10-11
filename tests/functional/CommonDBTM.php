@@ -76,7 +76,6 @@ use Doctrine\ORM\Id\AssignedGenerator;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
-use Doctrine\ORM\Query\Filter\SQLFilter;
 use DomainType;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
@@ -1798,19 +1797,6 @@ class CommonDBTM extends DbTestCase
             }
 
             $probe = new class ($connection) extends ScalarReadProbe {
-                public ?EventManager $events = null;
-                public $onPlatform = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-                public function getDatabasePlatform(): AbstractPlatform
-                {
-                    if ($this->onPlatform !== null) {
-                        ($this->onPlatform)();
-                    }
-                    return parent::getDatabasePlatform();
-                }
                 public function createQueryBuilder(): QueryBuilder
                 {
                     throw new LogicException('Presence must not introduce a connection builder callback.');
@@ -1824,34 +1810,6 @@ class CommonDBTM extends DbTestCase
             ))->isTrue();
             $this->array($probe->queries)->hasSize(1);
             $this->array($probe->queries[0]['types'])->isIdenticalTo([Types::STRING, Types::BIGINT]);
-            $customPresence = new InfocomPresenceReadOperation($probe);
-            $listener = new class () {
-                public int $loads = 0;
-                public int $clears = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === InfocomEntity::class) {
-                        ++$this->loads;
-                        $manager = $event->getEntityManager();
-                        $manager->getConfiguration()->addFilter('deny_presence', InfocomPresenceFilter::class);
-                        $manager->getFilters()->enable('deny_presence');
-                    }
-                }
-                public function onClear(): void
-                {
-                    ++$this->clears;
-                }
-            };
-            $events = $probe->getEventManager();
-            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
-            try {
-                $this->boolean($customPresence->forItem('Computer', $id))->isFalse();
-                $this->integer($listener->loads)->isGreaterThan(0);
-                unset($customPresence);
-                $this->integer($listener->clears)->isIdenticalTo(0);
-            } finally {
-                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
-            }
             $this->mockGenerator->orphanize('__construct');
             $captured = new DBmysql();
             $routes = 0;
@@ -1861,7 +1819,7 @@ class CommonDBTM extends DbTestCase
             };
             $this->calling($captured)->getProvider = $savedDb->getProvider();
             $type = new class ($savedDb) {
-                public string $value = 'Peripheral';
+                public string $value = 'Computer';
                 public function __construct(private DBAdapter $original)
                 {
                 }
@@ -1870,9 +1828,6 @@ class CommonDBTM extends DbTestCase
                     $GLOBALS['DB'] = $this->original;
                     return $this->value;
                 }
-            };
-            $probe->onPlatform = static function () use ($type): void {
-                $type->value = 'Computer';
             };
             try {
                 $DB = $captured;
@@ -1903,7 +1858,6 @@ class CommonDBTM extends DbTestCase
                 $this->integer(count($probe->queries))->isIdenticalTo($queries);
             } finally {
                 $DB = $savedDb;
-                $probe->onPlatform = null;
             }
 
             $manager = Orm::create($DB);
@@ -3638,14 +3592,5 @@ class CommonDBTM extends DbTestCase
 
         $output = $itemtype::getById($nonExistingId);
         $this->boolean($output)->isFalse();
-    }
-}
-
-
-class InfocomPresenceFilter extends SQLFilter
-{
-    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
-    {
-        return $targetEntity->name === InfocomEntity::class ? '1 = 0' : '';
     }
 }

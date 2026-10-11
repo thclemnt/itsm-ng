@@ -13,7 +13,6 @@ use itsmng\Database\Repository\InfocomRepository;
 final class InfocomPresenceReadOperation
 {
     private ?EntityManager $manager = null;
-    private bool $project = false;
 
     public static function forDatabase(DBAdapter $database): self
     {
@@ -24,16 +23,13 @@ final class InfocomPresenceReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Resolve extension callbacks and types before caller arguments are evaluated.
-        $this->project = Orm::prepareReadProjection($connection);
-        if (!$this->project) {
-            $this->manager = Orm::forConnection($connection);
-        }
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
     }
 
     public function forItem(string $itemtype, int $id): bool
     {
-        $mapping = $this->project ? EntityRegistry::infocomPresenceMapping() : null;
+        $mapping = EntityRegistry::infocomPresenceMapping();
         if ($mapping !== null) {
             return InfocomRepository::projectedPresence($this->connection, $mapping, $itemtype, $id);
         }

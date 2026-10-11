@@ -6,7 +6,6 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
 use itsmng\Database\Repository\TreeRepository;
-use ReflectionMethod;
 
 /** One private tree reader; no rows or mutable manager leave its lifetime. */
 final class TreeReadOperation implements ReadQueryOwner
@@ -16,9 +15,7 @@ final class TreeReadOperation implements ReadQueryOwner
     /** Bounded core point reads need no manager; null retains the ordinary reader. */
     public static function projectedRows(Connection $connection, string $table, array $fields, array $criteria): ?array
     {
-        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
-            || !Orm::ownsReadMapping($connection)
-            || ($mapping = EntityRegistry::treePointMapping($table)) === null) {
+        if (($mapping = EntityRegistry::treePointMapping($table)) === null) {
             return null;
         }
         Orm::registerTypes();

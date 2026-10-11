@@ -3856,65 +3856,6 @@ class Ticket extends DbTestCase
                         $DB = $originalAdapter;
                     }
 
-                    $local = new TimelineLocalCountProbe($originalAdapter->getDoctrineConnection());
-                    $listener = new class () {
-                        public int $loads = 0;
-
-                        public function loadClassMetadata(): void
-                        {
-                            ++$this->loads;
-                        }
-                    };
-                    $local->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
-                    $originalTypes = [];
-                    $converters = [
-                        'string' => new class () extends StringType {
-                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                return "CASE WHEN " . $sqlExpr . " = '' THEN 'no-timeline-kind' ELSE 'no-timeline-kind' END";
-                            }
-                        },
-                        'bigint' => new class () extends BigIntType {
-                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
-                            }
-                        },
-                        'integer' => new class () extends IntegerType {
-                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                return 'CASE WHEN ' . $sqlExpr . ' = -1 THEN -1 ELSE -1 END';
-                            }
-                        },
-                        'boolean' => new class () extends BooleanType {
-                            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                            {
-                                return '(CASE WHEN ' . $sqlExpr . ' THEN FALSE ELSE TRUE END)';
-                            }
-                        },
-                    ];
-                    try {
-                        $DB = $adapter;
-                        foreach ($converters as $name => $converter) {
-                            $originalTypes[$name] = Type::getType($name);
-                            Type::overrideType($name, $converter);
-                            $this->calling($adapter)->getDoctrineConnection = $local;
-                            $expected = $item->getTimelineItemCount();
-                            $this->integer($local->builders)->isIdenticalTo(0);
-                            $this->integer($listener->loads)->isGreaterThan(0);
-                            $this->calling($adapter)->getDoctrineConnection = $probe;
-                            $probe->builders = 0;
-                            $this->integer($item->getTimelineItemCount())->isIdenticalTo($expected);
-                            $this->integer($probe->builders)->isIdenticalTo(3);
-                            Type::overrideType($name, $originalTypes[$name]);
-                        }
-                    } finally {
-                        foreach ($originalTypes as $name => $original) {
-                            Type::overrideType($name, $original);
-                        }
-                        $this->calling($adapter)->getDoctrineConnection = $probe;
-                        $DB = $originalAdapter;
-                    }
                 }
 
                 foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document', 'ticketvalidation', 'changevalidation'] as $right) {

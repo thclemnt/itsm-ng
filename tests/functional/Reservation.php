@@ -19,8 +19,6 @@ use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
-use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Events;
 use Dropdown;
 use DropdownTranslation;
@@ -45,7 +43,6 @@ use itsmng\Database\Repository\ReservationRepository;
 use LogicException;
 use mock\tests\units\ReservationDisplayAdapterBase as ReservationDisplayAdapter;
 use ReflectionProperty;
-use SplObjectStorage;
 
 class Reservation extends DbTestCase
 {
@@ -387,34 +384,6 @@ class Reservation extends DbTestCase
                 $_SESSION['glpiactiveentities'] = [$rootId, $childId];
             }
             $events = new EventManager();
-            $listener = new class () {
-                public int $loads = 0;
-                public int $clears = 0;
-                public int $otherClears = 0;
-                public SplObjectStorage $owners;
-                public function __construct()
-                {
-                    $this->owners = new SplObjectStorage();
-                }
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === Record\Reservation::class) {
-                        $this->owners->offsetSet($event->getObjectManager());
-                    }
-                    if (in_array($event->getClassMetadata()->name, [Record\Reservation::class, Record\ReservationItem::class], true)) {
-                        ++$this->loads;
-                    }
-                }
-                public function onClear(OnClearEventArgs $event): void
-                {
-                    if ($this->owners->offsetExists($event->getObjectManager())) {
-                        ++$this->clears;
-                    } else {
-                        ++$this->otherClears;
-                    }
-                }
-            };
-            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
             $extendedConnection = new ReservationDisplayConnectionProbe($connection, $events);
             // The generic connection extension requires the base adapter return
             // type; a cloned DBpgsql retains its narrower PostgresConnection contract.
@@ -429,30 +398,6 @@ class Reservation extends DbTestCase
             }
             try {
                 $DB = $extendedAdapter;
-                $beforeFactories = $factories->getValue();
-                $this->string($render(0))->notContains('reservationitems_id=');
-                $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(2);
-                $this->integer($listener->loads)->isIdenticalTo(4);
-                $this->integer(count($listener->owners))->isIdenticalTo(2);
-                $this->integer($listener->clears)->isIdenticalTo(0);
-                // A separate display owner still dispatches onClear through the
-                // shared EventManager; only reservation owners must remain uncleared.
-                $otherClears = $listener->otherClears;
-                $control = Orm::forConnection($extendedConnection);
-                $control->clear();
-                unset($control);
-                $this->integer($listener->otherClears - $otherClears)->isIdenticalTo(1);
-                // A second platform callback belongs after first-partition scope
-                // evaluation, as in the existing bare-manager display reader.
-                $extendedConnection->platformCalls = 0;
-                $extendedConnection->secondPlatform = static function (): void {
-                    $_SESSION['glpiactiveentities'] = [0];
-                };
-                $callbackHtml = $render($user->id);
-                $this->string($callbackHtml)->contains('Current reservation 0')
-                    ->notContains('Past boundary reservation')->notContains('Other entity reservation');
-                $this->integer(count($listener->owners))->isIdenticalTo(4);
-                $this->integer($listener->clears)->isIdenticalTo(0);
                 $reservation = new LegacyReservation();
                 $reservation->fields = [
                     'reservationitems_id' => $items[0]->id,
@@ -466,10 +411,8 @@ class Reservation extends DbTestCase
                 $this->boolean($reservation->is_reserved())->isTrue();
                 $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(1);
                 $this->object($DB)->isIdenticalTo($original);
-                $this->integer($listener->clears)->isIdenticalTo(0);
             } finally {
                 $extendedConnection->secondPlatform = null;
-                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
                 $DB = $probe;
                 $_SESSION['glpiactiveentities'] = [$rootId, $childId];
             }

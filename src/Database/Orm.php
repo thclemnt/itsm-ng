@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use Composer\InstalledVersions;
 use DBAdapter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
@@ -24,8 +23,6 @@ use itsmng\Database\Query\YearMonth;
 use itsmng\Database\Repository\DropdownChoiceRepository;
 use itsmng\Database\Type\ClockTimeType;
 use itsmng\Database\Type\FixedStringType;
-use ReflectionClass;
-use ReflectionMethod;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Throwable;
 
@@ -60,14 +57,14 @@ final class Orm
     {
         $connection = $db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
-        $manager = self::prepareReadProjection($connection) && self::canShareReadManager($connection)
-            ? null : self::forConnection($connection);
+        self::registerTypes();
+        $manager = self::canShareReadManager($connection) ? null : self::forConnection($connection);
         $prepared = $prepare();
-        if ($manager === null && self::canShareReadManager($connection)) {
+        if ($manager === null) {
             return $connection->withApplicationEntityManager(static fn (EntityManager $manager): mixed =>
                 $operation($manager, $prepared));
         }
-        return $operation($manager ?? self::forConnection($connection), $prepared);
+        return $operation($manager, $prepared);
     }
 
     /** @internal Interleaved preparation and materialized reads on one already selected route. */
@@ -75,26 +72,14 @@ final class Orm
     {
         $connection = $db->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($db, $connection);
-        $shared = self::prepareReadProjection($connection) && self::canShareReadManager($connection)
-            && !$connection->isApplicationEntityManagerActive();
+        self::registerTypes();
+        $shared = self::canShareReadManager($connection) && !$connection->isApplicationEntityManagerActive();
         return new MaterializedReadSession($connection, $shared ? null : self::forConnection($connection));
     }
 
     private static function canShareReadManager(Connection $connection): bool
     {
-        if ((!$connection instanceof MySQLManagedConnection && !$connection instanceof PostgresConnection)
-            || !self::ownsReadMapping($connection)) {
-            return false;
-        }
-        static $previousTypes = null;
-        static $stableTypes = false;
-        $types = DbalType::getTypeRegistry()->getMap();
-        if ($previousTypes !== $types) {
-            $stableTypes = !array_filter($types, static fn (DbalType $type, string $name): bool =>
-                !self::stableSqlConversion($name, $type), ARRAY_FILTER_USE_BOTH);
-            $previousTypes = $types;
-        }
-        return $stableTypes;
+        return $connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection;
     }
 
     /** @internal Value-only application work; custom configurations use create()/forConnection(). */
@@ -133,42 +118,6 @@ final class Orm
     public static function withReadConnection(Connection $connection, callable $operation): mixed
     {
         return self::withOperation($connection, $operation);
-    }
-
-    /** Canonical declarations cannot depend on externally mutable mapping callbacks. */
-    public static function ownsReadMapping(Connection $connection): bool
-    {
-        $platformFile = (new ReflectionClass($connection->getDatabasePlatform()))->getFileName();
-        $dbalPath = InstalledVersions::getInstallPath('doctrine/dbal');
-        return $platformFile !== false && $dbalPath !== null
-            && ($platformFile = realpath($platformFile)) !== false
-            && ($dbalPath = realpath($dbalPath)) !== false
-            && str_starts_with($platformFile, $dbalPath . '/src/Platforms/')
-            && !method_exists($connection, 'getEventManager');
-    }
-
-    /** @internal Eager projection admission; extension routes still construct their own manager. */
-    public static function prepareReadProjection(Connection $connection): bool
-    {
-        if ((new ReflectionMethod($connection, 'getDatabasePlatform'))->getDeclaringClass()->getName() !== Connection::class
-            || method_exists($connection, 'getEventManager')
-            || !self::ownsReadMapping($connection)) {
-            return false;
-        }
-        self::registerTypes();
-        return true;
-    }
-
-    /** SQL retained by Doctrine persisters must not depend on a live custom converter. */
-    public static function stableSqlConversion(string $name, DbalType $type): bool
-    {
-        static $classes = [];
-        $class = $type::class;
-        if ($name === FixedStringType::NAME || $class === FixedStringType::class) {
-            return $name === FixedStringType::NAME && $class === FixedStringType::class;
-        }
-        return $classes[$class] ??= (new ReflectionMethod($type, 'convertToPHPValueSQL'))->getDeclaringClass()->getName() === DbalType::class
-            && (new ReflectionMethod($type, 'convertToDatabaseValueSQL'))->getDeclaringClass()->getName() === DbalType::class;
     }
 
     /** Construct on the operation's already selected route without resolving it again. */

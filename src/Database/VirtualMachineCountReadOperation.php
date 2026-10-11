@@ -13,7 +13,6 @@ use itsmng\Database\Repository\InventoryRepository;
 final class VirtualMachineCountReadOperation
 {
     private ?EntityManager $manager = null;
-    private bool $project = false;
 
     public static function forDatabase(DBAdapter $database): self
     {
@@ -24,16 +23,13 @@ final class VirtualMachineCountReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Resolve extension callbacks and types before caller arguments are evaluated.
-        $this->project = Orm::prepareReadProjection($connection);
-        if (!$this->project) {
-            $this->manager = Orm::forConnection($connection);
-        }
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
     }
 
     public function forComputer(int $computer): int
     {
-        $mapping = $this->project ? EntityRegistry::virtualMachineCountMapping() : null;
+        $mapping = EntityRegistry::virtualMachineCountMapping();
         if ($mapping !== null) {
             return InventoryRepository::projectedVirtualMachineCount($this->connection, $mapping, $computer);
         }

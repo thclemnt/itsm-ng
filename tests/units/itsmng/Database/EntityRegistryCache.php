@@ -59,10 +59,9 @@ use itsmng\Database\Entity\ITILFollowup;
 /** Mapping/cache behavior without an application bootstrap or database connection. */
 class EntityRegistryCache extends test
 {
-    public function testScalarTypeRegistrationPreservesExistingTypes(): void
+    public function testScalarTypeRegistrationIsIdempotent(): void
     {
         Orm::registerTypes();
-        $registry = DbalType::getTypeRegistry();
         $originals = [
             ClockTimeType::NAME => DbalType::getType(ClockTimeType::NAME),
             FixedStringType::NAME => DbalType::getType(FixedStringType::NAME),
@@ -70,21 +69,6 @@ class EntityRegistryCache extends test
         Orm::registerTypes();
         foreach ($originals as $name => $type) {
             $this->object(DbalType::getType($name))->isIdenticalTo($type);
-        }
-        try {
-            $custom = [];
-            foreach ($originals as $name => $type) {
-                $registry->override($name, $custom[$name] = new StringType());
-            }
-            Orm::registerTypes();
-            Orm::configuration(new MySQLPlatform());
-            foreach ($custom as $name => $type) {
-                $this->object(DbalType::getType($name))->isIdenticalTo($type);
-            }
-        } finally {
-            foreach ($originals as $name => $type) {
-                $registry->override($name, $type);
-            }
         }
     }
 

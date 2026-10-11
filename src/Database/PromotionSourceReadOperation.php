@@ -13,7 +13,6 @@ use itsmng\Database\Repository\ITILOriginRepository;
 final class PromotionSourceReadOperation
 {
     private ?EntityManager $manager = null;
-    private bool $project = false;
 
     public static function forDatabase(DBAdapter $database): self
     {
@@ -24,16 +23,13 @@ final class PromotionSourceReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Resolve extension callbacks and types before caller arguments are evaluated.
-        $this->project = Orm::prepareReadProjection($connection);
-        if (!$this->project) {
-            $this->manager = Orm::forConnection($connection);
-        }
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
     }
 
     public function forTicket(int $ticket): ?array
     {
-        $mapping = $this->project ? EntityRegistry::promotionSourceMapping() : null;
+        $mapping = EntityRegistry::promotionSourceMapping();
         if ($mapping !== null) {
             return ITILOriginRepository::projectedPromotionSource($this->connection, $mapping, $ticket);
         }

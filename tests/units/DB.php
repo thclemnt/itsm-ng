@@ -38,10 +38,6 @@ use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\DBAL\DriverManager;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Types\StringType;
-use Doctrine\DBAL\Types\Type as DbalType;
-use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
 use LogicException;
@@ -197,119 +193,36 @@ class DB extends \GLPITestCase
         $this->boolean($connection->isConnected())->isFalse();
     }
 
-    public function testReadSessionRetainsLateCustomTypeOwnerAfterPreparation(): void
-    {
-        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
-        $registry = DbalType::getTypeRegistry();
-        $original = $registry->get(Types::STRING);
-        $custom = new class () extends StringType {
-            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-            {
-                return $sqlExpr;
-            }
-        };
-        $this->mockGenerator()->orphanize('__construct');
-        $adapter = new PreparedReadAdapter();
-        $this->calling($adapter)->getDoctrineConnection = $connection;
-        try {
-            $reads = Orm::readSession($adapter);
-            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
-                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('glpi_vlans');
-            $this->string($reads->readPrepared(function () use ($connection, $registry, $custom): int {
-                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
-                $registry->override(Types::STRING, $custom);
-                return 0;
-            }, function (EntityManager $manager, int $unused) use ($connection): string {
-                $this->boolean($connection->ownsApplicationEntityManager($manager))->isFalse();
-                $metadata = $manager->getClassMetadata(VlanEntity::class);
-                $metadata->setPrimaryTable(['name' => 'late_retained_vlans']);
-                return $metadata->getTableName();
-            }))->isIdenticalTo('late_retained_vlans');
-            $registry->override(Types::STRING, $original);
-            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
-                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('late_retained_vlans');
-            $this->boolean($connection->isConnected())->isFalse();
-        } finally {
-            $registry->override(Types::STRING, $original);
-        }
-    }
-
-    public function testPreparedReadRetainsCustomConstructionRouteAndClearPolicy(): void
+    public function testPreparedReadCapturesRouteBeforePublicPreparation(): void
     {
         $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
         $selected = DriverManager::getConnection($parameters);
         $other = DriverManager::getConnection($parameters);
-        $registry = DbalType::getTypeRegistry();
-        $original = $registry->get(Types::STRING);
-        $custom = new class () extends StringType {
-            public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-            {
-                return $sqlExpr;
-            }
-        };
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $route = $selected;
         $this->mockGenerator()->orphanize('__construct');
         $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+            return $route;
+        };
         try {
-            foreach ([true, false] as $customBeforePrepare) {
-                $route = $selected;
-                $registry->override(Types::STRING, $customBeforePrepare ? $custom : $original);
-                $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
-                    return $route;
-                };
-                $allocated = $factories->getValue();
-                $result = Orm::readPrepared($adapter, function () use (
-                    $factories,
-                    $allocated,
-                    $customBeforePrepare,
-                    $registry,
-                    $custom,
-                    &$route,
-                    $other
-                ): int {
-                    $this->integer($factories->getValue() - $allocated)->isIdenticalTo($customBeforePrepare ? 1 : 0);
-                    $registry->override(Types::STRING, $custom);
+            $this->integer(Orm::readPrepared(
+                $adapter,
+                function () use ($selected, &$route, $other): int {
+                    $this->boolean($selected->isApplicationEntityManagerActive())->isFalse();
                     $route = $other;
                     return 37;
-                }, function (EntityManager $manager, int $prepared) use ($selected): int {
+                },
+                function (EntityManager $manager, int $prepared) use ($selected, $other): int {
                     $this->object($manager->getConnection())->isIdenticalTo($selected);
-                    $manager->getEventManager()->addEventListener([Events::onClear], new class () {
-                        public function onClear(): void
-                        {
-                            throw new LogicException('Custom prepared readers must not acquire a clear callback');
-                        }
-                    });
+                    $this->boolean($selected->ownsApplicationEntityManager($manager))->isTrue();
+                    $this->boolean($other->isApplicationEntityManagerActive())->isFalse();
                     return $prepared;
-                });
-                $this->integer($result)->isIdenticalTo(37);
-                $this->integer($factories->getValue() - $allocated)->isIdenticalTo(1);
-            }
-            $route = $selected;
-            $clears = new class () {
-                public int $count = 0;
-
-                public function onClear(): void
-                {
-                    ++$this->count;
                 }
-            };
-            $read = function (EntityManager $manager) use ($selected, $clears): int {
-                $this->object($manager->getConnection())->isIdenticalTo($selected);
-                $manager->getEventManager()->addEventListener([Events::onClear], $clears);
-                return 37;
-            };
-            $this->integer(Orm::read($adapter, $read))->isIdenticalTo(37);
-            $defaultClears = $clears->count;
-            $this->integer(Orm::read($adapter, $read, clearCustomManager: true))->isIdenticalTo(37);
-            $explicitClears = $clears->count - $defaultClears;
-            $this->integer(Orm::withConnection($selected, $read))->isIdenticalTo(37);
-            $this->integer($clears->count - $defaultClears - $explicitClears)->isIdenticalTo(1);
-            $this->integer($explicitClears)->isIdenticalTo(1);
-            $this->integer($defaultClears)->isIdenticalTo(0);
+            ))->isIdenticalTo(37);
+            $this->boolean($selected->isApplicationEntityManagerActive())->isFalse();
             $this->boolean($selected->isConnected())->isFalse();
             $this->boolean($other->isConnected())->isFalse();
         } finally {
-            $registry->override(Types::STRING, $original);
             $selected->close();
             $other->close();
         }

@@ -49,7 +49,6 @@ use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
@@ -80,7 +79,6 @@ use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Contact;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\Profile as ProfileEntity;
-use itsmng\Database\Entity\ProfileRight;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DropdownChoiceRepository;
 use itsmng\Database\Repository\DropdownTranslationRepository;
@@ -206,29 +204,6 @@ class Dropdown extends DbTestCase
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id, 0]]));
             Type::overrideType('bigint', $originalBigint);
             Type::overrideType('text', $originalText);
-            $extension = new class ($connection) extends DropdownScalarReadProbe {
-                private ?EventManager $events = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $local = new TreeReadOperation($extension);
-            $listener = new class () {
-                public int $loads = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->loads;
-                }
-            };
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-            $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => $id]))
-                ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => $id]));
-            $this->array($local->rows('glpi_entities', ['id', 'name'], ['id' => [$id]]))
-                ->isIdenticalTo($oracle->rows('glpi_entities', ['id', 'name'], ['id' => [$id]]));
-            $this->integer($listener->loads)->isGreaterThan(0);
-            $this->integer($extension->builders)->isIdenticalTo(0, 'Late inherited listeners retain the ordinary ORM path');
-            $local->close();
             $builders = $probe->builders;
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => [$id]], ['id DESC']))
                 ->isIdenticalTo($oracle->rows('glpi_entities', ['id'], ['id' => [$id]], ['id DESC']));
@@ -682,40 +657,6 @@ class Dropdown extends DbTestCase
             $GLOBALS['GLPI_CACHE'] = $previous;
             DropdownUnknownRepository::$constructedLocally = false;
             DropdownUnknownRepository::$called = false;
-        }
-    }
-
-    public function testOwnedChoiceJoinedSqlTypeRemainsLive(): void
-    {
-        global $DB;
-        $connection = $DB->getDoctrineConnection();
-        $profile = $this->createItem(Profile::class, ['name' => $this->getUniqueString()]);
-        $id = (int)$connection->fetchOne('SELECT id FROM glpi_profilerights WHERE profiles_id = ? ORDER BY id', [(int)$profile->getID()]);
-        $connection->insert('glpi_dropdowntranslations', ['itemtype' => 'ProfileRight', 'items_id' => $id, 'language' => 'en_GB', 'field' => 'name', 'value' => 'live lower']);
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new DropdownOwnedPlanCache(storeSerialized: false);
-        $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-        $registry = Type::getTypeRegistry();
-        $original = $registry->get(Types::TEXT);
-        $translations = ['translatedName' => ['field' => 'name', 'output' => 'transname']];
-        try {
-            $oracle = Orm::create($DB);
-            $root = $oracle->getClassMetadata(ProfileRight::class);
-            $this->array(array_column($root->fieldMappings, 'type'))->notContains(Types::TEXT);
-            $reader = new DropdownReadOperation($connection);
-            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            Type::overrideType(Types::TEXT, DropdownUpperTextType::class);
-            $reader = new DropdownReadOperation($connection);
-            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('LIVE LOWER');
-            $this->integer($memory->planWrites)->isIdenticalTo(1, 'Joined-field SQL conversion bypasses the warm default plan');
-            $registry->override(Types::TEXT, $original);
-            $reader = new DropdownReadOperation($connection);
-            $this->string($reader->choices('glpi_profilerights', ['id' => $id], ['name'], $translations, 'ProfileRight', 'en_GB', 0, 0)[0]['transname'])->isIdenticalTo('live lower');
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-        } finally {
-            $registry->override(Types::TEXT, $original);
-            $GLOBALS['GLPI_CACHE'] = $previous;
         }
     }
 
@@ -2496,15 +2437,6 @@ final class DropdownOwnedPlanCache extends ArrayAdapter
         return parent::save($item);
     }
 }
-
-final class DropdownUpperTextType extends TextType
-{
-    public function convertToPHPValueSQL($sqlExpr, AbstractPlatform $platform): string
-    {
-        return 'UPPER(' . $sqlExpr . ')';
-    }
-}
-
 
 #[MappingEntity(repositoryClass: DropdownUnknownRepository::class)]
 #[Table(name: 'glpi_budgets')]

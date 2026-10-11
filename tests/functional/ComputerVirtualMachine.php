@@ -51,11 +51,6 @@ use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
-use Doctrine\ORM\Events;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Query\Filter\SQLFilter;
-use itsmng\Database\Entity\ComputerVirtualMachine as VirtualMachineRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\InventoryRepository;
@@ -256,33 +251,6 @@ class ComputerVirtualMachine extends DbTestCase
                 $host
             ))->isIdenticalTo($expected);
             $this->integer($extended->queries)->isIdenticalTo(1);
-            $local = new VirtualMachineCountReadOperation($extended);
-            $listener = new class () {
-                public int $loads = 0;
-                public int $clears = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->loads;
-                    if ($event->getClassMetadata()->name === VirtualMachineRecord::class) {
-                        $manager = $event->getEntityManager();
-                        $manager->getConfiguration()->addFilter('deny_vm', VirtualMachineCountFilter::class);
-                        $manager->getFilters()->enable('deny_vm');
-                    }
-                }
-                public function onClear(): void
-                {
-                    ++$this->clears;
-                }
-            };
-            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
-            try {
-                $this->integer($local->forComputer($host))->isIdenticalTo(0);
-                $this->integer($listener->loads)->isGreaterThan(0);
-                unset($local);
-                $this->integer($listener->clears)->isIdenticalTo(0);
-            } finally {
-                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
-            }
             $this->mockGenerator->orphanize('__construct');
             $adapter = new AdapterProbe();
             $routes = 0;
@@ -417,13 +385,5 @@ class VirtualMachineCountConnectionProbe extends Connection
     {
         ++$this->queries;
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
-    }
-}
-
-class VirtualMachineCountFilter extends SQLFilter
-{
-    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
-    {
-        return $targetEntity->name === VirtualMachineRecord::class ? '1 = 0' : '';
     }
 }

@@ -555,26 +555,6 @@ class User extends DbTestCase
             $this->exception(fn () => $reader->preferred($id))->isInstanceOf(LogicException::class);
             $this->exception(fn () => $ordinary->preferred($id))->isInstanceOf(LogicException::class);
             Type::overrideType('bigint', $bigint);
-            $extension = new class ($connection) extends ScalarReadProbe {
-                private ?EventManager $events = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $local = new UserEmailReadOperation($extension);
-            $listener = new class () {
-                public int $loads = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->loads;
-                }
-            };
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-            $this->array($local->preferred($id))->isIdenticalTo($ordinary->preferred($id));
-            $this->integer($listener->loads)->isGreaterThan(0);
-            $this->integer($extension->builders)->isIdenticalTo(0);
-            $local->close();
             $connection->delete('glpi_useremails', ['users_id' => $id]);
             $this->variable($reader->preferred($id))->isNull();
             $this->string(UserEmail::getDefaultForUser($id))->isEmpty();
@@ -778,44 +758,6 @@ class User extends DbTestCase
             $this->array($expectedRight)->isNotEmpty();
             $this->array($scopes->scopes($id, right: $right, mask: 1))->isIdenticalTo($expectedRight);
             Type::overrideType('string', $string);
-            $extension = new class ($connection) extends ScalarReadProbe {
-                private ?EventManager $events = null;
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $localScopes = new ProfileUserReadOperation($extension);
-            $localDisplay = new UserDisplayReadOperation($extension);
-            $listener = new class () {
-                public int $loads = 0;
-                public int $clears = 0;
-                public function onClear(): void
-                {
-                    ++$this->clears;
-                }
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    ++$this->loads;
-                }
-            };
-            $extension->getEventManager()->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
-            $this->array($sort($localScopes->scopes($id)))->isIdenticalTo($sort($grants->scopes($id)));
-            $this->array($localDisplay->displayData($id))->isIdenticalTo($users->displayData($id));
-            $this->array($localScopes->profileIds($id))->isIdenticalTo($records->identifiers('glpi_profiles_users', 'profiles_id', ['users_id' => $id]));
-            $this->integer($listener->loads)->isGreaterThan(0);
-            $this->integer($extension->builders)->isIdenticalTo(0);
-            $this->calling($adapter)->getDoctrineConnection = $extension;
-            try {
-                $DB = $adapter;
-                $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id, ['entities_id' => 0]))))
-                    ->isIdenticalTo($baselineIds);
-                $this->integer($listener->clears)->isIdenticalTo(0);
-            } finally {
-                $DB = $originalAdapter;
-            }
-            $localScopes->close();
-            $localDisplay->close();
         } finally {
             Type::overrideType('integer', $integer);
             Type::overrideType('string', $string);

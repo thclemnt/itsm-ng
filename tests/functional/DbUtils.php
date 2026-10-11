@@ -36,17 +36,12 @@ namespace tests\units;
 use DBmysqlIterator;
 use DbTestCase;
 use DbUtils as DbUtilsModel;
-use Doctrine\Common\EventManager;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use Entity;
 use itsmng\Database\Entity\Computer;
 use itsmng\Database\Entity\Entity as EntityRecord;
@@ -1139,35 +1134,6 @@ class DbUtils extends DbTestCase
             $this->array($reader->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']))
                 ->isIdenticalTo($repository->rows('glpi_entities', ['id'], ['id' => [0, $id]], ['id DESC']));
 
-            $events = new EventManager();
-            $extended = new class ($connection, $events) extends TreePointConnectionProbe {
-                public function __construct(Connection $selected, private EventManager $events)
-                {
-                    parent::__construct($selected);
-                }
-                public function getEventManager(): EventManager
-                {
-                    return $this->events;
-                }
-            };
-            $this->variable(TreeReadOperation::projectedRows($extended, 'glpi_entities', ['id'], ['id' => 0]))->isNull();
-            $local = new TreeReadOperation($extended);
-            $listener = new class () {
-                public int $loads = 0;
-                public function loadClassMetadata(): void
-                {
-                    ++$this->loads;
-                }
-            };
-            $events->addEventListener([Events::loadClassMetadata], $listener);
-            try {
-                $this->array($local->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]))
-                    ->isIdenticalTo($repository->rows('glpi_entities', ['id', 'entities_id'], ['id' => 0]));
-                $this->integer($listener->loads)->isGreaterThan(0);
-            } finally {
-                $events->removeEventListener([Events::loadClassMetadata], $listener);
-                $local->close();
-            }
         } finally {
             $reader->close();
             $manager->clear();
@@ -1689,24 +1655,5 @@ class DbUtils extends DbTestCase
         } finally {
             $CFG_GLPI['use_autoname_by_entity'] = $savedConfiguration;
         }
-    }
-}
-
-/** Connection extension keeps reads inside the existing fixture transaction. */
-class TreePointConnectionProbe extends Connection
-{
-    public function __construct(private Connection $selected)
-    {
-        parent::__construct($selected->getParams(), $selected->getDriver(), $selected->getConfiguration());
-    }
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->selected->getDatabasePlatform();
-    }
-
-    public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
-    {
-        return $this->selected->executeQuery($sql, $params, $types, $qcp);
     }
 }

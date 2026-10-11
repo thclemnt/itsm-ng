@@ -59,15 +59,7 @@ use itsmng\Database\CloneInput;
 use itsmng\Database\Entity\ItemDeviceGraphicCard as GraphicCardEntity;
 use DbTestCase;
 use DeviceMemory;
-use Doctrine\Common\EventManager;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Types\BigIntType;
-use Doctrine\DBAL\Types\BooleanType;
-use Doctrine\DBAL\Types\IntegerType;
-use Doctrine\DBAL\Types\StringType;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Events;
 use Doctrine\ORM\Query;
 use Item_DeviceGeneric as GenericDeviceLink;
 use Item_DeviceMemory;
@@ -78,7 +70,6 @@ use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ComponentRepository;
 use itsmng\Database\Repository\ComponentDefinitionRepository;
-use LogicException;
 use mock\DBmysql as MockDatabase;
 use ReflectionProperty;
 use Session;
@@ -355,20 +346,6 @@ class Item_DeviceGeneric extends DbTestCase
                 $this->boolean((new ReflectionProperty($canonical, 'manager'))->isInitialized($canonical))->isFalse();
                 $this->integer($canonical->countForAsset([], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
                 $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
-                // A missing optional projection falls back lazily on the same owner.
-                $registry = new ReflectionProperty(EntityRegistry::class, 'model');
-                $originalModel = $registry->getValue();
-                $withoutProjection = $originalModel;
-                unset($withoutProjection['component_counts'][$tables[0]]);
-                $registry->setValue(null, $withoutProjection);
-                try {
-                    $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                    $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
-                    $this->integer($canonical->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                    $this->integer($factories->getValue() - $before)->isIdenticalTo(1);
-                } finally {
-                    $registry->setValue(null, $originalModel);
-                }
 
             } finally {
                 $canonical->close();
@@ -380,42 +357,8 @@ class Item_DeviceGeneric extends DbTestCase
             unset($unused);
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);
             $native = new ComponentCountReadOperation($probe);
-            $bigint = Type::getType('bigint');
-            $string = Type::getType('string');
-            $boolean = Type::getType('boolean');
-            $integer = Type::getType('integer');
             try {
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $callback = new class ($connection) extends ScalarReadProbe {
-                    public bool $armed = false;
-                    public int $calls = 0;
-                    public function getDatabasePlatform(): AbstractPlatform
-                    {
-                        if ($this->armed && ++$this->calls === 2) {
-                            Type::overrideType('bigint', new class () extends BigIntType {
-                                public function convertToDatabaseValueSQL(string $expression, AbstractPlatform $platform): string
-                                {
-                                    return '(' . $expression . ' * 0 - 1)';
-                                }
-                            });
-                        }
-                        return parent::getDatabasePlatform();
-                    }
-                };
-                $callbackCache = $GLPI_CACHE;
-                $GLPI_CACHE = null;
-                try {
-                    $callbackRead = new ComponentCountReadOperation($callback);
-                } finally {
-                    $GLPI_CACHE = $callbackCache;
-                }
-                $callback->armed = true;
-                try {
-                    $this->integer($callbackRead->countForAsset(['glpi_items_devicememories'], 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                } finally {
-                    $callbackRead->close();
-                    Type::overrideType('bigint', $bigint);
-                }
                 $this->integer($native->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()))
                     ->isIdenticalTo($repository->countForAsset([$tables[0], $tables[0]], 'Computer', (int)$asset->getID()));
                 $queriesBefore = count($probe->queries);
@@ -428,73 +371,7 @@ class Item_DeviceGeneric extends DbTestCase
                 $connection->update('glpi_items_devicememories', ['is_deleted' => true], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
                 $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
                 $connection->update('glpi_items_devicememories', ['is_deleted' => false], ['id' => $activeId], ['is_deleted' => 'boolean', 'id' => 'bigint']);
-                Type::overrideType('bigint', new class () extends BigIntType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                    {
-                        return '(' . $sqlExpr . ' * 0 - 1)';
-                    }
-                });
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                Type::overrideType('bigint', new class () extends BigIntType {
-                    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                    {
-                        throw new LogicException('COUNT must use the raw identifier expression');
-                    }
-                });
-                Type::overrideType('integer', new class () extends IntegerType {
-                    public function convertToPHPValue(mixed $value, AbstractPlatform $platform): ?int
-                    {
-                        throw new LogicException('Single scalar COUNT must not apply PHP conversion');
-                    }
-                });
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                Type::overrideType('bigint', $bigint);
-                Type::overrideType('integer', $integer);
-                Type::overrideType('string', new class () extends StringType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                    {
-                        return "CASE WHEN " . $sqlExpr . " = '' THEN 'no-component-kind' ELSE 'no-component-kind' END";
-                    }
-                });
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(0);
-                Type::overrideType('string', $string);
-                Type::overrideType('boolean', new class () extends BooleanType {
-                    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                    {
-                        return '(NOT ' . $sqlExpr . ')';
-                    }
-                });
-                $this->integer($native->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
-                $this->integer($repository->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo(1);
-                Type::overrideType('boolean', $boolean);
-                $extension = new class ($connection) extends ScalarReadProbe {
-                    private ?EventManager $events = null;
-                    public function getEventManager(): EventManager
-                    {
-                        return $this->events ??= new EventManager();
-                    }
-                };
-                $local = new ComponentCountReadOperation($extension);
-                $listener = new class () {
-                    public int $loads = 0;
-                    public function loadClassMetadata(): void
-                    {
-                        ++$this->loads;
-                    }
-                };
-                $extension->getEventManager()->addEventListener([Events::loadClassMetadata], $listener);
-                $this->integer($local->countForAsset($tables, 'Computer', (int)$asset->getID()))->isIdenticalTo($legacy);
-                $this->integer($listener->loads)->isGreaterThan(0);
-                $this->integer($extension->builders)->isIdenticalTo(0);
-                $local->close();
             } finally {
-                Type::overrideType('bigint', $bigint);
-                Type::overrideType('string', $string);
-                Type::overrideType('boolean', $boolean);
-                Type::overrideType('integer', $integer);
                 $native->close();
             }
 

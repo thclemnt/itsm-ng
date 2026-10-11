@@ -16,8 +16,6 @@ use LogicException;
 /** Configuration names and contexts are literal values, including the string NULL. */
 final class ConfigurationRepository
 {
-    private bool $nativeRead = false;
-
     public function __construct(private EntityManager $em)
     {
     }
@@ -28,29 +26,10 @@ final class ConfigurationRepository
         if ($manager !== null && $manager->getConnection() !== $connection) {
             throw new LogicException('A configuration read must use its selected physical connection.');
         }
-        $repository = new self($manager ?? Orm::forConnection($connection));
-        $repository->nativeRead = Orm::ownsReadMapping($connection);
-        return $repository;
+        return new self($manager ?? Orm::forConnection($connection));
     }
 
     public function values(string $context, array $names = []): array
-    {
-        if ($this->nativeRead) {
-            return $this->nativeValues($context, $names);
-        }
-        $query = $this->em->createQueryBuilder()->select('r.name', 'r.value')->from(Config::class, 'r')
-            ->where('r.context = :context')->setParameter('context', $context, Types::STRING)->orderBy('r.id');
-        if ($names) {
-            $query->andWhere('r.name IN (:names)')->setParameter('names', array_values($names), ArrayParameterType::STRING);
-        }
-        $values = [];
-        foreach ($query->getQuery()->getScalarResult() as $row) {
-            $values[$row['name']] = $row['value'];
-        }
-        return $values;
-    }
-
-    private function nativeValues(string $context, array $names): array
     {
         $connection = $this->em->getConnection();
         $metadata = $this->em->getClassMetadata(Config::class);

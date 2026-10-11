@@ -14,7 +14,6 @@ use itsmng\Database\Repository\RecordRepository;
 final class ComputerItemReadOperation
 {
     private ?EntityManager $manager = null;
-    private bool $project = false;
 
     public static function forDatabase(DBAdapter $database): self
     {
@@ -25,16 +24,13 @@ final class ComputerItemReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Resolve extension callbacks and types before caller arguments are evaluated.
-        $this->project = Orm::prepareReadProjection($connection);
-        if (!$this->project) {
-            $this->manager = Orm::forConnection($connection);
-        }
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
     }
 
     public function linkedItems(string $itemtype, int $id): array
     {
-        $mapping = $this->project ? EntityRegistry::computerItemMapping() : null;
+        $mapping = EntityRegistry::computerItemMapping();
         if ($mapping !== null) {
             return AssetRepository::projectedLinkedItems($this->connection, $mapping, $itemtype, $id);
         }
@@ -45,7 +41,7 @@ final class ComputerItemReadOperation
     /** The caller has admitted the exact one-integer Computer_Item criteria shape. */
     public function distinctTypes(string $table, string $column, int $id): array
     {
-        $mapping = $this->project ? EntityRegistry::computerItemMapping() : null;
+        $mapping = EntityRegistry::computerItemMapping();
         if ($mapping !== null && $mapping['table'][0] === $table && $mapping['computer'][0] === $column
             && $mapping['fields']['itemtype'][0] === 'itemtype'
             && !isset(EntityRegistry::references($table)[$column])) {

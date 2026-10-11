@@ -20,13 +20,11 @@ final class MaterializedReadSession
     {
         $prepared = $prepare();
         if ($this->manager !== null) {
-            // Keep original custom configuration/events for the entire operation.
-            // Such readers had no explicit clear or onClear lifecycle callback.
+            // A reentrant session retains its independent owner across every stage.
             return $operation($this->manager, $prepared);
         }
         return Orm::withReadConnection($this->connection, function (?EntityManager $manager) use ($operation, $prepared): mixed {
-            // Admission may change after public callbacks mutate custom types.
-            // Retain that independent owner for this and every later stage.
+            // The non-application connection capability remains separate.
             $manager ??= $this->manager ??= Orm::forConnection($this->connection);
             return $operation($manager, $prepared);
         });

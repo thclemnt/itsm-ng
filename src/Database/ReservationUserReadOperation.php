@@ -13,7 +13,6 @@ use itsmng\Database\Repository\ReservationRepository;
 final class ReservationUserReadOperation
 {
     private ?EntityManager $manager = null;
-    private bool $project = false;
 
     public static function forDatabase(DBAdapter $database): self
     {
@@ -24,16 +23,13 @@ final class ReservationUserReadOperation
 
     public function __construct(private readonly Connection $connection)
     {
-        // Resolve extension callbacks and types before caller arguments are evaluated.
-        $this->project = Orm::prepareReadProjection($connection);
-        if (!$this->project) {
-            $this->manager = Orm::forConnection($connection);
-        }
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
     }
 
     public function forUser(int $user, string $now, bool $past, ?array $entities): array
     {
-        $mapping = $this->project ? EntityRegistry::reservationUserMapping() : null;
+        $mapping = EntityRegistry::reservationUserMapping();
         if ($mapping !== null) {
             return ReservationRepository::projectedForUser($this->connection, $mapping, $user, $now, $past, $entities);
         }

@@ -54,8 +54,6 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Logging\Middleware;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MySQLPlatform;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\BooleanType;
@@ -65,7 +63,6 @@ use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
@@ -83,7 +80,6 @@ use Glpi\Console\Config\SetCommand;
 use Glpi\Console\Database\InstallCommand;
 use Glpi\Console\System\ClearCacheCommand;
 use GLPIKey;
-use Group;
 use Oidc;
 use Plugin;
 use Impact as ImpactModel;
@@ -95,7 +91,6 @@ use itsmng\Database\ComponentCountReadOperation;
 use itsmng\Database\Entity\Computer as ComputerRecord;
 use itsmng\Database\Entity\Config as ConfigRecord;
 use itsmng\Database\Entity\Entity as EntityRecord;
-use itsmng\Database\Entity\GroupMembership;
 use itsmng\Database\Entity\User as UserRecord;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MappedReads;
@@ -683,13 +678,6 @@ class Config extends DbTestCase
                 $counts->close();
                 unset($counts);
                 $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'An unused lazy component owner creates no manager during cleanup');
-                $counts = new ComponentCountReadOperation($custom);
-                $beforeClears = $clears->count;
-                $counts->close();
-                $counts->close();
-                unset($counts);
-                $this->integer($clears->count - $beforeClears)->isIdenticalTo(1);
-
                 $private = new OidcRefreshReadOperation($custom);
                 $clears->failure = new RuntimeException('Private owner cleanup failed');
                 $beforeClears = $clears->count;
@@ -2095,7 +2083,6 @@ class Config extends DbTestCase
         $memory = new ConfigRecordPlanCache(storeSerialized: false);
         $pool = new Psr16Cache($memory);
         $context = 'owned-matching-' . bin2hex(random_bytes(6));
-        $originalText = Type::getType('text');
         try {
             ConfigModel::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
             $GLOBALS['GLPI_CACHE'] = $pool;
@@ -2117,20 +2104,6 @@ class Config extends DbTestCase
             $connection->update('glpi_configs', ['value' => 'after'], ['context' => $context, 'name' => 'first']);
             $this->string($read($context)[0]['value'])->isIdenticalTo('after');
             $this->integer($memory->planReads)->isIdenticalTo(1);
-            // An admitted replacement object retires the old private manager and L1.
-            $replacementText = new TextType();
-            Type::overrideType('text', $replacementText);
-            $this->string($read($context)[0]['value'])->isIdenticalTo('after');
-            $this->integer($memory->planReads)->isIdenticalTo(2);
-            Type::overrideType('text', new ConfigRecordUpperTextType());
-            $this->string($read($context)[0]['value'])->isIdenticalTo('AFTER');
-            $this->integer($memory->planReads)->isIdenticalTo(2);
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            // SQL-converter fallback never replaced the admitted manager's type snapshot.
-            Type::overrideType('text', $replacementText);
-            $this->string($read($context)[0]['value'])->isIdenticalTo('after');
-            $this->integer($memory->planReads)->isIdenticalTo(2);
-            Type::overrideType('text', $originalText);
             $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_configs', ['context' => $context]);
             $this->integer($count())->isIdenticalTo(2);
             $this->integer($memory->planWrites)->isIdenticalTo(2);
@@ -2164,113 +2137,8 @@ class Config extends DbTestCase
                 $supplied->clear();
             }
         } finally {
-            Type::overrideType('text', $originalText);
             $GLOBALS['GLPI_CACHE'] = $previous;
             $connection->delete('glpi_configs', ['context' => $context]);
-        }
-    }
-
-    public function testOwnedCountChecksActualAssociationParameterSqlType(): void
-    {
-        global $DB;
-        $this->login();
-        $connection = $DB->getDoctrineConnection();
-        $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]);
-        $groupId = (int)$group->getID();
-        $connection->insert('glpi_groups_users', ['groups_id' => $groupId, 'users_id' => (int)Session::getLoginUserID()]);
-        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_groups_users WHERE groups_id = -1'))->isIdenticalTo(0);
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        $memory = new ConfigRecordPlanCache(storeSerialized: false);
-        $original = Type::getType('integer');
-        try {
-            $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-            Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
-            $manager = Orm::forConnection($connection);
-            $types = array_column($manager->getClassMetadata(GroupMembership::class)->fieldMappings, 'type');
-            $this->boolean(in_array('integer', $types, true))->isFalse();
-            $manager->clear();
-            $count = static fn (): int => MappedReads::countMatching($DB, 'glpi_groups_users', ['groups_id' => $groupId]);
-            $this->integer($count())->isIdenticalTo(1);
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            Type::overrideType('integer', new ConfigReadNegativeIntegerType());
-            $this->integer($count())->isIdenticalTo(0);
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            Type::overrideType('integer', $original);
-            $this->integer($count())->isIdenticalTo(1);
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-        } finally {
-            Type::overrideType('integer', $original);
-            $GLOBALS['GLPI_CACHE'] = $previous;
-        }
-    }
-
-    public function testOwnedReadsKeepExtensionPlatformsAndInheritedListenersLocal(): void
-    {
-        global $DB;
-        $connection = $DB->getDoctrineConnection();
-        $existing = $connection->fetchAssociative('SELECT id, name FROM glpi_configs ORDER BY id LIMIT 1');
-        $this->array($existing)->isNotEmpty();
-        EntityRegistry::tables();
-        $previous = $GLOBALS['GLPI_CACHE'] ?? null;
-        try {
-            foreach ([ConfigReadExtensionConnection::class, ConfigReadListenerConnection::class] as $wrapper) {
-                $params = $connection->getParams();
-                $params['wrapperClass'] = $wrapper;
-                $selected = DriverManager::getConnection($params, $connection->getConfiguration());
-                $memory = new ConfigRecordPlanCache(storeSerialized: false);
-                $GLOBALS['GLPI_CACHE'] = new Psr16Cache($memory);
-                $listener = null;
-                $owner = null;
-                try {
-                    $owner = new RecordReadOperation($selected);
-                    if ($selected instanceof ConfigReadListenerConnection) {
-                        $listener = new class () {
-                            public int $loads = 0;
-                            public int $targetLoads = 0;
-                            public ?EntityManagerInterface $manager = null;
-                            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                            {
-                                if ($event->getClassMetadata()->name === ConfigRecord::class) {
-                                    ++$this->loads;
-                                    $event->getClassMetadata()->fieldMappings['name']->type = 'text';
-                                    $this->manager = $event->getEntityManager();
-                                }
-                                if ($event->getClassMetadata()->name === EntityRecord::class) {
-                                    ++$this->targetLoads;
-                                    $event->getClassMetadata()->fieldMappings['id']->type = 'decimal';
-                                }
-                            }
-                        };
-                        $selected->getEventManager()->addEventListener(Events::loadClassMetadata, $listener);
-                    }
-                    $row = $owner->row('glpi_configs', 'id', (int)$existing['id']);
-                    $this->variable($row['name'])->isIdenticalTo($existing['name']);
-                    $this->integer($memory->planWrites)->isIdenticalTo(0);
-                    $this->array($memory->getValues())->isEmpty();
-                    if ($listener !== null) {
-                        $this->integer($listener->loads)->isIdenticalTo(1);
-                        $this->string($listener->manager->getClassMetadata(ConfigRecord::class)->getTypeOfField('name'))->isIdenticalTo('text');
-                        $this->object($listener->manager->getConfiguration()->getMetadataCache())->isInstanceOf(ArrayAdapter::class);
-                        $user = $selected->fetchAssociative('SELECT id, entities_id FROM glpi_users ORDER BY id LIMIT 1');
-                        $this->array($user)->isNotEmpty();
-                        $row = $owner->row('glpi_users', 'id', (int)$user['id']);
-                        $this->string($row['entities_id'])->isIdenticalTo((string)$user['entities_id']);
-                        $this->integer($listener->targetLoads)->isIdenticalTo(1);
-                        $this->integer($listener->loads)->isIdenticalTo(1);
-                        $this->integer($memory->planWrites)->isIdenticalTo(0);
-                        $this->array($memory->getValues())->isEmpty();
-                    }
-                } finally {
-                    $owner?->close();
-                    if ($listener !== null) {
-                        $listener->manager = null;
-                    }
-                    $selected->close();
-                    $this->boolean($selected->isConnected())->isFalse();
-                }
-            }
-        } finally {
-            $GLOBALS['GLPI_CACHE'] = $previous;
         }
     }
 
@@ -2303,36 +2171,18 @@ class Config extends DbTestCase
             $connection->update('glpi_configs', ['value' => 'after'], ['id' => $id]);
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $originalText = Type::getType('text');
-            try {
-                $replacementText = new TextType();
-                Type::overrideType('text', $replacementText);
-                $this->string($read()['value'])->isIdenticalTo('after');
-                $this->integer($memory->planReads)->isIdenticalTo(2);
-                Type::overrideType('text', new ConfigRecordUpperTextType());
-                $this->string($read()['value'])->isIdenticalTo('AFTER');
-                $this->integer($memory->planWrites)->isIdenticalTo(1);
-                $this->integer($memory->planReads)->isIdenticalTo(2);
-                Type::overrideType('text', $replacementText);
-                $this->string($read()['value'])->isIdenticalTo('after');
-                $this->integer($memory->planReads)->isIdenticalTo(2);
-            } finally {
-                Type::overrideType('text', $originalText);
-            }
-            $this->string($read()['value'])->isIdenticalTo('after');
-            $this->integer($memory->planWrites)->isIdenticalTo(1);
-            $this->integer($memory->planReads)->isIdenticalTo(3);
+            $backendReads = $memory->planReads;
             $pool->set($key, 'invalid serialized query plan');
             // A valid local plan survives backend damage; a fresh owner repairs it.
             $this->string($read()['value'])->isIdenticalTo('after');
-            $this->integer($memory->planReads)->isIdenticalTo(3);
+            $this->integer($memory->planReads)->isIdenticalTo($backendReads);
             $this->integer($memory->planWrites)->isIdenticalTo(1);
             Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $this->string($read()['value'])->isIdenticalTo('after');
             $this->integer($memory->planWrites)->isIdenticalTo(2);
             $pool->clear();
             $this->string($read()['value'])->isIdenticalTo('after');
-            $this->integer($memory->planReads)->isIdenticalTo(4);
+            $this->integer($memory->planReads)->isIdenticalTo($backendReads + 1);
             $this->integer($memory->planWrites)->isIdenticalTo(2);
             Orm::withConnection($connection, static fn (EntityManager $manager) => $manager->close());
             $this->string($read()['value'])->isIdenticalTo('after');
@@ -2620,79 +2470,6 @@ class Config extends DbTestCase
             $connection->delete('glpi_configs', ['context' => $context, 'name' => 'NULL']);
             $this->array(ConfigModel::getConfigurationValues($context, ['NULL']))->isEmpty();
 
-            Type::overrideType('text', new class () extends TextType {
-                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                {
-                    return 'UPPER(' . $sqlExpr . ')';
-                }
-
-                public function convertToPHPValue(mixed $value, AbstractPlatform $platform): mixed
-                {
-                    throw new LogicException('Scalar projection must not apply PHP conversion');
-                }
-            });
-            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
-                ->isIdenticalTo(['z-key' => 'CHANGED', 'a-key' => 'LAST']);
-            Type::overrideType('string', new class () extends StringType {
-                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                {
-                    return "'same-key'";
-                }
-            });
-            // Distinct stored names collapse after SQL conversion; increasing id
-            // retains the same last-row overwrite as the original scalar reader.
-            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
-                ->isIdenticalTo(['same-key' => 'LAST']);
-            Type::overrideType('text', new class () extends TextType {
-                public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                {
-                    return 'NULL';
-                }
-            });
-            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($ordinary->values($context))
-                ->isIdenticalTo(['same-key' => null]);
-            Type::overrideType('text', $text);
-            Type::overrideType('string', $string);
-
-            $connection->insert('glpi_configs', ['context' => $context . '_sql', 'name' => 'z-key', 'value' => 'array-name']);
-            Type::overrideType('string', new class () extends StringType {
-                public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-                {
-                    return $platform->getConcatExpression($sqlExpr, "'_sql'");
-                }
-            });
-            $this->array(ConfigModel::getConfigurationValues($context, ['z-key']))
-                ->isIdenticalTo($ordinary->values($context, ['z-key']))->isIdenticalTo(['z-key' => 'array-name']);
-            Type::overrideType('string', $string);
-
-            $extension = new class ($connection) extends ScalarReadProbe {
-                private ?EventManager $events = null;
-
-                public function getEventManager(): EventManager
-                {
-                    return $this->events ??= new EventManager();
-                }
-            };
-            $reader = ConfigurationRepository::forConnection($extension);
-            $listener = new class () {
-                public int $loads = 0;
-
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === ConfigRecord::class) {
-                        ++$this->loads;
-                        $event->getClassMetadata()->fieldMappings['value']->columnName = 'name';
-                    }
-                }
-            };
-            $extension->getEventManager()->addEventListener(['loadClassMetadata'], $listener);
-            $this->array($reader->values($context))->isIdenticalTo(['z-key' => 'z-key', 'a-key' => 'a-key']);
-            $this->integer($listener->loads)->isIdenticalTo(1);
-            $this->integer($extension->builders)->isIdenticalTo(0);
-            $this->array($ordinary->values($context))->isIdenticalTo(['z-key' => 'changed', 'a-key' => 'last']);
-            $manager->getClassMetadata(ConfigRecord::class)->fieldMappings['value']->columnName = 'name';
-            $this->array($ordinary->values($context))->isIdenticalTo(['z-key' => 'z-key', 'a-key' => 'a-key']);
-            $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo(['z-key' => 'changed', 'a-key' => 'last']);
         } finally {
             Type::overrideType('string', $string);
             Type::overrideType('text', $text);
@@ -3421,51 +3198,4 @@ final class ConfigRecordCallback
         $manager->getClassMetadata(ConfigRecord::class);
         $this->value = 'callback:' . $this->value;
     }
-}
-
-/** A supported global type extension whose SQL must not inherit a warm core plan. */
-final class ConfigRecordUpperTextType extends TextType
-{
-    public function convertToPHPValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-    {
-        return 'UPPER(' . $sqlExpr . ')';
-    }
-}
-
-
-final class ConfigReadNegativeIntegerType extends IntegerType
-{
-    public function convertToDatabaseValueSQL(string $sqlExpr, AbstractPlatform $platform): string
-    {
-        return '(' . $sqlExpr . ' * 0 - 1)';
-    }
-}
-
-class ConfigReadListenerConnection extends Connection
-{
-    private ?EventManager $readEvents = null;
-
-    public function getEventManager(): EventManager
-    {
-        return $this->readEvents ??= new EventManager();
-    }
-}
-
-class ConfigReadExtensionConnection extends Connection
-{
-    private ?AbstractPlatform $readPlatform = null;
-
-    public function getDatabasePlatform(): AbstractPlatform
-    {
-        return $this->readPlatform ??= (parent::getDatabasePlatform() instanceof PostgreSQLPlatform
-            ? new ConfigReadPostgreSQLPlatform() : new ConfigReadMySQLPlatform());
-    }
-}
-
-class ConfigReadPostgreSQLPlatform extends PostgreSQLPlatform
-{
-}
-
-class ConfigReadMySQLPlatform extends MySQLPlatform
-{
 }

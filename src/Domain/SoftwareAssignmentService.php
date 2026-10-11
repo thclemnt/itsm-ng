@@ -71,7 +71,8 @@ final class SoftwareAssignmentService
         $connection = $this->database->getDoctrineConnection();
         OwnershipUpdateUnit::assertResolvedWriter($this->database, $connection);
         // Completed scalar snapshots may use this aggregate's live owner; never clear or flush it.
-        $manager = $connection === $this->manager->getConnection() && Orm::prepareReadProjection($connection)
+        Orm::registerTypes();
+        $manager = $connection === $this->manager->getConnection()
             ? $this->manager : Orm::forConnection($connection);
         $installations = new SoftwareInstallationRepository($manager);
         $versions = $installations->installationsForTransfer($kind, $id, []);

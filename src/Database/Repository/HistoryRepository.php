@@ -5,7 +5,6 @@
 namespace itsmng\Database\Repository;
 
 use DateTimeImmutable;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\DefaultQuoteStrategy;
@@ -13,7 +12,6 @@ use InvalidArgumentException;
 use itsmng\Database\Entity\Log;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\MySQLManagedConnection;
-use itsmng\Database\Orm;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\RecordCriteria;
 
@@ -59,9 +57,7 @@ final class HistoryRepository
         $idField = $metadata->getFieldName('items_id');
         if (!$metadata->isInheritanceTypeNone() || !$metadata->hasField('id') || $metadata->associationMappings
             || $metadata->getTypeOfField($typeField) !== Types::STRING
-            || $metadata->getTypeOfField($idField) !== Types::BIGINT
-            || !Orm::stableSqlConversion(Types::STRING, Type::getType(Types::STRING))
-            || !Orm::stableSqlConversion(Types::BIGINT, Type::getType(Types::BIGINT))) {
+            || $metadata->getTypeOfField($idField) !== Types::BIGINT) {
             return $this->count($criteria);
         }
         $platform = $connection->getDatabasePlatform();

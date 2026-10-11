@@ -5,7 +5,6 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Types\Type as DbalType;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
@@ -52,7 +51,7 @@ trait PrivateReadOwnership
             && ($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)
             && $connection->ownsApplicationEntityManager($manager);
         $this->manager = $manager ?? Orm::forConnection($connection);
-        $this->ownedMapping = (!$this->suppliedManager || $this->sharedManager) && Orm::ownsReadMapping($connection);
+        $this->ownedMapping = !$this->suppliedManager || $this->sharedManager;
     }
 
     private function initializeReadCaches(?Configuration $configuration = null): void
@@ -134,24 +133,6 @@ trait PrivateReadOwnership
         }
         if ($this->context === null || $this->defaultIdentifiers($metadata) === null) {
             return;
-        }
-        // Every metadata class already used by a fixed query participates,
-        // including joined translation fields. Domain owners admit no opaque DQL.
-        $types = [];
-        foreach ($this->manager->getMetadataFactory()->getLoadedMetadata() as $loaded) {
-            $types = array_merge($types, array_column($loaded->fieldMappings, 'type'));
-        }
-        foreach ($query->getParameters() as $parameter) {
-            if (is_string($parameter->getType())) {
-                $types[] = $parameter->getType();
-            }
-        }
-        // Check the actual selected and bound SQL conversions, including integer
-        // association parameters that need not occur among the root scalar fields.
-        foreach (array_unique($types) as $name) {
-            if (!Orm::stableSqlConversion($name, DbalType::getType($name))) {
-                return;
-            }
         }
         $cache = $this->queryCache ??= new SerializedMetadataCache($this->pool, 'orm_record_query_' . $this->context);
         $local = $this->sharedManager

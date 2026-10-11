@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManager;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Throwable;
@@ -15,8 +14,6 @@ trait ApplicationOrmOwnership
     private ?EntityManager $applicationEntityManager = null;
     private ?ArrayAdapter $applicationQueryCache = null;
     private bool $applicationEntityManagerActive = false;
-    /** @var array<string, Type> Actual authoritative registry objects used by this manager. */
-    private array $applicationTypes = [];
 
     /** @internal Application operations return values, never managed entities or repositories. */
     public function withApplicationEntityManager(callable $operation): mixed
@@ -37,15 +34,10 @@ trait ApplicationOrmOwnership
                 }
             }
         }
-        if ($this->applicationTypes !== Type::getTypeRegistry()->getMap()) {
-            $this->resetApplicationEntityManager();
-        }
         if ($this->applicationEntityManager === null || !$this->applicationEntityManager->isOpen()) {
             $this->applicationEntityManager = Orm::forConnection($this);
             $this->applicationQueryCache = new ArrayAdapter(storeSerialized: true);
             $this->applicationEntityManager->getConfiguration()->setQueryCache($this->applicationQueryCache);
-            // Configuration may register the application's two native types.
-            $this->applicationTypes = Type::getTypeRegistry()->getMap();
         }
         $manager = $this->applicationEntityManager;
         $this->applicationEntityManagerActive = true;
@@ -99,6 +91,5 @@ trait ApplicationOrmOwnership
         // An in-flight callback retains its local manager until its own finally.
         $this->applicationEntityManager = null;
         $this->applicationQueryCache = null;
-        $this->applicationTypes = [];
     }
 }

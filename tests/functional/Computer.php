@@ -98,14 +98,10 @@ use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
-use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Query\Filter\SQLFilter;
 use itsmng\Database\ComputerItemReadOperation;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\ComputerItem as ComputerItemRecord;
 use itsmng\Database\Repository\RecordRepository;
-use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 use mock\DBmysql as ComputerItemAdapterProbe;
 
@@ -916,38 +912,8 @@ class Computer extends DbTestCase
             }
             $events = new EventManager();
             $extended = new ComputerItemConnectionProbe($connection, $events);
-            $local = new ComputerItemReadOperation($extended);
-            $listener = new class () {
-                public int $loads = 0;
-                public int $clears = 0;
-                public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
-                {
-                    if ($event->getClassMetadata()->name === ComputerItemRecord::class) {
-                        ++$this->loads;
-                        $manager = $event->getEntityManager();
-                        $manager->getConfiguration()->addFilter('deny_links', ComputerItemFilter::class);
-                        $manager->getFilters()->enable('deny_links');
-                    }
-                }
-                public function onClear(): void
-                {
-                    ++$this->clears;
-                }
-            };
-            $events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
             $database = $DB;
             try {
-                $this->array($local->linkedItems('Computer', $host))->isEmpty();
-                $this->integer($listener->loads)->isIdenticalTo(1);
-                $local->close();
-                unset($local);
-                $this->integer($listener->clears)->isIdenticalTo(1);
-                $distinct = new ComputerItemReadOperation($extended);
-                $this->array($distinct->distinctTypes('glpi_computers_items', 'computers_id', $host))->isEmpty();
-                $this->integer($listener->loads)->isIdenticalTo(2);
-                unset($distinct);
-                $this->integer($listener->clears)->isIdenticalTo(1);
-                $events->removeEventListener([Events::loadClassMetadata], $listener);
                 $this->mockGenerator->orphanize('__construct');
                 $adapter = new ComputerItemAdapterProbe();
                 $routes = 0;
@@ -976,28 +942,14 @@ class Computer extends DbTestCase
                 $this->object($DB)->isIdenticalTo($database);
                 $this->integer($routes)->isIdenticalTo(1);
                 $this->integer($extended->queries - $queries)->isIdenticalTo(1);
-                $this->integer($listener->clears)->isIdenticalTo(2);
                 $DB = $adapter;
                 $late->fail = true;
+                $queries = $extended->queries;
                 $this->exception(static fn () => $late->getLinkedItems())->isInstanceOf(LogicException::class)->hasMessage('Identifier callback failure');
                 $this->integer($routes)->isIdenticalTo(2);
-                $this->integer($listener->clears)->isIdenticalTo(3);
-                // The original final table lookup occurs after manager/platform callbacks.
-                $extended->platformHook = static function (): void {
-                    Computer_Item::forceTable('glpi_computervirtualmachines');
-                };
-                $DB = $adapter;
-                try {
-                    $this->exception(static fn () => Computer_Item::getDistinctTypes($host))->isInstanceOf(UnsupportedCriteria::class);
-                    $this->integer($routes)->isIdenticalTo(3);
-                    $this->integer($listener->clears)->isIdenticalTo(3);
-                } finally {
-                    Computer_Item::forceTable('glpi_computers_items');
-                    $extended->platformHook = null;
-                }
+                $this->integer($extended->queries)->isIdenticalTo($queries);
             } finally {
                 $DB = $database;
-                $events->removeEventListener([Events::loadClassMetadata, Events::onClear], $listener);
             }
 
             $_SESSION['glpiactiveprofile']['monitor'] = READ;
@@ -2890,14 +2842,6 @@ class ComputerItemConnectionProbe extends Connection
     {
         ++$this->queries;
         return $this->selected->executeQuery($sql, $params, $types, $qcp);
-    }
-}
-
-class ComputerItemFilter extends SQLFilter
-{
-    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
-    {
-        return $targetEntity->name === ComputerItemRecord::class ? '1 = 0' : '';
     }
 }
 
