@@ -164,12 +164,18 @@ final class History
                 $onComplete();
                 $frame->assertActive();
             }
+            $publicationStates = Ledger::states($connection);
+            $receipt = static function (string $version) use (&$publicationStates): ?array {
+                return $publicationStates[$version] ?? null;
+            };
             foreach ($this->migrations as $migration) {
-                if ((Ledger::state($connection, $migration->version())['complete'] ?? false) !== true) {
-                    Ledger::save($connection, $migration->version(), ['complete' => true]);
+                if (($receipt($migration->version())['complete'] ?? false) !== true) {
+                    $version = $migration->version();
+                    Ledger::save($connection, $version, ['complete' => true]);
+                    $publicationStates[$version] = ['complete' => true];
                 }
             }
-            $baseline = Ledger::state($connection, Baseline::PHASE);
+            $baseline = $receipt(Baseline::PHASE);
             if (($baseline['origin'] ?? null) === 'installed' && ($baseline['installation_complete'] ?? false) !== true) {
                 $baseline['installation_complete'] = true;
                 Ledger::save($connection, Baseline::PHASE, $baseline);
