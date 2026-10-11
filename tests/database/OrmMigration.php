@@ -192,8 +192,9 @@ class OrmMigration extends GLPITestCase
         $this->exception(static fn () => $operation->apply($connection))->isInstanceOf(RuntimeException::class);
         $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
         foreach (InitialOwners::DEFINITIONS as $class) {
+            $table = $connection->createSchemaManager()->introspectTable($class::TABLE);
             foreach ($class::OWNERS as [$column]) {
-                $this->boolean($connection->createSchemaManager()->introspectTable($class::TABLE)->hasColumn($column))->isFalse();
+                $this->boolean($table->hasColumn($column))->isFalse();
             }
         }
         $connection->update($last::TABLE, ['items_id' => $lastRow['items_id']], ['id' => $lastRow['id']]);
@@ -217,13 +218,14 @@ class OrmMigration extends GLPITestCase
                     $names = implode(', ', array_map($connection->quoteIdentifier(...), $columns[$definition::TABLE]));
                     $this->array($connection->fetchAllAssociative('SELECT ' . $names . ' FROM ' . $connection->quoteIdentifier($definition::TABLE) . ' ORDER BY id'))->isIdenticalTo($source[$definition::TABLE]);
                 }
+                $currentLedger = Ledger::states($connection);
                 foreach ($ledger as $key => $receipt) {
-                    $this->array(Ledger::state($connection, $key))->isIdenticalTo($receipt);
+                    $this->array($currentLedger[$key] ?? null)->isIdenticalTo($receipt);
                 }
                 if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-                    $this->variable(Ledger::state($connection, InitialOwners::PHASE))->isNull();
+                    $this->variable($currentLedger[InitialOwners::PHASE] ?? null)->isNull();
                 } else {
-                    $this->boolean(Ledger::state($connection, InitialOwners::PHASE)['complete'])->isFalse();
+                    $this->boolean($currentLedger[InitialOwners::PHASE]['complete'])->isFalse();
                 }
             }
         }
