@@ -56,6 +56,8 @@ use Infocom as InfocomModel;
 use PluginFooBar as FinancialPluginOwner;
 use Item_SoftwareVersion;
 use Link;
+use Log as HistoryModel;
+use Monitor as MonitorAsset;
 use Link_Itemtype;
 use MassiveAction;
 use Location as LocationModel;
@@ -106,6 +108,7 @@ use itsmng\Database\Entity\Netpoint as NetpointRecord;
 use itsmng\Database\Entity\Software as SoftwareEntity;
 use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionEntity;
 use itsmng\Database\Entity\Ticket;
+use itsmng\Database\MappedStorage;
 use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\MySQLConnection;
@@ -2166,6 +2169,72 @@ class Transfer extends DbTestCase
                 $found_ids = array_column($data, 'id');
                 $this->array($found_ids)->isEqualTo($expected_softwares_after_transfer[$itemtype][$id]);
             }
+        }
+    }
+
+    public function testMovingDirectDeviceDisconnectsItsActualComputerOwner(): void
+    {
+        global $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        try {
+            $CFG_GLPI['is_contact_autoupdate'] = 0;
+            $CFG_GLPI['is_contact_autoclean'] = 1;
+            foreach (['location', 'user', 'group'] as $field) {
+                $CFG_GLPI['is_' . $field . '_autoclean'] = 0;
+            }
+            $CFG_GLPI['state_autoclean_mode'] = 0;
+            $this->withSoftwareOwnerQueryProbe(function ($database, $connection): void {
+                $this->login();
+                $this->setEntity('_test_root_entity', true);
+                $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+                $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+                $computer = $this->createItem(Computer::class, [
+                    'name' => $this->getUniqueString(), 'entities_id' => $source,
+                ]);
+                // Assigned import identities are independent across the two owning tables.
+                $monitorID = max(
+                    (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_computers'),
+                    (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_monitors')
+                ) + 1;
+                $this->integer((new MappedStorage($database))->insert('glpi_monitors', [
+                    'id' => $monitorID, 'entities_id' => $source,
+                    'name' => $this->getUniqueString(), 'is_global' => 0,
+                    'contact' => 'Assigned contact', 'contact_num' => '12345',
+                ]))->isIdenticalTo($monitorID);
+                $monitor = new MonitorAsset();
+                $this->boolean($monitor->getFromDB($monitorID))->isTrue();
+                $this->integer((int)$connection->fetchOne(
+                    'SELECT COUNT(*) FROM glpi_computers WHERE id=?',
+                    [$monitorID]
+                ))->isIdenticalTo(0);
+                $link = $this->createItem(ComputerItemModel::class, [
+                    'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitorID,
+                ]);
+                $this->boolean((new LegacyTransfer())->moveItems(
+                    ['Monitor' => [$monitorID]],
+                    $target,
+                    ['keep_history' => 1]
+                ))->isTrue();
+                $this->boolean($link->getFromDB($link->getID()))->isFalse();
+                $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+                $this->integer((int)$computer->getField('entities_id'))->isIdenticalTo($source);
+                $this->boolean($monitor->getFromDB($monitorID))->isTrue();
+                $this->integer((int)$monitor->getField('entities_id'))->isIdenticalTo($target);
+                $this->string($monitor->getField('contact'))->isEmpty();
+                $this->string($monitor->getField('contact_num'))->isEmpty();
+                foreach ([[$computer, $monitor], [$monitor, $computer]] as [$owner, $peer]) {
+                    $history = $connection->fetchAllAssociative(
+                        'SELECT old_value, new_value FROM glpi_logs WHERE itemtype=? AND items_id=? AND itemtype_link=? AND linked_action=? ORDER BY id',
+                        [$owner->getType(), $owner->getID(), $peer->getType(), HistoryModel::HISTORY_DEL_RELATION]
+                    );
+                    $this->array($history)->isIdenticalTo([[
+                        'old_value' => $peer->getNameID(['forceid' => true, 'additional' => true]),
+                        'new_value' => '',
+                    ]]);
+                }
+            });
+        } finally {
+            $CFG_GLPI = $configuration;
         }
     }
 

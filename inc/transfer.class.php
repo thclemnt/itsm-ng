@@ -2280,8 +2280,8 @@ class Transfer extends CommonDBTM
             $conn = new Computer_Item();
             $comp = new Computer();
             while ($data = $iterator->next()) {
-                $item_ID = $data['items_id'];
-                if ($comp->getFromDB($item_ID)) {
+                $computer_ID = $data['computers_id'];
+                if ($comp->getFromDB($computer_ID)) {
                     $this->deleteForTransfer($conn, ['id' => $data['id']]);
                 } else {
                     // Unexisting item / Force disconnect
