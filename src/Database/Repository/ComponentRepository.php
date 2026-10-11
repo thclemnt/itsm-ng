@@ -177,7 +177,7 @@ final class ComponentRepository
         $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
         if ($reference !== null && !isset($reference['fallback_column']) && ($assetType === '' || $assetType === null) && isset($reference['empty_value'])) {
             $assetType = null;
-        } elseif ($reference !== null && !isset($reference['selections'][$assetType]) && !isset($reference['fallback_column'])) {
+        } elseif ($reference !== null && !isset($reference['selections'][$assetType ?? '']) && !isset($reference['fallback_column'])) {
             return [];
         }
         $query = $this->em->createQueryBuilder()
