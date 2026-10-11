@@ -147,6 +147,16 @@ class DeviceNetworkCard extends DbTestCase
             $source = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-source-' . $this->getUniqueString()]);
             $target = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-target-' . $this->getUniqueString()]);
             $plugins->setValue(null, [...$active, 'registered_identifier_admission']);
+            $emptyCalls = 0;
+            $mutateEmptyInput = false;
+            $PLUGIN_HOOKS['item_empty']['registered_identifier_admission'][RegisteredIDModel::class] =
+                static function (RegisteredIDModel $child) use (&$emptyCalls, &$mutateEmptyInput): void {
+                    ++$emptyCalls;
+                    $child->fields['name'] = 'initialized identifier cache';
+                    if ($mutateEmptyInput) {
+                        $child->input['name'] = 'substituted identifier input';
+                    }
+                };
             $deny = true;
             $redirect = false;
             $mutateReceiver = false;
@@ -173,6 +183,19 @@ class DeviceNetworkCard extends DbTestCase
                         $child->input = RegisteredIDEntity::withReference($child->input, DeviceNetworkCardModel::class, $rewrite);
                     }
                 };
+            $control = new RegisteredIDModel();
+            $controlName = 'initialized-first-add-' . $this->getUniqueString();
+            $controlId = $control->add(['itemtype' => DeviceNetworkCardModel::class, 'items_id' => $source->getID(), 'name' => $controlName, 'device_type' => 'PCI']);
+            $this->integer((int)$controlId)->isGreaterThan(0);
+            $this->integer($emptyCalls)->isGreaterThan(0);
+            $this->string($control->fields['name'])->isIdenticalTo($controlName);
+            $mutateEmptyInput = true;
+            $cancelled = new RegisteredIDModel();
+            $this->boolean($cancelled->add(['itemtype' => DeviceNetworkCardModel::class, 'items_id' => $source->getID(), 'name' => 'rejected-empty-input', 'device_type' => 'PCI']))->isFalse();
+            $mutateEmptyInput = false;
+            $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_registeredids WHERE name=?', ['substituted identifier input']))->isIdenticalTo(0);
+            $this->boolean($control->delete(['id' => $controlId], true))->isTrue();
+            $this->boolean($DB->getDoctrineConnection()->fetchOne('SELECT id FROM glpi_registeredids WHERE id=?', [$controlId]))->isFalse();
             $model = new RegisteredIDModel();
             $input = ['itemtype' => DeviceNetworkCardModel::class, 'items_id' => $source->getID(), 'name' => 'late-substitution', 'device_type' => 'PCI'];
             $this->boolean($model->add($input))->isFalse();

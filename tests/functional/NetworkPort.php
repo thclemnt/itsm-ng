@@ -233,6 +233,16 @@ class NetworkPort extends DbTestCase
         $denials = 0;
         try {
             $plugins->setValue(null, [...$active, 'port_final_parent']);
+            $emptyCalls = 0;
+            $mutateEmptyInput = false;
+            $PLUGIN_HOOKS['item_empty']['port_final_parent'][LegacyNetworkPort::class] =
+                static function (LegacyNetworkPort $initializing) use (&$emptyCalls, &$mutateEmptyInput): void {
+                    ++$emptyCalls;
+                    $initializing->fields['name'] = 'initialized port cache';
+                    if ($mutateEmptyInput && $emptyCalls === 2) {
+                        $initializing->input['name'] = 'substituted port input';
+                    }
+                };
             $PLUGIN_HOOKS['post_prepareadd']['port_final_parent'][LegacyNetworkPort::class] =
                 static function (LegacyNetworkPort $port) use ($other): void {
                     $port->input = NetworkPortEntity::withReference($port->input, 'Computer', (int)$other->getID());
@@ -257,6 +267,18 @@ class NetworkPort extends DbTestCase
                 'name' => $prefix, 'instantiation_type' => null,
             ]);
             $this->integer($id)->isGreaterThan(0);
+            $this->integer($emptyCalls)->isGreaterThan(0);
+            $this->string($port->fields['name'])->isIdenticalTo($prefix);
+            // The second initialization is final retarget forwarding, after preparation.
+            $emptyCalls = 0;
+            $mutateEmptyInput = true;
+            $cancelled = new LegacyNetworkPort();
+            $this->boolean($cancelled->add([
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'name' => $prefix . '-empty-input', 'instantiation_type' => null,
+            ]))->isFalse();
+            $mutateEmptyInput = false;
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_networkports WHERE name=?', ['substituted port input']))->isIdenticalTo(0);
             $this->integer((int)$connection->fetchOne('SELECT computers_id FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo((int)$other->getID());
         } finally {
             $PLUGIN_HOOKS = $hooks;
@@ -514,6 +536,7 @@ class NetworkPort extends DbTestCase
                 $this->boolean(array_key_exists($property, get_object_vars($port)))->isFalse();
             }
             $this->boolean($port->update(['id' => $id, 'items_id' => 999999999]))->isFalse();
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
             $this->array($connection->fetchAssociative('SELECT * FROM glpi_networkports WHERE id=?', [$id]))->isIdenticalTo($updated);
         }
         $seed->clear();

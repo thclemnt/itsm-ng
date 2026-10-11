@@ -187,7 +187,12 @@ class RegisteredID extends CommonDBChild
         // The validated load supplies CommonDBChild's mustBeAttached proof;
         // retain its existing forwarding continuation without a second blind load.
         $input = $this->addNeededInfoToInput($input);
-        if (!$this->retainsParentReceiver($state, $context)) {
+        $this->assertParentWriter();
+        $forwarded = LifecycleModelJournal::state($this);
+        // Forwarding may initialize the fields cache through getEmpty/item_empty.
+        // CommonDBTM rebuilds it from input before the actual prepared write.
+        unset($state['fields'], $forwarded['fields']);
+        if ($forwarded !== $state || $this->parentContext() !== $context) {
             return false;
         }
         $this->admittedParent = [$input['itemtype'], $input['items_id']];

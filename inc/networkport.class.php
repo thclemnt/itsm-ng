@@ -311,9 +311,15 @@ class NetworkPort extends CommonDBChild
                 }
             }
             $input = $this->addNeededInfoToInput($input);
-            if (!$this->retainsNetworkPortReceiver($state, $context)) {
+            $this->assertNetworkPortWriter();
+            $forwarded = LifecycleModelJournal::state($this);
+            // Forwarding owns fields-cache initialization, not pending input.
+            // The validated input below supplies the final physical field bag.
+            unset($state['fields'], $forwarded['fields']);
+            if ($forwarded !== $state || $this->networkPortOperation !== $context) {
                 return false;
             }
+            $state = LifecycleModelJournal::state($this);
         }
         $columns = EntityRegistry::columnNames(static::getTable());
         if (!$this->retainsNetworkPortReceiver($state, $context)) {
