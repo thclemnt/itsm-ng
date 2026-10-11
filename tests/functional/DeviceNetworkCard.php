@@ -72,9 +72,16 @@ class DeviceNetworkCard extends DbTestCase
         $writer = null;
         try {
             $this->login();
-            $source = $this->createItem($parentType, [$nameField => 'identifier-source-' . $this->getUniqueString()]);
-            $target = $this->createItem($parentType, [$nameField => 'identifier-target-' . $this->getUniqueString()]);
-            $other = $this->createItem($parentType, [$nameField => 'identifier-other-' . $this->getUniqueString()]);
+            $owner = $parentType === ManufacturerModel::class ? [] : ['entities_id' => (int)$_SESSION['glpiactive_entity']];
+            $source = $this->createItem($parentType, [$nameField => 'identifier-source-' . $this->getUniqueString()] + $owner);
+            $target = $this->createItem($parentType, [$nameField => 'identifier-target-' . $this->getUniqueString()] + $owner);
+            $other = $this->createItem($parentType, [$nameField => 'identifier-other-' . $this->getUniqueString()] + $owner);
+            foreach ([$source, $target, $other] as $parent) {
+                if ($owner !== []) {
+                    $this->integer((int)$parent->getEntityID())->isIdenticalTo((int)$_SESSION['glpiactive_entity']);
+                }
+                $this->boolean($parent->can($parent->getID(), UPDATE))->isTrue();
+            }
             $first = $this->createItem(RegisteredIDModel::class, ['itemtype' => $parentType, 'items_id' => $source->getID(), 'name' => 'duplicate', 'device_type' => 'PCI']);
             $second = $this->createItem(RegisteredIDModel::class, ['itemtype' => $parentType, 'items_id' => $source->getID(), 'name' => 'duplicate', 'device_type' => 'PCI']);
             $unrelated = $this->createItem(RegisteredIDModel::class, ['itemtype' => $parentType, 'items_id' => $other->getID(), 'name' => 'NULL', 'device_type' => '']);
@@ -144,8 +151,12 @@ class DeviceNetworkCard extends DbTestCase
         $database = $DB;
         try {
             $this->login();
-            $source = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-source-' . $this->getUniqueString()]);
-            $target = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-target-' . $this->getUniqueString()]);
+            $source = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-source-' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $target = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-admission-target-' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $this->boolean($source->can($source->getID(), UPDATE))->isTrue();
+            $this->boolean($target->can($target->getID(), UPDATE))->isTrue();
+            $outside = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-outside-' . $this->getUniqueString(), 'entities_id' => 0]);
+            $this->boolean($outside->can($outside->getID(), UPDATE))->isFalse();
             $plugins->setValue(null, [...$active, 'registered_identifier_admission']);
             $emptyCalls = 0;
             $mutateEmptyInput = false;
@@ -214,6 +225,9 @@ class DeviceNetworkCard extends DbTestCase
             $this->integer((int)$id)->isGreaterThan(0);
             $this->integer((int)$model->fields['items_id'])->isIdenticalTo((int)$target->getID());
             $this->integer((int)$model->fields['devicenetworkcards_id'])->isIdenticalTo((int)$target->getID());
+            $rewrite = (int)$outside->getID();
+            $this->boolean($model->add($input))->isFalse('A real existing out-of-scope final parent remains unauthorized');
+            $this->array(RegisteredIDModel::getFormOptions(DeviceNetworkCardModel::class, $outside->getID()))->isEmpty();
             $rewrite = 0;
             $this->boolean($model->add($input))->isFalse();
             $rewrite = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COALESCE(MAX(id),0)+1 FROM glpi_devicenetworkcards');
@@ -375,8 +389,10 @@ class DeviceNetworkCard extends DbTestCase
         $database = $DB;
         try {
             $this->login();
-            $source = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-alias-source-' . $this->getUniqueString()]);
-            $target = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-alias-target-' . $this->getUniqueString()]);
+            $source = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-alias-source-' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $target = $this->createItem(DeviceNetworkCardModel::class, ['designation' => 'identifier-alias-target-' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $this->boolean($source->can($source->getID(), UPDATE))->isTrue();
+            $this->boolean($target->can($target->getID(), UPDATE))->isTrue();
             $canonical = $this->createItem(RegisteredIDModel::class, ['itemtype' => DeviceNetworkCardModel::class, 'items_id' => $source->getID(), 'name' => 'canonical', 'device_type' => 'PCI']);
             $aliasKind = strtolower(DeviceNetworkCardModel::class);
             $alias = $this->createItem(RegisteredIDModel::class, ['itemtype' => $aliasKind, 'items_id' => $source->getID(), 'name' => 'alias', 'device_type' => 'USB']);
@@ -403,7 +419,9 @@ class DeviceNetworkCard extends DbTestCase
             $this->string($moved['itemtype'])->isIdenticalTo($aliasKind);
             $this->variable($moved['devicenetworkcards_id'])->isNull();
             $this->integer((int)$moved['opaque_parent_id'])->isIdenticalTo((int)($mysql ? $target->getID() : $source->getID()));
-            $custom = $this->createItem(PluginRegisteredIdentifierOwnershipParent::class, ['designation' => 'identifier-custom-' . $this->getUniqueString()]);
+            $custom = $this->createItem(PluginRegisteredIdentifierOwnershipParent::class, ['designation' => 'identifier-custom-' . $this->getUniqueString(), 'entities_id' => (int)$_SESSION['glpiactive_entity']]);
+            $this->integer((int)$custom->getEntityID())->isIdenticalTo((int)$_SESSION['glpiactive_entity']);
+            $this->boolean($custom->can($custom->getID(), UPDATE))->isTrue();
             PluginRegisteredIdentifierOwnershipParent::$tableCallback = static function () use ($database): void {
                 global $DB;
                 $DB = clone $database;
