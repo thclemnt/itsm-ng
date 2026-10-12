@@ -56,7 +56,6 @@ use ReflectionProperty;
 use RuntimeException;
 use Throwable;
 use itsmng\Appliance\AppliancePluginImport;
-use itsmng\Appliance\PluginApplianceSource;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
@@ -201,7 +200,7 @@ class Domain extends DbTestCase
         foreach ($imports as [$importClass, $modelClass, $source]) {
             $session = $_SESSION;
             $sourceItemtype = $importClass === DomainPluginImport::class
-                ? DomainPluginSource::ITEMTYPE : PluginApplianceSource::ITEMTYPE;
+                ? DomainPluginSource::ITEMTYPE : AppliancePluginImport::ITEMTYPE;
             $profileTypes = exportArrayToDB([$sourceItemtype]);
             $connection->update('glpi_profiles', ['helpdesk_item_type' => $profileTypes], ['id' => $profileId]);
             // Explicit IDs/sequence synchronization can advance native high-water marks even after rollback.
@@ -309,8 +308,8 @@ class Domain extends DbTestCase
                 $connection->insert($source, ['id' => $literalId, 'entities_id' => '0', 'name' => $offset, 'comment' => $comment, 'is_recursive' => '0']);
             }
             // The failed attempt must remain resumable through the actual public importer.
-            $plan = (new $importClass($DB))->import();
-            $this->boolean($plan->alreadyImported)->isFalse();
+            $plan = (array)(new $importClass($DB))->import();
+            $this->boolean($plan['alreadyImported'])->isFalse();
             $this->boolean(Ledger::state($connection, $importClass::RECEIPT)['complete'])->isTrue();
             $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($modelClass::getTable()) . ' WHERE id = ?', [$id]))->isIdenticalTo(1);
             foreach (['NULL' => 'null', 'null' => null] as $name => $comment) {
@@ -319,7 +318,8 @@ class Domain extends DbTestCase
                 $this->string($row['name'])->isIdenticalTo($name);
                 $this->variable($row['comment'])->isIdenticalTo($comment);
             }
-            $this->boolean((new $importClass($DB))->import()->alreadyImported)->isTrue();
+            $repeated = (array)(new $importClass($DB))->import();
+            $this->boolean($repeated['alreadyImported'])->isTrue();
             $this->array($CFG_GLPI)->isIdenticalTo($config);
             $caller->assertActive();
         }

@@ -4,8 +4,14 @@
 
 namespace itsmng\Appliance;
 
+use Appliance;
+use ApplianceEnvironment;
+use ApplianceType;
+use Appliance_Item;
+use Appliance_Item_Relation;
 use DateTimeImmutable;
 use DBAdapter;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
@@ -32,6 +38,8 @@ use function importArrayFromDB;
 /** Import an appliance aggregate without replacing unrelated core records or replaying it. */
 final class AppliancePluginImport
 {
+    public const ITEMTYPE = 'PluginAppliancesAppliance';
+
     /** Elective import provenance in the existing ledger; not a core schema migration. */
     public const RECEIPT = '20261005_appliances_plugin_import_v1';
 
@@ -39,7 +47,8 @@ final class AppliancePluginImport
     {
     }
 
-    public function plan(): ApplianceImportPlan
+    /** @return array{fingerprint: string, counts: array, records: array, bindings: array, audits: array, profiles: array, alreadyImported: bool} */
+    public function plan(): array
     {
         $connection = $this->database->getDoctrineConnection();
         foreach (History::versions() as $version) {
@@ -52,21 +61,33 @@ final class AppliancePluginImport
         if ($differences) {
             throw new RuntimeException('Appliance import requires the canonical core schema: ' . implode('; ', array_slice($differences, 0, 5)));
         }
-        $snapshot = (new PluginApplianceSource($connection))->read();
-        $fingerprint = $snapshot->fingerprint();
+        $source = $this->readSource($connection);
+        $counts = array_combine(['types', 'environments', 'appliances', 'items', 'relations'], array_map('count', $source));
+        $sourceRecords = $fingerprintRows = [];
+        foreach ($source as $model => $rows) {
+            foreach ($rows as $values) {
+                $sourceRecords[] = [$model, $values];
+                // Receipt v1 follows the historical export, including its model and field order.
+                // DBAL drivers may return the same integer/boolean as a native scalar or a string.
+                $fingerprintRows[] = [$model, array_map(static fn ($value) => $value === null ? null : (is_bool($value) ? ($value ? '1' : '0') : (string)$value), $values)];
+            }
+        }
+        $fingerprint = hash('sha256', json_encode($fingerprintRows, JSON_THROW_ON_ERROR));
+        unset($source, $fingerprintRows);
         $receipt = Ledger::state($connection, self::RECEIPT);
         if ($receipt !== null) {
             if (($receipt['complete'] ?? false) !== true || ($receipt['fingerprint'] ?? null) !== $fingerprint) {
                 throw new RuntimeException('Appliance plugin source differs from its completed import receipt; incremental import requires an explicit reconciliation.');
             }
             // Later application edits and purges belong to users, not this historical export.
-            return new ApplianceImportPlan($fingerprint, $receipt['counts'], alreadyImported: true);
+            return ['fingerprint' => $fingerprint, 'counts' => $receipt['counts'],
+                'records' => [], 'bindings' => [], 'audits' => [], 'profiles' => [], 'alreadyImported' => true];
         }
         PluginImportMutation::assertTransactionalCore($connection, 'Appliance');
         $em = Orm::create($this->database);
         try {
             $records = $incoming = [];
-            foreach ($snapshot->records() as [$model, $input]) {
+            foreach ($sourceRecords as [$model, $input]) {
                 $table = $model::getTable();
                 $class = EntityRegistry::tables()[$table];
                 $values = $this->normalize($em, $class, $input);
@@ -154,18 +175,18 @@ final class AppliancePluginImport
                 ->select('h')
                 ->from(Entity\Log::class, 'h')
                 ->where('h.itemtype = :kind OR h.itemtype_link = :kind')
-                ->setParameter('kind', PluginApplianceSource::ITEMTYPE)
+                ->setParameter('kind', self::ITEMTYPE)
                 ->getQuery()
                 ->getArrayResult();
             $audits = [];
             foreach ($histories as $history) {
                 $fields = [];
-                if ($history['itemtype'] === PluginApplianceSource::ITEMTYPE && isset($incoming['glpi_appliances'][(int)$history['items_id']])) {
+                if ($history['itemtype'] === self::ITEMTYPE && isset($incoming['glpi_appliances'][(int)$history['items_id']])) {
                     $fields[] = 'itemtype';
                 }
                 // Linked roles supply class labels in Log::getHistoryData; their
                 // original display values do not become an owning ID association.
-                if ($history['itemtype_link'] === PluginApplianceSource::ITEMTYPE) {
+                if ($history['itemtype_link'] === self::ITEMTYPE) {
                     $fields[] = 'itemtype_link';
                 }
                 if ($fields) {
@@ -175,19 +196,19 @@ final class AppliancePluginImport
             $profiles = [];
             foreach ($em->getRepository(Entity\Profile::class)->findAll() as $profile) {
                 $types = importArrayFromDB($profile->helpdesk_item_type);
-                if (in_array(PluginApplianceSource::ITEMTYPE, $types, true)) {
+                if (in_array(self::ITEMTYPE, $types, true)) {
                     $profiles[] = $profile->id;
-                } elseif ($types === [] && str_contains($profile->helpdesk_item_type ?? '', PluginApplianceSource::ITEMTYPE)) {
+                } elseif ($types === [] && str_contains($profile->helpdesk_item_type ?? '', self::ITEMTYPE)) {
                     throw new RuntimeException('Invalid encoded helpdesk types in profile ' . $profile->id);
                 }
             }
-            return new ApplianceImportPlan($fingerprint, $snapshot->counts(), $records, $bindings, $audits, $profiles);
+            return compact('fingerprint', 'counts', 'records', 'bindings', 'audits', 'profiles') + ['alreadyImported' => false];
         } finally {
             $em->clear();
         }
     }
 
-    public function import(?callable $progress = null): ApplianceImportPlan
+    public function import(?callable $progress = null): array
     {
         if ($this->database !== ($GLOBALS['DB'] ?? null) || $this->database->isSlave()) {
             throw new RuntimeException('Appliance lifecycle import requires the application writable connection.');
@@ -203,17 +224,17 @@ final class AppliancePluginImport
         $infocom = $CFG_GLPI['auto_create_infocoms'] ?? null;
         $failure = null;
         try {
-            return PluginImportMutation::run($this->database, function (callable $assertActive, LifecycleModelJournal $journal) use ($connection, $postgres, $progress): ApplianceImportPlan {
+            return PluginImportMutation::run($this->database, function (callable $assertActive, LifecycleModelJournal $journal) use ($connection, $postgres, $progress): array {
                 if ($postgres && !in_array($connection->fetchOne("SELECT pg_try_advisory_xact_lock(hashtext('itsmng_appliance_import'))"), [true, 1, '1', 't'], true)) {
                     throw new RuntimeException('Another appliance import is running.');
                 }
                 // Re-read the source and destination while serialized against other imports.
                 $plan = $this->plan();
-                if ($plan->alreadyImported) {
+                if ($plan['alreadyImported']) {
                     return $plan;
                 }
                 $GLOBALS['CFG_GLPI']['auto_create_infocoms'] = false;
-                foreach ($plan->records as $record) {
+                foreach ($plan['records'] as $record) {
                     $model = new $record['model']();
                     $journal->remember($model);
                     $input = Toolbox::addslashes_deep($record['input']);
@@ -228,9 +249,9 @@ final class AppliancePluginImport
                 }
                 $em = Orm::create($this->database);
                 try {
-                    foreach ($plan->bindings as $binding) {
+                    foreach ($plan['bindings'] as $binding) {
                         $record = $em->getRepository($binding['class'])->find($binding['id']);
-                        if ($record === null || $record->itemtype !== PluginApplianceSource::ITEMTYPE) {
+                        if ($record === null || $record->itemtype !== self::ITEMTYPE) {
                             throw new RuntimeException('Appliance identity binding changed during import.');
                         }
                         if ($binding['association'] !== null) {
@@ -241,10 +262,10 @@ final class AppliancePluginImport
                         }
                         $record->itemtype = 'Appliance';
                     }
-                    foreach ($plan->audits as $audit) {
+                    foreach ($plan['audits'] as $audit) {
                         $history = $em->getRepository(Entity\Log::class)->find($audit['id']);
                         foreach ($audit['fields'] as $field) {
-                            if ($history->$field === PluginApplianceSource::ITEMTYPE) {
+                            if ($history->$field === self::ITEMTYPE) {
                                 $history->$field = 'Appliance';
                             }
                         }
@@ -253,21 +274,21 @@ final class AppliancePluginImport
                 } finally {
                     $em->clear();
                 }
-                foreach ($plan->profiles as $id) {
+                foreach ($plan['profiles'] as $id) {
                     $profile = new Profile();
                     $journal->remember($profile);
                     $loaded = $profile->getFromDB($id);
                     $assertActive();
-                    $updated = $loaded && $profile->replaceHelpdeskItemType(PluginApplianceSource::ITEMTYPE, 'Appliance');
+                    $updated = $loaded && $profile->replaceHelpdeskItemType(self::ITEMTYPE, 'Appliance');
                     $assertActive();
                     if (!$updated) {
                         throw new RuntimeException('Appliance profile adoption failed: ' . $id);
                     }
                 }
-                $progress && $progress('adopted', 'bindings', count($plan->bindings));
+                $progress && $progress('adopted', 'bindings', count($plan['bindings']));
                 $assertActive();
                 SequenceSynchronizer::synchronize($connection);
-                Ledger::save($connection, self::RECEIPT, ['complete' => true, 'fingerprint' => $plan->fingerprint, 'counts' => $plan->counts]);
+                Ledger::save($connection, self::RECEIPT, ['complete' => true, 'fingerprint' => $plan['fingerprint'], 'counts' => $plan['counts']]);
                 $progress && $progress('complete', 'receipt', 1);
                 $assertActive();
                 return $plan;
@@ -306,7 +327,7 @@ final class AppliancePluginImport
                 ->select('b.id, b.items_id')
                 ->from($metadata->name, 'b')
                 ->where('b.itemtype = :kind')
-                ->setParameter('kind', PluginApplianceSource::ITEMTYPE)
+                ->setParameter('kind', self::ITEMTYPE)
                 ->getQuery()
                 ->getScalarResult();
             foreach ($rows as $row) {
@@ -417,5 +438,84 @@ final class AppliancePluginImport
             }
         }
         return $values;
+    }
+
+    /** DBAL reads only the unmodeled historical plugin export; writes use the public model lifecycle. */
+    private function readSource(Connection $connection): array
+    {
+        $types = $this->sourceRows($connection, 'glpi_plugin_appliances_appliancetypes', ['id', 'entities_id', 'is_recursive', 'name', 'comment'], ['externalid' => null]);
+        foreach ($types as &$row) {
+            $row['externalidentifier'] = self::externalIdentifier($row['externalid']);
+            unset($row['externalid']);
+        }
+        unset($row);
+        $environments = $this->sourceRows($connection, 'glpi_plugin_appliances_environments', ['id', 'name', 'comment']);
+        $appliances = $this->sourceRows($connection, 'glpi_plugin_appliances_appliances', [
+            'id', 'entities_id', 'is_recursive', 'name', 'is_deleted', 'plugin_appliances_appliancetypes_id', 'comment', 'locations_id',
+            'plugin_appliances_environments_id', 'users_id', 'users_id_tech', 'groups_id', 'groups_id_tech', 'relationtype', 'date_mod',
+            'states_id', 'externalid', 'serial', 'otherserial',
+        ], ['is_helpdesk_visible' => true]);
+        $relationTypes = [];
+        foreach ($appliances as &$row) {
+            $relationTypes[(int)$row['id']] = (int)$row['relationtype'];
+            $row['appliancetypes_id'] = $row['plugin_appliances_appliancetypes_id'];
+            $row['applianceenvironments_id'] = $row['plugin_appliances_environments_id'];
+            $row['manufacturers_id'] = null;
+            $row['externalidentifier'] = self::externalIdentifier($row['externalid']);
+            if (in_array($row['date_mod'], ['', '0000-00-00 00:00:00'], true)) {
+                $row['date_mod'] = null;
+            }
+            unset($row['plugin_appliances_appliancetypes_id'], $row['plugin_appliances_environments_id'], $row['relationtype'], $row['externalid']);
+        }
+        unset($row);
+        $items = $this->sourceRows($connection, 'glpi_plugin_appliances_appliances_items', ['id', 'plugin_appliances_appliances_id', 'items_id', 'itemtype']);
+        $owners = [];
+        foreach ($items as &$row) {
+            $row['appliances_id'] = $row['plugin_appliances_appliances_id'];
+            $owners[(int)$row['id']] = (int)$row['appliances_id'];
+            unset($row['plugin_appliances_appliances_id']);
+        }
+        unset($row);
+        $relations = $this->sourceRows($connection, 'glpi_plugin_appliances_relations', ['id', 'plugin_appliances_appliances_items_id', 'relations_id']);
+        foreach ($relations as &$row) {
+            $owner = $owners[(int)$row['plugin_appliances_appliances_items_id']] ?? null;
+            // These integers are the historical plugin format, not a core relationship catalogue.
+            $row['itemtype'] = match ($relationTypes[$owner] ?? null) {
+                1 => 'Location', 2 => 'Network', 3 => 'Domain',
+                default => throw new RuntimeException('Unknown appliance plugin relation kind or owner at relation ' . $row['id']),
+            };
+            $row['appliances_items_id'] = $row['plugin_appliances_appliances_items_id'];
+            $row['items_id'] = $row['relations_id'];
+            unset($row['plugin_appliances_appliances_items_id'], $row['relations_id']);
+        }
+        unset($row);
+        return [ApplianceType::class => $types, ApplianceEnvironment::class => $environments,
+            Appliance::class => $appliances, Appliance_Item::class => $items, Appliance_Item_Relation::class => $relations];
+    }
+
+    private static function externalIdentifier(mixed $value): ?string
+    {
+        // The old plugin's empty externalid denotes no external system identity.
+        return $value === null || $value === '' ? null : (string)$value;
+    }
+
+    private function sourceRows(Connection $connection, string $table, array $required, array $optional = []): array
+    {
+        $manager = $connection->createSchemaManager();
+        if (!$manager->tablesExist([$table])) {
+            throw new RuntimeException('Missing appliance plugin source table: ' . $table);
+        }
+        $columns = $manager->listTableColumns($table);
+        $missing = array_diff($required, array_keys($columns));
+        if ($missing) {
+            throw new RuntimeException('Missing appliance plugin source columns: ' . $table . '.' . implode(', ' . $table . '.', $missing));
+        }
+        $fields = [...$required, ...array_keys(array_intersect_key($optional, $columns))];
+        $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
+        $rows = $connection->fetchAllAssociative('SELECT ' . implode(', ', array_map($quote, $fields)) . ' FROM ' . $quote($table) . ' ORDER BY ' . $quote('id'));
+        foreach ($rows as &$row) {
+            $row += $optional;
+        }
+        return $rows;
     }
 }

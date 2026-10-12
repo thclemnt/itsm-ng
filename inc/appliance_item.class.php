@@ -36,7 +36,6 @@ if (!defined('GLPI_ROOT')) {
  **/
 use Doctrine\ORM\EntityManager;
 use Glpi\Features\Clonable;
-use itsmng\Database\ApplianceOwnerReadOperation;
 use itsmng\Database\DropdownChoiceContext;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\EntityScopeReadOperation;
@@ -574,8 +573,8 @@ class Appliance_Item extends CommonDBRelation
         $scope = Session::isCron() ? null : (new EntityScopeReadOperation())->restriction(Appliance::getTable(), '', '', 'auto');
         $criteria = $scope?->wrappedCriteria() ?? [];
         $connection = $DB->getDoctrineConnection();
-        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $criteria): int {
-            return (new ApplianceOwnerReadOperation($connection, $manager))
+        return Orm::withConnection($connection, static function (EntityManager $manager) use ($item, $criteria): int {
+            return (new ApplianceAssetRepository($manager))
                 ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
         });
     }

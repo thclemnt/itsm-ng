@@ -72,12 +72,12 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             $output->writeln('<error>' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_VERSION_OR_DATA_INVALID;
         }
-        $output->writeln('Validated appliance import: ' . json_encode($plan->counts, JSON_THROW_ON_ERROR));
+        $output->writeln('Validated appliance import: ' . json_encode($plan['counts'], JSON_THROW_ON_ERROR));
         if ($input->getOption('dry-run')) {
-            $output->writeln($plan->alreadyImported ? 'This source has already been imported.' : 'Dry run completed; no data written.');
+            $output->writeln($plan['alreadyImported'] ? 'This source has already been imported.' : 'Dry run completed; no data written.');
             return 0;
         }
-        if (!$plan->alreadyImported && !$input->getOption('no-interaction')) {
+        if (!$plan['alreadyImported'] && !$input->getOption('no-interaction')) {
             $run = $this->getHelper('question')->ask($input, $output, new ConfirmationQuestion(
                 '<question>Import this validated appliance graph while retaining existing core data? [yes/No]</question>',
                 false
@@ -95,7 +95,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             $output->writeln('<error>Appliance import rolled back: ' . $error->getMessage() . '</error>');
             return self::ERROR_PLUGIN_IMPORT_FAILED;
         }
-        $output->writeln($result->alreadyImported ? 'This source has already been imported; application changes retained.' : 'Appliance import completed.');
+        $output->writeln($result['alreadyImported'] ? 'This source has already been imported; application changes retained.' : 'Appliance import completed.');
         return 0;
     }
 }
