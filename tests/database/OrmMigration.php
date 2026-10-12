@@ -374,8 +374,9 @@ class OrmMigration extends GLPITestCase
                 $this->array(Ledger::states($observer))->isIdenticalTo($ledger);
                 $this->array($observer->fetchAllAssociative('SELECT * FROM glpi_networkports ORDER BY id'))->isIdenticalTo($rows);
                 foreach (InitialOwners::DEFINITIONS as $class) {
+                    $table = $observer->createSchemaManager()->introspectTable($class::TABLE);
                     foreach ($class::OWNERS as [$column]) {
-                        $this->boolean($observer->createSchemaManager()->introspectTable($class::TABLE)->hasColumn($column))->isFalse();
+                        $this->boolean($table->hasColumn($column))->isFalse();
                     }
                 }
                 $observer->executeStatement('DROP TABLE ' . $childTable);
@@ -1407,7 +1408,7 @@ class OrmMigration extends GLPITestCase
         $oldChecks = NativeCheckCatalog::snapshot($connection, 'glpi_ipaddresses')['checks']['glpi_ipaddresses'] ?? [];
         $mainIndexName = $connection->getDatabasePlatform() instanceof PostgreSQLPlatform ? 'glpi_ipaddresses_mainitem' : 'mainitem';
         $mainIndex = $connection->createSchemaManager()->introspectTable('glpi_ipaddresses')->getIndex($mainIndexName)->getUnquotedColumns();
-        $checksBeforeRetry = NativeCheckCatalog::snapshot($connection, 'glpi_ipaddresses')['checks']['glpi_ipaddresses'] ?? [];
+        $checksBeforeRetry = $oldChecks;
         $retrySourceHash = null;
         foreach (['columns', 'copy', 'constraints', 'projection'] as $phase) {
             $message = 'Interrupted IP address ' . $phase;

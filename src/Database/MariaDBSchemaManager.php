@@ -5,11 +5,56 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Schema\MySQLSchemaManager;
 
 /** Preserve DBAL inspection while recognizing MariaDB's native JSON alias under ANSI_QUOTES. */
 final class MariaDBSchemaManager extends MySQLSchemaManager
 {
+    protected function selectTableColumns(string $databaseName, ?string $tableName = null): Result
+    {
+        // Keep DBAL's native fields and schema filters. JSON aliases are
+        // classified in one scoped pass below, without a correlated CHECK scan.
+        $conditions = ['c.TABLE_SCHEMA = ?', 't.TABLE_SCHEMA = ?'];
+        $params     = [$databaseName, $databaseName];
+
+        if ($tableName !== null) {
+            $conditions[] = 't.TABLE_NAME = ?';
+            $params[]     = $tableName;
+        }
+
+        $sql = sprintf(
+            <<<'SQL'
+SELECT
+       c.TABLE_NAME,
+       c.COLUMN_NAME        AS field,
+       c.DATA_TYPE          AS type,
+       c.COLUMN_TYPE,
+       c.CHARACTER_MAXIMUM_LENGTH,
+       c.CHARACTER_OCTET_LENGTH,
+       c.NUMERIC_PRECISION,
+       c.NUMERIC_SCALE,
+       c.IS_NULLABLE        AS `null`,
+       c.COLUMN_KEY         AS `key`,
+       c.COLUMN_DEFAULT     AS `default`,
+       c.EXTRA,
+       c.COLUMN_COMMENT     AS comment,
+       c.CHARACTER_SET_NAME AS characterset,
+       c.COLLATION_NAME     AS collation
+FROM information_schema.COLUMNS c
+    INNER JOIN information_schema.TABLES t
+        ON t.TABLE_NAME = c.TABLE_NAME
+ WHERE %s
+   AND t.TABLE_TYPE = 'BASE TABLE'
+ORDER BY c.TABLE_NAME,
+         c.ORDINAL_POSITION
+SQL,
+            implode(' AND ', $conditions),
+        );
+
+        return $this->connection->executeQuery($sql, $params);
+    }
+
     protected function fetchTableColumns(string $databaseName, ?string $tableName = null): array
     {
         $rows = parent::fetchTableColumns($databaseName, $tableName);
