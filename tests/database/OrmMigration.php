@@ -903,8 +903,13 @@ class OrmMigration extends GLPITestCase
         $quote = $platform->quoteIdentifier(...);
         $drop = 'ALTER TABLE ' . $quote($table) . ' DROP '
             . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($policy['constraint']);
+        // Restore the actual frozen CHECK, not a semantically equivalent current
+        // declaration: retained native proof must survive this deliberate damage.
+        $originalCheck = $platform instanceof AbstractMySQLPlatform
+            ? NativeCheckCatalog::snapshot($connection, $table)['checks'][$table][$policy['constraint']]['clause']
+            : $policy['check'];
         $restore = 'ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($policy['constraint'])
-            . ' CHECK (' . $policy['check'] . ')'
+            . ' CHECK (' . $originalCheck . ')'
             . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
         $ledger = Ledger::states($connection);
         $connection->executeStatement($drop);

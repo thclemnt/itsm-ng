@@ -57,6 +57,7 @@ use LogicException;
 use Profile;
 use Psr\Cache\CacheItemInterface;
 use ReflectionProperty;
+use Session;
 use Supplier;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Psr16Cache;

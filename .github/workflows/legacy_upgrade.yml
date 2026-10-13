@@ -32,7 +32,7 @@ jobs:
       ITSM_UPGRADE_DB_NAME: itsm_test_legacy_upgrade
       ITSM_UPGRADE_DB_USER: test
       ITSM_UPGRADE_DB_PASSWORD: test
-      ITSM_UPGRADE_WORK_DIR: ${{ github.workspace }}/../legacy-upgrade
+      ITSM_UPGRADE_WORK_DIR: ${{ github.workspace }}/tests/files/legacy-upgrade
     services:
       database:
         image: ${{ matrix.database.image }}

@@ -363,6 +363,7 @@ class Config extends DbTestCase
         global $DB, $PLUGIN_HOOKS;
         $this->login();
         $original = $DB;
+        $adapterClass = $DB instanceof DBpgsql ? \mock\DBpgsql::class : ConfigurationAdapter::class;
         $hooks = $PLUGIN_HOOKS;
         $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
         $active = $plugins->getValue();
@@ -375,7 +376,8 @@ class Config extends DbTestCase
             $dirty = $owner->find(UserRecord::class, $id);
             $dirty->firstname = 'Independent pending profile';
             $this->mockGenerator()->orphanize('__construct');
-            $adapter = new ConfigurationAdapter();
+            $adapter = new $adapterClass();
+            $adapter->connected = true;
             $this->calling($adapter)->getDoctrineConnection = $connection;
             $depth = $connection->getTransactionNestingLevel();
             $DB = $adapter;
