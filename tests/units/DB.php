@@ -33,10 +33,389 @@
 
 namespace tests\units;
 
+use DB as LegacyDB;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use LogicException;
+use ReflectionProperty;
+use ReflectionMethod;
+use Throwable;
+use itsmng\Database\Entity\Vlan as VlanEntity;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\Repository\NetworkPortVlanRepository;
+use itsmng\Domain\VlanMembershipService;
+use itsmng\Database\MySQLManagedConnection;
+use itsmng\Database\Orm;
+use mock\DBmysql as PreparedReadAdapter;
+use InvalidArgumentException;
+use itsmng\Database\PostgresParameters;
+
 /* Test for inc/dbmysql.class.php */
 
 class DB extends \GLPITestCase
 {
+    public function testJoinedUpdateAcceptsQualifiedTargetColumns(): void
+    {
+        global $DB;
+        $target = 'test_update_target';
+        $joined = 'test_update_joined';
+        try {
+            $this->boolean($DB->query("CREATE TEMPORARY TABLE $target (id INTEGER PRIMARY KEY, name VARCHAR(50))"))->isTrue();
+            $this->boolean($DB->query("CREATE TEMPORARY TABLE $joined (id INTEGER PRIMARY KEY, selected INTEGER)"))->isTrue();
+            $this->boolean($DB->query("INSERT INTO $target VALUES (1, 'before'), (2, 'before')"))->isTrue();
+            $this->boolean($DB->query("INSERT INTO $joined VALUES (1, 1), (2, 0)"))->isTrue();
+            $joins = ['LEFT JOIN' => [$joined => ['ON' => [$target => 'id', $joined => 'id']]]];
+            $this->boolean($DB->update($target, [$target . '.name' => 'joined'], [$joined . '.selected' => 1], $joins))->isTrue();
+            $this->boolean($DB->update($target, [$target . '.name' => 'plain'], ['id' => 2]))->isTrue();
+            $this->array(array_column(iterator_to_array($DB->request(['FROM' => $target, 'ORDER' => 'id'])), 'name'))
+                ->isIdenticalTo(['joined', 'plain']);
+        } finally {
+            $DB->query("DROP TABLE IF EXISTS $joined");
+            $DB->query("DROP TABLE IF EXISTS $target");
+        }
+    }
+
+    public function testReadSessionRetainsCustomConfigurationAndEntryRouteAcrossStages(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
+        $selected = DriverManager::getConnection($parameters);
+        $other = DriverManager::getConnection($parameters);
+        $custom = new class ($selected->getParams(), $selected->getDriver(), $selected->getConfiguration()) extends Connection {
+            public EventManager $events;
+            public array $trace = [];
+            public function getEventManager(): EventManager
+            {
+                $this->trace[] = 'construct';
+                return $this->events;
+            }
+        };
+        $custom->events = new EventManager();
+        $listener = new class () {
+            public int $loads = 0;
+            public int $clears = 0;
+            public function loadClassMetadata(LoadClassMetadataEventArgs $event): void
+            {
+                $metadata = $event->getClassMetadata();
+                if ($metadata->name === VlanEntity::class) {
+                    ++$this->loads;
+                    $metadata->setPrimaryTable(['name' => 'staged_custom_vlans']);
+                }
+            }
+            public function onClear(): void
+            {
+                ++$this->clears;
+            }
+        };
+        $custom->events->addEventListener([Events::loadClassMetadata, Events::onClear], $listener);
+        $route = $custom;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+            return $route;
+        };
+        $reads = Orm::readSession($adapter);
+        foreach ([37, 41] as $input) {
+            $result = $reads->readPrepared(function () use ($input, $custom, &$route, $other): int {
+                $this->array($custom->trace)->isIdenticalTo($input === 37 ? ['construct'] : ['construct', 'prepare']);
+                $custom->trace[] = 'prepare';
+                $route = $other;
+                return $input;
+            }, function (EntityManager $manager, int $prepared) use ($custom): array {
+                $this->object($manager->getConnection())->isIdenticalTo($custom);
+                return [$prepared, $manager->getClassMetadata(VlanEntity::class)->getTableName()];
+            });
+            $this->array($result)->isIdenticalTo([$input, 'staged_custom_vlans']);
+        }
+        $this->integer($listener->loads)->isIdenticalTo(1);
+        $this->integer($listener->clears)->isIdenticalTo(0);
+        $this->boolean($custom->isConnected())->isFalse();
+        $this->boolean($other->isConnected())->isFalse();
+    }
+
+    public function testReadSessionStagesPrepareOutsideOwnershipAndRetainFailureCleanup(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $connection;
+        $reads = Orm::readSession($adapter);
+        foreach ([37, 41] as $input) {
+            $this->integer($reads->readPrepared(function () use ($connection, $input): int {
+                $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+                return $input;
+            }, function (EntityManager $manager, int $prepared) use ($connection): int {
+                $this->boolean($connection->ownsApplicationEntityManager($manager))->isTrue();
+                $this->string($manager->getClassMetadata(VlanEntity::class)->getTableName())->isIdenticalTo('glpi_vlans');
+                return $prepared;
+            }))->isIdenticalTo($input);
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        }
+        $primary = new LogicException('Staged projection failure');
+        $cleanup = new LogicException('Staged cleanup failure');
+        $caught = null;
+        try {
+            $reads->readPrepared(static fn (): int => 43, static function (EntityManager $manager, int $input) use ($primary, $cleanup): int {
+                $manager->getEventManager()->addEventListener([Events::onClear], new class ($cleanup) {
+                    public function __construct(private Throwable $failure)
+                    {
+                    }
+                    public function onClear(): void
+                    {
+                        throw $this->failure;
+                    }
+                });
+                throw $primary;
+            });
+        } catch (Throwable $error) {
+            $caught = $error;
+        }
+        $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+        $this->object($caught->primary)->isIdenticalTo($primary);
+        $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+        $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        $this->integer($reads->readPrepared(static fn (): int => 47, static fn (EntityManager $manager, int $input): int => $input))
+            ->isIdenticalTo(47);
+        $this->boolean($connection->isConnected())->isFalse();
+    }
+
+    public function testReadSessionRetainsOneIndependentNestedOwnerAcrossStages(): void
+    {
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class]);
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = $connection;
+        $connection->withApplicationEntityManager(function (EntityManager $outer) use ($connection, $adapter): void {
+            $live = new VlanEntity();
+            $live->name = 'Pending outer staged VLAN';
+            $outer->persist($live);
+            $reads = Orm::readSession($adapter);
+            $this->string($reads->readPrepared(static fn (): string => 'Nested staged VLAN', function (EntityManager $manager, string $name) use ($outer): string {
+                $this->boolean($manager === $outer)->isFalse();
+                $manager->getClassMetadata(VlanEntity::class)->setPrimaryTable(['name' => 'retained_nested_vlans']);
+                $manager->getEventManager()->addEventListener([Events::onClear], new class () {
+                    public function onClear(): void
+                    {
+                        throw new LogicException('The independent staged owner never acquired explicit clear');
+                    }
+                });
+                return $name;
+            }))->isIdenticalTo('Nested staged VLAN');
+            $this->string($reads->readPrepared(static fn (): int => 0, static fn (EntityManager $manager, int $unused): string =>
+                $manager->getClassMetadata(VlanEntity::class)->getTableName()))->isIdenticalTo('retained_nested_vlans');
+            $this->boolean($outer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Pending outer staged VLAN');
+            $this->boolean($connection->ownsApplicationEntityManager($outer))->isTrue();
+        });
+        $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        $this->boolean($connection->isConnected())->isFalse();
+    }
+
+    public function testPreparedReadCapturesRouteBeforePublicPreparation(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];
+        $selected = DriverManager::getConnection($parameters);
+        $other = DriverManager::getConnection($parameters);
+        $route = $selected;
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+            return $route;
+        };
+        try {
+            $this->integer(Orm::readPrepared(
+                $adapter,
+                function () use ($selected, &$route, $other): int {
+                    $this->boolean($selected->isApplicationEntityManagerActive())->isFalse();
+                    $route = $other;
+                    return 37;
+                },
+                function (EntityManager $manager, int $prepared) use ($selected, $other): int {
+                    $this->object($manager->getConnection())->isIdenticalTo($selected);
+                    $this->boolean($selected->ownsApplicationEntityManager($manager))->isTrue();
+                    $this->boolean($other->isApplicationEntityManagerActive())->isFalse();
+                    return $prepared;
+                }
+            ))->isIdenticalTo(37);
+            $this->boolean($selected->isApplicationEntityManagerActive())->isFalse();
+            $this->boolean($selected->isConnected())->isFalse();
+            $this->boolean($other->isConnected())->isFalse();
+        } finally {
+            $selected->close();
+            $other->close();
+        }
+    }
+
+    public function testVlanReadRetainsSelectedOwnershipAndBothCleanupFailures(): void
+    {
+        $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0'];
+        $other = DriverManager::getConnection($parameters);
+        $read = new ReflectionMethod(VlanMembershipService::class, 'read');
+        $repositoryManager = new ReflectionProperty(NetworkPortVlanRepository::class, 'em');
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new PreparedReadAdapter();
+        try {
+            foreach ([false, true] as $shared) {
+                $selected = DriverManager::getConnection($parameters + ($shared ? ['wrapperClass' => MySQLManagedConnection::class] : []));
+                $external = Orm::forConnection($selected);
+                $live = new VlanEntity();
+                $live->name = 'external pending VLAN';
+                $external->persist($live);
+                try {
+                    foreach ([[false, false, false], [true, false, false], [false, true, false], [true, true, false], [true, true, true]] as [$failOperation, $failCleanup, $sameFailure]) {
+                        $route = $selected;
+                        $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                            return $route;
+                        };
+                        $primary = new LogicException('VLAN read primary');
+                        $cleanup = $sameFailure ? $primary : new LogicException('VLAN read cleanup');
+                        $clears = new class ($failCleanup, $cleanup) {
+                            public int $count = 0;
+                            public function __construct(private bool $fail, private Throwable $cleanup)
+                            {
+                            }
+                            public function onClear(): void
+                            {
+                                ++$this->count;
+                                if ($this->fail) {
+                                    throw $this->cleanup;
+                                }
+                            }
+                        };
+                        $caught = null;
+                        try {
+                            $result = $read->invoke(new VlanMembershipService($adapter), function (NetworkPortVlanRepository $repository) use (
+                                $repositoryManager,
+                                $selected,
+                                $shared,
+                                &$route,
+                                $other,
+                                $clears,
+                                $failOperation,
+                                $primary
+                            ): int {
+                                $manager = $repositoryManager->getValue($repository);
+                                $this->object($manager->getConnection())->isIdenticalTo($selected);
+                                if ($shared) {
+                                    $this->boolean($selected->ownsApplicationEntityManager($manager))->isTrue();
+                                }
+                                $manager->getEventManager()->addEventListener([Events::onClear], $clears);
+                                $route = $other;
+                                if ($failOperation) {
+                                    throw $primary;
+                                }
+                                return 37;
+                            });
+                            $this->integer($result)->isIdenticalTo(37);
+                        } catch (Throwable $error) {
+                            $caught = $error;
+                        }
+                        $this->integer($clears->count)->isIdenticalTo(1);
+                        if ($failOperation && $failCleanup) {
+                            $this->object($caught)->isInstanceOf(MutationCleanupFailure::class);
+                            $this->object($caught->primary)->isIdenticalTo($primary);
+                            $this->object($caught->cleanup)->isIdenticalTo($cleanup);
+                        } elseif ($failOperation || $failCleanup) {
+                            $this->object($caught)->isIdenticalTo($failOperation ? $primary : $cleanup);
+                        } else {
+                            $this->variable($caught)->isNull();
+                        }
+                        $this->boolean($external->contains($live))->isTrue();
+                        $this->string($live->name)->isIdenticalTo('external pending VLAN');
+                        $this->boolean($selected->isConnected())->isFalse();
+                        $this->boolean($other->isConnected())->isFalse();
+                    }
+                    if ($shared) {
+                        $route = $selected;
+                        $selected->withApplicationEntityManager(function (EntityManager $parent) use ($read, $adapter, $repositoryManager, $external, $live): void {
+                            $parentLive = new VlanEntity();
+                            $parent->persist($parentLive);
+                            $clears = new class () {
+                                public int $count = 0;
+                                public function onClear(): void
+                                {
+                                    ++$this->count;
+                                }
+                            };
+                            $this->integer($read->invoke(new VlanMembershipService($adapter), function (NetworkPortVlanRepository $repository) use ($repositoryManager, $parent, $clears): int {
+                                $nested = $repositoryManager->getValue($repository);
+                                $this->boolean($nested === $parent)->isFalse();
+                                $nested->getEventManager()->addEventListener([Events::onClear], $clears);
+                                return 41;
+                            }))->isIdenticalTo(41);
+                            $this->integer($clears->count)->isIdenticalTo(1);
+                            $this->boolean($parent->contains($parentLive))->isTrue();
+                            $this->boolean($external->contains($live))->isTrue();
+                        });
+                    }
+                } finally {
+                    $external->clear();
+                    $selected->close();
+                }
+            }
+        } finally {
+            $other->close();
+        }
+    }
+
+    public function testPostgresLexicalPreparationPreservesWideProjectionAndOpaqueRegions(): void
+    {
+        $columns = implode(', ', array_map(static fn (int $number): string =>
+            'asset_alias.column_' . $number . ' AS scalar_' . $number, range(1, 160)));
+        $plain = 'SELECT ' . $columns . ' FROM assets asset_alias WHERE asset_alias.id = ?';
+        $this->string(PostgresParameters::prepare($plain))->isIdenticalTo($plain);
+        $opaque = <<<'SQL'
+SELECT "identifier""$1", '$2 -- /* ??', E'escaped\\backslash\'quote', café$embedded, alias$1, 100 / 2 - 1
+-- $3 ? /* literal line comment
+FROM assets WHERE id = ?
+SQL;
+        $this->string(PostgresParameters::prepare($opaque))->isIdenticalTo($opaque);
+        $source = <<<'SQL'
+SELECT $tag$dollar $1 ? /* body */ 'quoted'\path$tag$, $$untagged$$, /* outer /* inner */ tail */ ?
+SQL;
+        $expected = <<<'SQL'
+SELECT E'dollar $1 ? /* body */ ''quoted''\\path', E'untagged', /* outer    inner    tail */ ?
+SQL;
+        $this->string(PostgresParameters::prepare($source))->isIdenticalTo($expected);
+    }
+
+    public function testPostgresNumberedParametersRetainOrderTypesAndJsonOperators(): void
+    {
+        $source = <<<'SQL'
+SELECT long_identifier, "quoted$1", '$2', $tag$ignored $3 ?$tag$, café$1, alias$2 FROM assets
+WHERE second = $2 AND first = $1 AND again = $2 AND doc ? 'key' AND doc ?| ARRAY['a'] AND doc ?& ARRAY['b']
+/* $3 /* nested $4 */ ? */ -- $5 ?
+SQL;
+        $expected = <<<'SQL'
+SELECT long_identifier, "quoted$1", '$2', $tag$ignored $3 ?$tag$, café$1, alias$2 FROM assets
+WHERE second = ? AND first = ? AND again = ? AND doc ?? 'key' AND doc ??| ARRAY['a'] AND doc ??& ARRAY['b']
+/* $3 /* nested $4 */ ? */ -- $5 ?
+SQL;
+        $this->array(PostgresParameters::bind($source, [false, null]))
+            ->isIdenticalTo([$expected, [null, false, null]]);
+        $this->array(PostgresParameters::bind('SELECT $1, $2, $1', ['literal ? $9', 42]))
+            ->isIdenticalTo(['SELECT ?, ?, ?', ['literal ? $9', 42, 'literal ? $9']]);
+    }
+
+    public function testPostgresLexicalErrorsRemainDiagnosedAfterOrdinarySpans(): void
+    {
+        foreach (["'unterminated", '"unterminated', '$tag$unterminated', '/* outer /* inner */'] as $suffix) {
+            $sql = 'SELECT ordinary_projection, other_projection FROM ordinary_table WHERE value = ' . $suffix;
+            $this->exception(static fn () => PostgresParameters::prepare($sql))
+                ->isInstanceOf(InvalidArgumentException::class);
+            $this->exception(static fn () => PostgresParameters::bind($sql, [1]))
+                ->isInstanceOf(InvalidArgumentException::class);
+        }
+        foreach ([['SELECT ordinary_name, $0', [1]], ['SELECT ordinary_name, $2', [1]],
+            ['SELECT ordinary_name, $1', [1, 2]]] as [$sql, $values]) {
+            $this->exception(static fn () => PostgresParameters::bind($sql, $values))
+                ->isInstanceOf(InvalidArgumentException::class);
+        }
+    }
+
     public function testTableExist()
     {
         $this
@@ -44,6 +423,88 @@ class DB extends \GLPITestCase
            ->then
               ->boolean($this->testedInstance->tableExists('glpi_configs'))->isTrue()
               ->boolean($this->testedInstance->tableExists('fakeTable'))->isFalse();
+
+        $hadTimezone = array_key_exists('glpi_tz', $_SESSION);
+        $timezone = $_SESSION['glpi_tz'] ?? null;
+        $probe = null;
+        $created = false;
+        try {
+            unset($_SESSION['glpi_tz']);
+            $probe = new class () extends LegacyDB {
+                public array $tableScans = [];
+
+                public function listTables($table = 'glpi\\_%', array $where = [])
+                {
+                    $this->tableScans[] = $table;
+                    return parent::listTables($table, $where);
+                }
+            };
+            $this->boolean($probe->connected)->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isEmpty('The targeted bootstrap result remains positively cached');
+            $this->boolean($probe->tableExists('glpi_users'))->isTrue();
+            $this->boolean($probe->tableExists('glpi_entities'))->isTrue();
+            $partialCacheScans = $probe->tableScans;
+            $probe->tableScans = [];
+
+            $probe->clearSchemaCache();
+            $this->boolean($probe->tableExists('glpi_configs', false))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs']);
+            $this->boolean($probe->tableExists('fakeTable', false))->isFalse();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs', 'fakeTable']);
+
+            $probe->clearSchemaCache();
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi\\_%']);
+            $probe->tableScans = [];
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isEmpty();
+
+            $table = 'timezone_probe_' . bin2hex(random_bytes(4));
+            $native = $probe->getDoctrineConnection();
+            $quoted = $native->quoteIdentifier($table);
+            $this->boolean($probe->tableExists($table, false))->isFalse();
+            $this->boolean($probe->tableExists($table))->isFalse();
+            $native->executeStatement('CREATE TABLE ' . $quoted . ' (id INTEGER NOT NULL)');
+            $created = true;
+            $this->boolean($probe->tableExists($table))->isTrue();
+            $probe->clearSchemaCache();
+            $emptyCacheTableExists = $probe->tableExists($table);
+            $probe->clearSchemaCache();
+            $this->boolean($probe->tableExists('glpi_configs', false))->isTrue();
+            $this->boolean($probe->tableExists($table))->isTrue();
+            $this->boolean($probe->tableExists($table, false))->isTrue();
+            $native->executeStatement('DROP TABLE ' . $quoted);
+            $created = false;
+            $this->boolean($probe->tableExists($table))->isTrue('The positive cache remains intact');
+            $this->boolean($probe->tableExists($table, false))->isFalse('Forced lookup sees the fresh catalog');
+            $probe->tableScans = [];
+
+            $_SESSION['glpi_tz'] = 'Pacific/Auckland';
+            $this->string($probe->guessTimezone())->isIdenticalTo('Pacific/Auckland');
+            $this->array($probe->tableScans)->isEmpty('A session timezone needs no catalog read');
+            $probe->disableTableCaching();
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->boolean($probe->tableExists('glpi_configs'))->isTrue();
+            $this->array($probe->tableScans)->isIdenticalTo(['glpi_configs', 'glpi_configs']);
+            $this->boolean($emptyCacheTableExists)->isTrue();
+            $this->array($partialCacheScans)->isIdenticalTo(['glpi\\_%']);
+        } finally {
+            if ($created) {
+                $native->executeStatement('DROP TABLE ' . $quoted);
+            }
+            $probe?->close();
+            if ($hadTimezone) {
+                $_SESSION['glpi_tz'] = $timezone;
+            } else {
+                unset($_SESSION['glpi_tz']);
+            }
+        }
     }
 
     public function testFieldExists()
@@ -73,23 +534,25 @@ class DB extends \GLPITestCase
     protected function dataName()
     {
         return [
-           ['field', '`field`'],
-           ['`field`', '`field`'],
-           ['*', '*'],
-           ['table.field', '`table`.`field`'],
-           ['table.*', '`table`.*'],
-           ['field AS f', '`field` AS `f`'],
-           ['field as f', '`field` AS `f`'],
-           ['table.field as f', '`table`.`field` AS `f`'],
+           ['field', '`field`', '"field"'],
+           ['`field`', '`field`', '"field"'],
+           ['*', '*', '*'],
+           ['table.field', '`table`.`field`', '"table"."field"'],
+           ['table.*', '`table`.*', '"table".*'],
+           ['field AS f', '`field` AS `f`', '"field" AS "f"'],
+           ['field as f', '`field` AS `f`', '"field" AS "f"'],
+           ['table.field as f', '`table`.`field` AS `f`', '"table"."field" AS "f"'],
         ];
     }
 
     /**
      * @dataProvider dataName
      */
-    public function testQuoteName($raw, $quoted)
+    public function testQuoteName($raw, $mysqlExpected, $pgsqlExpected)
     {
-        $this->string(\DB::quoteName($raw))->isIdenticalTo($quoted);
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
+        $this->string(LegacyDB::quoteName($raw))->isIdenticalTo($expected);
     }
 
     protected function dataValue()
@@ -126,25 +589,29 @@ class DB extends \GLPITestCase
                  'field'  => 'value',
                  'other'  => 'doe'
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')'
+              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')',
+              'INSERT INTO "table" ("field", "other") VALUES (\'value\', \'doe\')'
            ], [
               '`table`', [
                  '`field`'  => 'value',
                  '`other`'  => 'doe'
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')'
+              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')',
+              'INSERT INTO "table" ("field", "other") VALUES (\'value\', \'doe\')'
            ], [
               'table', [
                  'field'  => new \QueryParam(),
                  'other'  => new \QueryParam()
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (?, ?)'
+              'INSERT INTO `table` (`field`, `other`) VALUES (?, ?)',
+              'INSERT INTO "table" ("field", "other") VALUES (?, ?)'
            ], [
               'table', [
                  'field'  => new \QueryParam('field'),
                  'other'  => new \QueryParam('other')
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (:field, :other)'
+              'INSERT INTO `table` (`field`, `other`) VALUES (:field, :other)',
+              'INSERT INTO "table" ("field", "other") VALUES (:field, :other)'
            ]
         ];
     }
@@ -152,8 +619,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataInsert
      */
-    public function testBuildInsert($table, $values, $expected)
+    public function testBuildInsert($table, $values, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
            ->if($this->newTestedInstance)
            ->then
@@ -170,42 +639,48 @@ class DB extends \GLPITestCase
               ], [
                  'id'  => 1
               ],
-              'UPDATE `table` SET `field` = \'value\', `other` = \'doe\' WHERE `id` = \'1\''
+              'UPDATE `table` SET `field` = \'value\', `other` = \'doe\' WHERE `id` = \'1\'',
+              'UPDATE "table" SET "field" = \'value\', "other" = \'doe\' WHERE "id" = \'1\''
            ], [
               'table', [
                  'field'  => 'value'
               ], [
                  'id'  => [1, 2]
               ],
-              'UPDATE `table` SET `field` = \'value\' WHERE `id` IN (\'1\', \'2\')'
+              'UPDATE `table` SET `field` = \'value\' WHERE `id` IN (\'1\', \'2\')',
+              'UPDATE "table" SET "field" = \'value\' WHERE "id" IN (\'1\', \'2\')'
            ], [
               'table', [
                  'field'  => 'value'
               ], [
                  'NOT'  => ['id' => [1, 2]]
               ],
-              'UPDATE `table` SET `field` = \'value\' WHERE  NOT (`id` IN (\'1\', \'2\'))'
+              'UPDATE `table` SET `field` = \'value\' WHERE  NOT (`id` IN (\'1\', \'2\'))',
+              'UPDATE "table" SET "field" = \'value\' WHERE  NOT ("id" IN (\'1\', \'2\'))'
            ], [
               'table', [
                  'field'  => new \QueryParam()
               ], [
                  'NOT' => ['id' => [new \QueryParam(), new \QueryParam()]]
               ],
-              'UPDATE `table` SET `field` = ? WHERE  NOT (`id` IN (?, ?))'
+              'UPDATE `table` SET `field` = ? WHERE  NOT (`id` IN (?, ?))',
+              'UPDATE "table" SET "field" = ? WHERE  NOT ("id" IN (?, ?))'
            ], [
               'table', [
                  'field'  => new \QueryParam('field')
               ], [
                  'NOT' => ['id' => [new \QueryParam('idone'), new \QueryParam('idtwo')]]
               ],
-              'UPDATE `table` SET `field` = :field WHERE  NOT (`id` IN (:idone, :idtwo))'
+              'UPDATE `table` SET `field` = :field WHERE  NOT (`id` IN (:idone, :idtwo))',
+              'UPDATE "table" SET "field" = :field WHERE  NOT ("id" IN (:idone, :idtwo))'
            ], [
               'table', [
                  'field'  => new \QueryExpression(\DB::quoteName('field') . ' + 1')
               ], [
                  'id'  => [1, 2]
               ],
-              'UPDATE `table` SET `field` = `field` + 1 WHERE `id` IN (\'1\', \'2\')'
+              'UPDATE `table` SET `field` = `field` + 1 WHERE `id` IN (\'1\', \'2\')',
+              'UPDATE "table" SET "field" = "field" + 1 WHERE "id" IN (\'1\', \'2\')'
            ]
         ];
     }
@@ -213,8 +688,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataUpdate
      */
-    public function testBuildUpdate($table, $values, $where, $expected)
+    public function testBuildUpdate($table, $values, $where, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
           ->if($this->newTestedInstance)
           ->then
@@ -240,27 +717,32 @@ class DB extends \GLPITestCase
               'table', [
                  'id'  => 1
               ],
-              'DELETE `table` FROM `table` WHERE `id` = \'1\''
+              'DELETE `table` FROM `table` WHERE `id` = \'1\'',
+              'DELETE FROM "table" WHERE "id" = \'1\''
            ], [
               'table', [
                  'id'  => [1, 2]
               ],
-              'DELETE `table` FROM `table` WHERE `id` IN (\'1\', \'2\')'
+              'DELETE `table` FROM `table` WHERE `id` IN (\'1\', \'2\')',
+              'DELETE FROM "table" WHERE "id" IN (\'1\', \'2\')'
            ], [
               'table', [
                  'NOT'  => ['id' => [1, 2]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (\'1\', \'2\'))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (\'1\', \'2\'))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (\'1\', \'2\'))'
            ], [
               'table', [
                  'NOT'  => ['id' => [new \QueryParam(), new \QueryParam()]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (?, ?))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (?, ?))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (?, ?))'
            ], [
               'table', [
                  'NOT'  => ['id' => [new \QueryParam('idone'), new \QueryParam('idtwo')]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (:idone, :idtwo))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (:idone, :idtwo))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (:idone, :idtwo))'
            ]
         ];
     }
@@ -268,8 +750,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataDelete
      */
-    public function testBuildDelete($table, $where, $expected)
+    public function testBuildDelete($table, $where, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
           ->if($this->newTestedInstance)
           ->then
@@ -278,6 +762,10 @@ class DB extends \GLPITestCase
 
     public function testBuildDeleteWException()
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql'
+            ? 'Cannot run a DELETE query without WHERE clause!'
+            : 'Cannot run an DELETE query without WHERE clause!';
         $this->exception(
             function () {
                 $this
@@ -285,7 +773,7 @@ class DB extends \GLPITestCase
                    ->then
                       ->string($this->testedInstance->buildDelete('table', []))->isIdenticalTo('');
             }
-        )->hasMessage('Cannot run an DELETE query without WHERE clause!');
+        )->hasMessage($expected);
     }
 
     public function testListTables()
@@ -318,6 +806,10 @@ class DB extends \GLPITestCase
             $this->array($line)
                ->hasSize(1);
             $table = $line['TABLE_NAME'];
+            if (in_array($table, ['glpi_planningexternaleventguests', 'glpi_networkportaggregateorigins', 'itsmng_migrations'])) {
+                // Internal ORM memberships and the migration ledger have no standalone legacy model.
+                continue;
+            }
             if (in_array($table, ['glpi_appliancerelations', 'glpi_oidc_config', 'glpi_oidc_users', 'glpi_oidc_mapping'])) {
                 //FIXME temporary hack for unit tests
                 continue;

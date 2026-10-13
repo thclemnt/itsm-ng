@@ -1,0 +1,57 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database;
+
+use DBAdapter;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\RecordRepository;
+
+/** Fresh connection identities on one selected route; no retained rows or shared manager. */
+final class ComputerItemReadOperation
+{
+    private ?EntityManager $manager = null;
+
+    public static function forDatabase(DBAdapter $database): self
+    {
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return new self($connection);
+    }
+
+    public function __construct(private readonly Connection $connection)
+    {
+        // Initialize application types before caller arguments are evaluated.
+        Orm::registerTypes();
+    }
+
+    public function linkedItems(string $itemtype, int $id): array
+    {
+        return AssetRepository::projectedLinkedItems(
+            $this->connection,
+            EntityRegistry::computerItemMapping(),
+            $itemtype,
+            $id
+        );
+    }
+
+    /** The caller has admitted the exact one-integer Computer_Item criteria shape. */
+    public function distinctTypes(string $table, string $column, int $id): array
+    {
+        $mapping = EntityRegistry::computerItemMapping();
+        if ($mapping['table'][0] === $table && $mapping['computer'][0] === $column) {
+            return AssetRepository::projectedComputerItemTypes($this->connection, $mapping, $id);
+        }
+        $this->manager ??= Orm::forConnection($this->connection);
+        return (new RecordRepository($this->manager))->distinctValues($table, 'itemtype', [$column => $id], 'itemtype');
+    }
+
+    /** Linked-item callers retain their existing finally; distinct-types adds no clear event. */
+    public function close(): void
+    {
+        $this->manager?->clear();
+    }
+}

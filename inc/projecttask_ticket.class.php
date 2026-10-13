@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ProjectRepository;
+use itsmng\Database\Repository\ProjectTaskRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -118,24 +123,12 @@ class ProjectTask_Ticket extends CommonDBRelation
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'       => new QueryExpression('SUM(glpi_tickets.actiontime) AS duration'),
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_tickets' => [
-                 'FKEY'   => [
-                    self::getTable()  => 'tickets_id',
-                    'glpi_tickets'    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['projecttasks_id' => $projecttasks_id]
-        ]);
-
-        if ($row = $iterator->next()) {
-            return $row['duration'];
-        }
-        return 0;
+        return Orm::read(
+            $DB,
+            static fn (EntityManager $manager): ?int => (new ProjectRepository($manager))
+                ->linkedTicketActionTime((int)$projecttasks_id),
+            clearCustomManager: true
+        );
     }
 
 
@@ -287,19 +280,14 @@ class ProjectTask_Ticket extends CommonDBRelation
                 $ticket->getSolvedStatusArray()
             ))
         ) {
-            $finished_states_it = $DB->request(
-                [
-                  'SELECT' => ['id'],
-                  'FROM'   => ProjectState::getTable(),
-                  'WHERE'  => [
-                     'is_finished' => 1
-                  ],
-                ]
-            );
-            $finished_states_ids = [];
-            foreach ($finished_states_it as $finished_state) {
-                $finished_states_ids[] = $finished_state['id'];
-            }
+            $database = $DB;
+            $stateTable = ProjectState::getTable();
+            $finished_states_ids = Orm::read($database, static fn (EntityManager $manager): array =>
+                (new ProjectRepository($manager))->finishedStateIds($stateTable));
+            $projectConditions = $finished_states_ids ? ['OR' => [
+                'projectstates_id' => null,
+                ['NOT' => ['projectstates_id' => $finished_states_ids]],
+            ]] : [];
 
             $usedValues = json_encode($used);
             $form = [
@@ -325,7 +313,7 @@ class ProjectTask_Ticket extends CommonDBRelation
                            'name' => 'projects_id',
                            'id' => 'DropdownForProjectIdProjectTask',
                            'itemtype' => Project::class,
-                           'conditions' => [ 'NOT' => ['projectstates_id' => $finished_states_ids] ],
+                           'condition' => $projectConditions,
                            'entity' => $ticket->getEntityID(),
                            'col_lg' => 6,
                            'hooks' => [
@@ -408,55 +396,13 @@ class ProjectTask_Ticket extends CommonDBRelation
         ];
         $values = [];
         if ($numrows) {
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  'glpi_projecttasks.*',
-                  'glpi_projecttasktypes.name AS tname',
-                  'glpi_projectstates.name AS sname',
-                  'glpi_projectstates.color',
-                  'father.name AS fname',
-                  'father.id AS fID',
-                  'glpi_projects.name AS projectname',
-                  'glpi_projects.content AS projectcontent'
-               ],
-               'FROM'      => 'glpi_projecttasks',
-               'LEFT JOIN' => [
-                  'glpi_projecttasktypes' => [
-                     'ON' => [
-                        'glpi_projecttasktypes' => 'id',
-                        'glpi_projecttasks'     => 'projecttasktypes_id'
-                     ]
-                  ],
-                  'glpi_projectstates'    => [
-                     'ON' => [
-                        'glpi_projectstates' => 'id',
-                        'glpi_projecttasks'  => 'projectstates_id'
-                     ]
-                  ],
-                  'glpi_projecttasks AS father' => [
-                     'ON' => [
-                        'father'             => 'id',
-                        'glpi_projecttasks'  => 'projecttasks_id'
-                     ]
-                  ],
-                  'glpi_projecttasks_tickets'   => [
-                     'ON' => [
-                        'glpi_projecttasks_tickets'   => 'projecttasks_id',
-                        'glpi_projecttasks'           => 'id'
-                     ]
-                  ],
-                  'glpi_projects'               => [
-                     'ON' => [
-                        'glpi_projecttasks'  => 'projects_id',
-                        'glpi_projects'      => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  'glpi_projecttasks_tickets.tickets_id' => $ID
-               ],
-            ]);
-            while ($data = $iterator->next()) {
+            $rows = Orm::readPrepared(
+                $DB,
+                static fn (): ?int => $ID === null || (is_string($ID) && strtolower($ID) === 'null') ? null : (int)$ID,
+                static fn (EntityManager $manager, ?int $ticket): array =>
+                    (new ProjectTaskRepository($manager))->ticketTabRows($ticket)
+            );
+            foreach ($rows as $data) {
                 $newValue = [];
                 $rand = mt_rand();
                 $link = "<a id='Project" . $data["projects_id"] . $rand . "' href='" .

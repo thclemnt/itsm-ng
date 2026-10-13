@@ -34,6 +34,7 @@
 namespace Glpi\System\Requirement;
 
 use Psr\Log\LoggerInterface;
+use UnexpectedValueException;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -68,7 +69,7 @@ class LogsWriteAccess extends AbstractRequirement
             $this->logger->warning('Test logger');
             $this->validated = true;
             $this->validation_messages[] = __('The log file has been created successfully.');
-        } catch (\UnexpectedValueException $e) {
+        } catch (UnexpectedValueException $e) {
             $this->validated = false;
             $this->validation_messages[] = sprintf(__('The log file could not be created in %s.'), GLPI_LOG_DIR);
         }

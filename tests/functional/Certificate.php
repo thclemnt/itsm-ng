@@ -33,7 +33,13 @@
 
 namespace tests\units;
 
+use CertificateType;
 use DbTestCase;
+use Group;
+use Location;
+use Manufacturer;
+use State;
+use User;
 
 /* Test for inc/alert.class.php */
 
@@ -165,24 +171,39 @@ class Certificate extends DbTestCase
 
     public function _getIn($method = "")
     {
+        $type = new CertificateType();
+        $typeId = $type->add(['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $this->integer((int)$typeId)->isGreaterThan(0);
+        $manufacturerId = (new Manufacturer())->add(['name' => $this->getUniqueString()]);
+        $locationId = (new Location())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$locationId)->isGreaterThan(0);
+        $groupId = (new Group())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$groupId)->isGreaterThan(0);
+        $stateId = (new State())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$manufacturerId)->isGreaterThan(0);
+        $this->integer((int)$stateId)->isGreaterThan(0);
+        $technicianId = (new User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
+        $ownerId = (new User())->add(['name' => $this->getUniqueString(), 'picture' => '']);
+        $this->integer((int)$technicianId)->isGreaterThan(0);
+        $this->integer((int)$ownerId)->isGreaterThan(0);
         return [
            'name'                => $method,
            'entities_id'         => 0,
            'serial'              => $this->getUniqueString(),
            'otherserial'         => $this->getUniqueString(),
            'comment'             => $this->getUniqueString(),
-           'certificatetypes_id' => $this->getUniqueInteger(),
+           'certificatetypes_id' => $typeId,
            'dns_name'            => $this->getUniqueString(),
            'dns_suffix'          => $this->getUniqueString(),
-           'users_id_tech'       => $this->getUniqueInteger(),
-           'groups_id_tech'      => $this->getUniqueInteger(),
-           'locations_id'        => $this->getUniqueInteger(),
-           'manufacturers_id'    => $this->getUniqueInteger(),
-           'users_id'            => $this->getUniqueInteger(),
-           'groups_id'           => $this->getUniqueInteger(),
+           'users_id_tech'       => $technicianId,
+           'groups_id_tech'      => $groupId,
+           'locations_id'        => $locationId,
+           'manufacturers_id'    => $manufacturerId,
+           'users_id'            => $ownerId,
+           'groups_id'           => $groupId,
            'is_autosign'         => 1,
            'date_expiration'     => date('Y-m-d', time() + MONTH_TIMESTAMP),
-           'states_id'           => $this->getUniqueInteger(),
+           'states_id'           => $stateId,
            'command'             => $this->getUniqueString(),
            'certificate_request' => $this->getUniqueString(),
            'certificate_item'    => $this->getUniqueString(),

@@ -33,6 +33,8 @@
 
 namespace Glpi\System\Requirement;
 
+use Toolbox;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -75,7 +77,7 @@ class ProtectedWebAccess extends AbstractRequirement
 
         $check_access = false;
         foreach ($this->directories as $dir) {
-            if (\Toolbox::startsWith($dir, GLPI_ROOT)) {
+            if (Toolbox::startsWith($dir, GLPI_ROOT)) {
                 // Only check access if one of the data directories is under GLPI document root.
                 $check_access = true;
                 break;

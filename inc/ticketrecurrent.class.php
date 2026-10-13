@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CalendarRepository;
+use itsmng\Database\Repository\TicketRecurrentRepository;
+use itsmng\Domain\CalendarSchedule;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -352,6 +357,18 @@ class TicketRecurrent extends CommonDropdown
     }
 
 
+    protected function recurrenceTimestamp(): int
+    {
+        return time();
+    }
+
+    protected function recurrenceSchedule(int $calendar): CalendarSchedule
+    {
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $em): CalendarSchedule =>
+            (new CalendarRepository($em))->schedule($calendar));
+    }
+
     /**
      * Compute next creation date of a ticket.
      *
@@ -377,7 +394,7 @@ class TicketRecurrent extends CommonDropdown
         $calendars_id
     ) {
 
-        $now = time();
+        $now = $this->recurrenceTimestamp();
         $periodicity_pattern = '/([0-9]+)(MONTH|YEAR)/';
 
         if (false === DateTime::createFromFormat('Y-m-d H:i:s', $begin_date)) {
@@ -424,45 +441,45 @@ class TicketRecurrent extends CommonDropdown
             return 'NULL';
         }
 
-        $calendar = new Calendar();
-        $is_calendar_valid = $calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay();
+        $schedule = null;
+        if ($calendars_id && $periodicity_in_seconds >= DAY_TIMESTAMP) {
+            $schedule = $this->recurrenceSchedule((int)$calendars_id);
+            $is_calendar_valid = $schedule->hasAWorkingDay();
+        } else {
+            $calendar = new Calendar();
+            $is_calendar_valid = $calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay();
+        }
 
         if (!$is_calendar_valid || $periodicity_in_seconds >= DAY_TIMESTAMP) {
             // Compute next occurence without using the calendar if calendar is not valid
             // or if periodicity is at least one day.
 
-            // First occurence of creation
-            $occurence_time = strtotime($begin_date);
-            $creation_time  = $occurence_time - $create_before;
-
-            // Add steps while creation time is in past
-            while ($creation_time < $now) {
-                $creation_time  = strtotime("+ $periodicity_as_interval", $creation_time);
-                $occurence_time = $creation_time + $create_before;
-
-                // Stop if end date reached
+            $nominal_creation_time = strtotime($begin_date) - $create_before;
+            while (true) {
+                $occurence_time = $nominal_creation_time + $create_before;
                 if ($has_end_date && $occurence_time > strtotime($end_date)) {
                     return 'NULL';
                 }
-            }
 
-            if ($is_calendar_valid) {
-                // Jump to next working day if occurence is outside working days.
-                while (
-                    $calendar->isHoliday(date('Y-m-d', $occurence_time))
-                    || !$calendar->isAWorkingDay($occurence_time)
-                ) {
-                    $occurence_time = strtotime('+ 1 day', $occurence_time);
-                }
-                // Jump to next working hour if occurence is outside working hours.
-                if (!$calendar->isAWorkingHour($occurence_time)) {
-                    $occurence_date = $calendar->computeEndDate(
-                        date('Y-m-d', $occurence_time),
-                        0 // 0 second delay to get the first working "second"
+                $nominal_occurence_time = $occurence_time;
+                if ($is_calendar_valid) {
+                    $occurence_time = $schedule->nextWorkingOccurrence(
+                        $occurence_time,
+                        $has_end_date ? strtotime($end_date) : null
                     );
-                    $occurence_time = strtotime($occurence_date);
+                    if ($occurence_time === false) {
+                        return 'NULL';
+                    }
                 }
-                $creation_time  = $occurence_time - $create_before;
+                $creation_time = $occurence_time - $create_before;
+                // Opening hours may recover a creation on its nominal occurrence date.
+                // Holidays/weekends must not revive an already expired interval slot.
+                $same_occurrence_date = date('Y-m-d', $occurence_time) === date('Y-m-d', $nominal_occurence_time);
+                if ($creation_time >= $now && ($nominal_creation_time >= $now || $same_occurrence_date)) {
+                    break;
+                }
+                // Keep interval anchoring independent of calendar shifts.
+                $nominal_creation_time = strtotime("+ $periodicity_as_interval", $nominal_creation_time);
             }
         } else {
             // Base computation on calendar if calendar is valid
@@ -526,19 +543,8 @@ class TicketRecurrent extends CommonDropdown
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_ticketrecurrents',
-           'WHERE'  => [
-              'next_creation_date' => ['<', new \QueryExpression('NOW()')],
-              'is_active'          => 1,
-              'OR'                 => [
-                 ['end_date' => null],
-                 ['end_date' => ['>', new \QueryExpression('NOW()')]]
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new TicketRecurrentRepository(Orm::create($DB)))->due();
+        foreach ($rows as $data) {
             if (self::createTicket($data)) {
                 $tot++;
             } else {

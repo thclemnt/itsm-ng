@@ -32,6 +32,10 @@
  */
 
 use Glpi\Event;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\RuleRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -64,6 +68,13 @@ class RuleCollection extends CommonDBTM
 
     /// Tab orientation : horizontal or vertical
     public $taborientation = 'horizontal';
+
+    private static function repository(): RuleRepository
+    {
+        global $DB;
+
+        return new RuleRepository(Orm::create($DB));
+    }
 
     public static function getTable($classname = null)
     {
@@ -106,8 +117,6 @@ class RuleCollection extends CommonDBTM
         $condition = 0,
         $children = 0
     ) {
-        global $DB;
-
         $restrict = $this->getRuleListCriteria([
             'condition' => $condition,
             'active'    => false,
@@ -115,8 +124,7 @@ class RuleCollection extends CommonDBTM
             'childrens' => $children,
         ]);
 
-        $iterator = $DB->request($restrict);
-        return count($iterator);
+        return self::repository()->count($restrict['WHERE']);
     }
 
 
@@ -141,8 +149,6 @@ class RuleCollection extends CommonDBTM
         }
 
         $criteria = [
-            'SELECT' => Rule::getTable() . '.*',
-            'FROM'   => Rule::getTable(),
             'ORDER'  => [
                 $this->orderby . ' ASC'
             ]
@@ -160,15 +166,6 @@ class RuleCollection extends CommonDBTM
         //Select all the rules of a different type
         $where['sub_type'] = $this->getRuleClassName();
         if ($this->isRuleRecursive()) {
-            $criteria['LEFT JOIN'] = [
-                Entity::getTable() => [
-                    'ON' => [
-                        Entity::getTable()   => 'id',
-                        Rule::getTable()     => 'entities_id'
-                    ]
-                ]
-            ];
-
             if (!$p['childrens']) {
                 $where += getEntitiesRestrictCriteria(
                     Rule::getTable(),
@@ -207,8 +204,6 @@ class RuleCollection extends CommonDBTM
      **/
     public function getCollectionPart($options = [])
     {
-        global $DB;
-
         $p['start']     = 0;
         $p['limit']     = 0;
         $p['recursive'] = true;
@@ -225,7 +220,12 @@ class RuleCollection extends CommonDBTM
 
         //Select all the rules of a different type
         $criteria   = $this->getRuleListCriteria($p);
-        $iterator   = $DB->request($criteria);
+        $iterator = new RowIterator(self::repository()->matching(
+            $criteria['WHERE'],
+            $criteria['ORDER'],
+            $criteria['LIMIT'] ?? 0,
+            $criteria['START'] ?? 0
+        ));
 
         while ($data = $iterator->next()) {
             //For each rule, get a Rule object with all the criterias and actions
@@ -245,8 +245,6 @@ class RuleCollection extends CommonDBTM
      **/
     public function getCollectionDatas($retrieve_criteria = 0, $retrieve_action = 0, $condition = 0)
     {
-        global $DB;
-
         if ($this->RuleList === null) {
             $this->RuleList = SingletonRuleList::getInstance(
                 $this->getRuleClassName(),
@@ -259,7 +257,10 @@ class RuleCollection extends CommonDBTM
         if (($need & $this->RuleList->load) != $need) {
             //Select all the rules of a different type
             $criteria = $this->getRuleListCriteria(['condition' => $condition]);
-            $iterator = $DB->request($criteria);
+            $iterator = new RowIterator(self::repository()->matching(
+                $criteria['WHERE'],
+                $criteria['ORDER'] ?? []
+            ));
 
             if (count($iterator)) {
                 $this->RuleList->list = [];
@@ -630,11 +631,7 @@ class RuleCollection extends CommonDBTM
      **/
     public function changeRuleOrder($ID, $action, $condition = 0)
     {
-        global $DB;
-
         $criteria = [
-            'SELECT' => 'ranking',
-            'FROM'   => 'glpi_rules',
             'WHERE'  => ['id' => $ID]
         ];
 
@@ -643,14 +640,12 @@ class RuleCollection extends CommonDBTM
             $add_condition = ['condition' => ['&', (int)$condition]];
         }
 
-        $iterator = $DB->request($criteria);
+        $iterator = new RowIterator(self::repository()->matching($criteria['WHERE']));
         if (count($iterator) == 1) {
             $result = $iterator->next();
             $current_rank = $result['ranking'];
             // Search rules to switch
             $criteria = [
-                'SELECT' => ['id', 'ranking'],
-                'FROM'   => 'glpi_rules',
                 'WHERE'  => [
                     'sub_type'  => $this->getRuleClassName()
                 ] + $add_condition,
@@ -672,7 +667,11 @@ class RuleCollection extends CommonDBTM
                     return false;
             }
 
-            $iterator2 = $DB->request($criteria);
+            $iterator2 = new RowIterator(self::repository()->matching(
+                $criteria['WHERE'],
+                $criteria['ORDERBY'],
+                1
+            ));
             if (count($iterator2) == 1) {
                 $result2 = $iterator2->next();
                 $other_ID = $result2['id'];
@@ -683,8 +682,6 @@ class RuleCollection extends CommonDBTM
                 $rule = $this->getRuleClass();
                 $result = false;
                 $criteria = [
-                    'SELECT' => ['id', 'ranking'],
-                    'FROM'   => 'glpi_rules',
                     'WHERE'  => ['sub_type' => $this->getRuleClassName()]
                 ];
                 $diff = $new_rank - $current_rank;
@@ -717,10 +714,10 @@ class RuleCollection extends CommonDBTM
 
                 if ($diff != 0) {
                     // Move several rules
-                    $iterator3 = $DB->request($criteria);
+                    $iterator3 = new RowIterator(self::repository()->matching($criteria['WHERE']));
                     while ($data = $iterator3->next()) {
                         $data['ranking'] += $diff;
-                        $result = $rule->update($data);
+                        $result = $rule->update(['id' => $data['id'], 'ranking' => $data['ranking']]);
                     }
                 } else {
                     // Only move one
@@ -753,19 +750,8 @@ class RuleCollection extends CommonDBTM
      **/
     public function deleteRuleOrder($ranking)
     {
-        global $DB;
-
-        $result = $DB->update(
-            'glpi_rules',
-            [
-                'ranking' => new \QueryExpression($DB->quoteName('ranking') . ' - 1')
-            ],
-            [
-                'sub_type'  => $this->getRuleClassName(),
-                'ranking'   => ['>', $ranking]
-            ]
-        );
-        return $result;
+        self::repository()->closeRankGap($this->getRuleClassName(), (int)$ranking);
+        return true;
     }
 
 
@@ -780,8 +766,6 @@ class RuleCollection extends CommonDBTM
      **/
     public function moveRule($ID, $ref_ID, $type = 'after')
     {
-        global $DB;
-
         $ruleDescription = new Rule();
 
         // Get actual ranking of Rule to move
@@ -794,12 +778,7 @@ class RuleCollection extends CommonDBTM
             $rank = $ruleDescription->fields["ranking"];
         } elseif ($type == "after") {
             // Move after all
-            $result = $DB->request([
-                'SELECT' => ['MAX' => 'ranking AS maxi'],
-                'FROM'   => 'glpi_rules',
-                'WHERE'  => ['sub_type' => $this->getRuleClassName()]
-            ])->next();
-            $rank   = $result['maxi'];
+            $rank = self::repository()->maximumRank($this->getRuleClassName());
         } else {
             // Move before all
             $rank = 1;
@@ -816,18 +795,14 @@ class RuleCollection extends CommonDBTM
             }
 
             // Move back all rules between old and new rank
-            $iterator = $DB->request([
-                'SELECT' => ['id', 'ranking'],
-                'FROM'   => 'glpi_rules',
-                'WHERE'  => [
+            $iterator = new RowIterator(self::repository()->matching([
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>', $old_rank]],
                     ['ranking'  => ['<=', $rank]]
-                ]
-            ]);
+            ]));
             while ($data = $iterator->next()) {
                 $data['ranking']--;
-                $result = $rule->update($data);
+                $result = $rule->update(['id' => $data['id'], 'ranking' => $data['ranking']]);
             }
         } elseif ($old_rank > $rank) {
             if ($type == "after") {
@@ -835,18 +810,14 @@ class RuleCollection extends CommonDBTM
             }
 
             // Move forward all rule  between old and new rank
-            $iterator = $DB->request([
-                'SELECT' => ['id', 'ranking'],
-                'FROM'   => 'glpi_rules',
-                'WHERE'  => [
+            $iterator = new RowIterator(self::repository()->matching([
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>=', $rank]],
                     ['ranking'  => ['<', $old_rank]]
-                ]
-            ]);
+            ]));
             while ($data = $iterator->next()) {
                 $data['ranking']++;
-                $result = $rule->update($data);
+                $result = $rule->update(['id' => $data['id'], 'ranking' => $data['ranking']]);
             }
         } else { // $old_rank == $rank : nothing to do
             $result = false;
@@ -1096,7 +1067,11 @@ class RuleCollection extends CommonDBTM
             $tmprule = new $rule['sub_type']();
             //check entities
             if ($tmprule->isEntityAssign()) {
-                $entities_found = $entity->find(['completename' => $rule['entities_id']]);
+                $entities_found = (new RecordRepository(Orm::create($DB)))->matching(
+                    $entity->getTable(),
+                    ['completename' => Html::entity_decode_deep($rule['entities_id'])],
+                    legacyValues: false
+                );
                 if (empty($entities_found)) {
                     $rules_refused[$k_rule]['entity'] = true;
                 }
@@ -1130,15 +1105,15 @@ class RuleCollection extends CommonDBTM
                             $crit
                         )
                     ) {
-                        //escape pattern
-                        $criteria['pattern'] = $DB->escape(Html::entity_decode_deep($criteria['pattern']));
+                        // XML names are bound literally at the ORM boundary.
+                        $criteria['pattern'] = Html::entity_decode_deep($criteria['pattern']);
                         $itemtype = getItemTypeForTable($available_criteria[$crit]['table']);
                         $item     = new $itemtype();
-                        if ($item instanceof CommonTreeDropdown) {
-                            $found = $item->find(['completename' => $criteria['pattern']]);
-                        } else {
-                            $found = $item->find(['name' => $criteria['pattern']]);
-                        }
+                        $found = (new RecordRepository(Orm::create($DB)))->matching(
+                            $item->getTable(),
+                            [$item instanceof CommonTreeDropdown ? 'completename' : 'name' => $criteria['pattern']],
+                            legacyValues: false
+                        );
                         if (empty($found)) {
                             $rules_refused[$k_rule]['criterias'][] = $k_crit;
                         } else {
@@ -1174,15 +1149,15 @@ class RuleCollection extends CommonDBTM
                             continue;
                         }
 
-                        //escape value
-                        $action['value'] = $DB->escape(Html::entity_decode_deep($action['value']));
+                        // XML names are bound literally at the ORM boundary.
+                        $action['value'] = Html::entity_decode_deep($action['value']);
                         $itemtype = getItemTypeForTable($available_actions[$act]['table']);
                         $item     = new $itemtype();
-                        if ($item instanceof CommonTreeDropdown) {
-                            $found = $item->find(['completename' => $action['value']]);
-                        } else {
-                            $found = $item->find(['name' => $action['value']]);
-                        }
+                        $found = (new RecordRepository(Orm::create($DB)))->matching(
+                            $item->getTable(),
+                            [$item instanceof CommonTreeDropdown ? 'completename' : 'name' => $action['value']],
+                            legacyValues: false
+                        );
                         if (empty($found)) {
                             $rules_refused[$k_rule]['actions'][] = $k_action;
                         } else {
@@ -1515,7 +1490,7 @@ class RuleCollection extends CommonDBTM
 
                 if ($rule->fields["is_active"]) {
                     $output["_rule_process"] = false;
-                    $rule->process($input, $output, $params, $p);
+                    $this->processRule($rule, $input, $output, $params, $p);
 
                     if ($output["_rule_process"] && $this->stop_on_first_match) {
                         unset($output["_rule_process"]);
@@ -1532,6 +1507,13 @@ class RuleCollection extends CommonDBTM
         }
 
         return Toolbox::addslashes_deep($output);
+    }
+
+
+    /** Owning collections may bind a typed evaluation without changing normal rule dispatch. */
+    protected function processRule(Rule $rule, &$input, &$output, &$params, &$options): void
+    {
+        $rule->process($input, $output, $params, $options);
     }
 
 
@@ -1718,36 +1700,7 @@ class RuleCollection extends CommonDBTM
      **/
     public function prepareInputDataForTestProcess($condition = 0)
     {
-        global $DB;
-
-        $limit = [];
-        if ($condition > 0) {
-            $limit = ['glpi_rules.condition' => ['&', (int)$condition]];
-        }
-        $input = [];
-
-        $iterator = $DB->request([
-            'SELECT'          => 'glpi_rulecriterias.criteria',
-            'DISTINCT'        => true,
-            'FROM'            => 'glpi_rulecriterias',
-            'INNER JOIN'      => [
-                'glpi_rules'   => [
-                    'ON' => [
-                        'glpi_rulecriterias' => 'rules_id',
-                        'glpi_rules'         => 'id'
-                    ]
-                ]
-            ],
-            'WHERE'           => [
-                'glpi_rules.is_active'  => 1,
-                'glpi_rules.sub_type'   => $this->getRuleClassName()
-            ] + $limit
-        ]);
-
-        while ($data = $iterator->next()) {
-            $input[] = $data["criteria"];
-        }
-        return $input;
+        return self::repository()->criteriaFields($this->getRuleClassName(), (int)$condition);
     }
 
 
@@ -1961,32 +1914,7 @@ class RuleCollection extends CommonDBTM
      **/
     public function getFieldsToLookFor()
     {
-        global $DB;
-
-        $params = [];
-
-        $iterator = $DB->request([
-            'SELECT'          => 'glpi_rulecriterias.criteria',
-            'DISTINCT'        => true,
-            'FROM'            => 'glpi_rulecriterias',
-            'INNER JOIN'      => [
-                'glpi_rules'   => [
-                    'ON' => [
-                        'glpi_rulecriterias' => 'rules_id',
-                        'glpi_rules'         => 'id'
-                    ]
-                ]
-            ],
-            'WHERE'           => [
-                'glpi_rules.is_active'  => 1,
-                'glpi_rules.sub_type'   => $this->getRuleClassName()
-            ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $params[] = Toolbox::strtolower($data["criteria"]);
-        }
-        return $params;
+        return array_map(Toolbox::strtolower(...), self::repository()->criteriaFields($this->getRuleClassName()));
     }
 
 

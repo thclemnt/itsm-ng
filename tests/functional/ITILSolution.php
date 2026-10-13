@@ -40,6 +40,75 @@ use Ticket;
 
 class ITILSolution extends DbTestCase
 {
+    public function testMailFollowupReopensTicketWithoutAHumanApprover(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        try {
+            $ticket = new \Ticket();
+            $this->integer((int)$ticket->add([
+                'name' => 'Mail reopened ticket', 'content' => 'Initial request',
+                '_users_id_assign' => \Session::getLoginUserID(),
+            ]))->isGreaterThan(0);
+            $solution = new \ITILSolution();
+            $this->integer((int)$solution->add([
+                'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'content' => 'Proposed solution',
+            ]))->isGreaterThan(0);
+            $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
+            $this->integer((int)$ticket->fields['status'])->isIdenticalTo(\Ticket::SOLVED);
+
+            $_SESSION['glpicronuserrunning'] = 'mailgate';
+            $this->boolean(\Session::isCron())->isTrue();
+            $followup = new \ITILFollowup();
+            $this->integer((int)$followup->add([
+                'itemtype' => 'Ticket', 'items_id' => $ticket->getID(),
+                'content' => 'The problem persists', 'add_reopen' => 1,
+            ]))->isGreaterThan(0);
+            $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
+            $this->integer((int)$ticket->fields['status'])->isIdenticalTo(\Ticket::ASSIGNED);
+            $row = $DB->request(['FROM' => \ITILSolution::getTable(), 'WHERE' => ['id' => $solution->getID()]])->next();
+            $this->integer((int)$row['status'])->isIdenticalTo(\CommonITILValidation::REFUSED);
+            $this->variable($row['users_id_approval'])->isNull();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testReopenStopsWhenTheSolutionWriteFails(): void
+    {
+        global $DB;
+        $this->login();
+        $original = $DB;
+        $ticket = new \Ticket();
+        $this->integer((int)$ticket->add(['name' => 'Failed reopening', 'content' => 'Initial request']))->isGreaterThan(0);
+        $solution = new \ITILSolution();
+        $this->integer((int)$solution->add([
+            'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'content' => 'Proposed solution',
+        ]))->isGreaterThan(0);
+        try {
+            $DB = new class ($original) extends \DB {
+                public function __construct(\DBAdapter $database)
+                {
+                    $this->doctrine = $database->getDoctrineConnection();
+                    $this->connected = true;
+                }
+
+                public function update($table, $params, $where, array $joins = [])
+                {
+                    return $table === \ITILSolution::getTable() ? false : parent::update($table, $params, $where, $joins);
+                }
+            };
+            $this->exception(fn () => $ticket->update(['id' => $ticket->getID(), 'status' => \Ticket::INCOMING]))
+                ->isInstanceOf(\RuntimeException::class)
+                ->hasMessage('Unable to mark the reopened item solution as refused.');
+        } finally {
+            $DB = $original;
+        }
+        $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
+        $this->integer((int)$ticket->fields['status'])->isIdenticalTo(\Ticket::SOLVED);
+    }
+
     public function testTicketSolution()
     {
         $this->login();

@@ -1,0 +1,395 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Repository;
+
+use DateTimeInterface;
+use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
+use InvalidArgumentException;
+use itsmng\Database\Entity\ItemSoftwareLicense;
+use itsmng\Database\Entity\ItemSoftwareVersion;
+use itsmng\Database\Entity\Software;
+use itsmng\Database\Entity\SoftwareCategory;
+use itsmng\Database\Entity\SoftwareLicense;
+use itsmng\Database\Entity\SoftwareVersion;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\RecordCriteria;
+use itsmng\Database\UnsupportedCriteria;
+
+/** Query installations through their concrete asset mapping and owning version/license. */
+final class SoftwareInstallationRepository
+{
+    public function __construct(private EntityManager $em)
+    {
+    }
+
+    public function installationsForTransfer(string $itemtype, int $item, array $excludedVersions, bool $currentRead = false): array
+    {
+        if ($currentRead) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
+        $query = $this->em->createQueryBuilder()
+            ->select('i.id AS id', 'IDENTITY(i.softwareversions) AS softwareversions_id')
+            ->from(ItemSoftwareVersion::class, 'i')
+            ->where('IDENTITY(i.' . ItemSoftwareVersion::referenceAssociation($itemtype) . ') = :item')
+            ->setParameter('item', $item, Types::BIGINT)
+            ->orderBy('i.id');
+        if ($excludedVersions) {
+            $query->andWhere('i.softwareversions NOT IN (:excluded)')
+                ->setParameter('excluded', array_map('intval', array_values($excludedVersions)));
+        }
+        return $query->getQuery()
+            ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)
+            ->getScalarResult();
+    }
+
+    public function licenseAssignmentsForTransfer(string $itemtype, int $item, bool $currentRead = false): array
+    {
+        if ($currentRead) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
+        $rows = $this->em->createQueryBuilder()
+            ->select('i.id AS id')
+            ->from(ItemSoftwareLicense::class, 'i')
+            ->where('IDENTITY(i.' . ItemSoftwareLicense::referenceAssociation($itemtype) . ') = :item')
+            ->setParameter('item', $item, Types::BIGINT)
+            ->orderBy('i.id')
+            ->getQuery()
+            ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)
+            ->getScalarResult();
+        return array_map('intval', array_column($rows, 'id'));
+    }
+
+    public function itemTypes(bool $licenses, int $parent, bool $software = false, bool $currentRead = false): array
+    {
+        if ($currentRead) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
+        $query = $this->em->createQueryBuilder()
+            ->select(($currentRead ? '' : 'DISTINCT ') . 'i.itemtype AS itemtype')
+            ->from($licenses ? ItemSoftwareLicense::class : ItemSoftwareVersion::class, 'i');
+        $this->parent($query, $licenses, $parent, $software);
+        $query->orderBy('i.itemtype');
+        if ($currentRead) {
+            $query->addOrderBy('i.id');
+        }
+        return array_values(array_unique(array_column(
+            $query->getQuery()
+                ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)
+                ->getScalarResult(),
+            'itemtype'
+        )));
+    }
+
+    /** Asset criteria retain the caller's entity and recursive-visibility policy. */
+    public function count(bool $licenses, int $parent, bool $software, string $itemtype, string $assetTable, array $assetCriteria, bool $currentRead = false): int
+    {
+        if ($currentRead) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
+        $query = $this->assets($licenses, $parent, $software, $itemtype, $assetTable, $assetCriteria);
+        if ($currentRead) {
+            // Lock actual eligible rows: PostgreSQL cannot lock an aggregate,
+            // and a plain COUNT can reuse a caller's older MySQL RR snapshot.
+            return count(
+                $query->select('i.id AS id')
+                    ->orderBy('i.id')
+                    ->getQuery()
+                    ->setLockMode(LockMode::PESSIMISTIC_READ)
+                    ->getScalarResult()
+            );
+        }
+        return (int)$query->select('COUNT(i.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    public function countsByEntity(bool $licenses, int $parent, string $itemtype, string $assetTable, array $assetCriteria): array
+    {
+        $rows = $this->assets($licenses, $parent, false, $itemtype, $assetTable, $assetCriteria)
+            ->select('IDENTITY(r.entities) AS entity_id', 'COUNT(i.id) AS quantity')
+            ->groupBy('entity_id')
+            ->getQuery()
+            ->getScalarResult();
+        $counts = [];
+        foreach ($rows as $row) {
+            $counts[(int)$row['entity_id']] = (int)$row['quantity'];
+        }
+        return $counts;
+    }
+
+    private function assets(bool $licenses, int $parent, bool $software, string $itemtype, string $assetTable, array $assetCriteria): QueryBuilder
+    {
+        $class = EntityRegistry::tables()[$assetTable] ?? throw new UnsupportedCriteria('Unmapped software asset requires an ORM entity.');
+        $assignment = $licenses ? ItemSoftwareLicense::class : ItemSoftwareVersion::class;
+        $subject = $assignment::referenceAssociation($itemtype);
+        $mapping = $this->em->getClassMetadata($assignment)->getAssociationMapping($subject);
+        if ($mapping->targetEntity !== $class) {
+            throw new InvalidArgumentException('Software assignment kind and asset mapping disagree.');
+        }
+        $query = $this->em->createQueryBuilder()
+            ->from($class, 'r')
+            ->innerJoin($assignment, 'i', 'WITH', 'i.' . $subject . ' = r.id');
+        $metadata = $this->em->getClassMetadata($class);
+        foreach (['is_deleted', 'is_template'] as $flag) {
+            if ($metadata->hasField($flag)) {
+                $assetCriteria[$flag] = false;
+            }
+        }
+        $query->where((new RecordCriteria($query, $metadata))->where($assetCriteria))
+            ->andWhere('i.is_deleted = :deleted')
+            ->setParameter('deleted', false, Types::BOOLEAN);
+        $this->parent($query, $licenses, $parent, $software);
+        return $query;
+    }
+
+    private function parent(QueryBuilder $query, bool $licenses, int $parent, bool $software): void
+    {
+        $association = $licenses ? 'softwarelicenses' : 'softwareversions';
+        if ($software) {
+            $query->innerJoin('i.' . $association, 'p')
+                ->andWhere('p.softwares = :parent');
+        } else {
+            $query->andWhere('i.' . $association . ' = :parent');
+        }
+        $query->setParameter('parent', $parent, Types::INTEGER);
+    }
+
+    /** Selected owner's UI projection; software scope/category are caller policies. */
+    public function forSubject(string $kind, int $id, array $softwareScope, bool $excludeDeleted, ?int $category): array
+    {
+        $query = $this->subjectVersions($kind, $id)
+            ->select('i.id AS id, IDENTITY(s.softwarecategories) AS softwarecategories_id, s.name AS softname')
+            ->addSelect('st.name AS state, v.id AS verid, s.id AS softwares_id, v.name AS version')
+            ->addSelect('s.is_valid AS softvalid, i.date_install AS dateinstall, i.is_dynamic AS is_dynamic')
+            ->leftJoin('v.states', 'st');
+        $criteria = (new RecordCriteria($query, $this->em->getClassMetadata(ItemSoftwareVersion::class)))
+            ->withJoinedMetadata($this->em->getClassMetadata(Software::class), 's');
+        $query->andWhere($criteria->where($softwareScope));
+        if ($excludeDeleted) {
+            $query->andWhere('i.is_deleted = :deleted')
+                ->setParameter('deleted', false, Types::BOOLEAN);
+        }
+        if ($category !== null) {
+            // Legacy zero means an unselected category.
+            $query->andWhere($category === 0 ? 's.softwarecategories IS NULL' : 'IDENTITY(s.softwarecategories) = :category');
+            if ($category !== 0) {
+                $query->setParameter('category', $category, Types::BIGINT);
+            }
+        }
+        $rows = $query->orderBy('s.name')
+            ->addOrderBy('v.name')
+            ->addOrderBy('i.id')
+            ->getQuery()
+            ->getScalarResult();
+        foreach ($rows as &$row) {
+            if ($row['dateinstall'] instanceof DateTimeInterface) {
+                $row['dateinstall'] = $row['dateinstall']->format('Y-m-d');
+            }
+            $row['softwarecategories_id'] ??= 0;
+            $row['softvalid'] = (int)$row['softvalid'];
+            $row['is_dynamic'] = (int)$row['is_dynamic'];
+        }
+        return $rows;
+    }
+
+    /**
+     * Current link fields for the exact targets selected before the installation table's form callbacks.
+     * These renderer-only rows do not replace getLink(), its item rights, or version parent checks.
+     */
+    public function displayDataForInstallations(array $installations): array
+    {
+        $data = ['softwares' => [], 'versions' => [], 'categories' => []];
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'softwares_id'))), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()
+                ->select('s.id, s.name, IDENTITY(s.entities) AS entities_id, s.is_recursive, s.is_template')
+                ->from(Software::class, 's')
+                ->where('s.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
+            foreach ($rows as $row) {
+                $row['is_recursive'] = (int)$row['is_recursive'];
+                $row['is_template'] = (int)$row['is_template'];
+                $data['softwares'][(int)$row['id']] = $row;
+            }
+        }
+        foreach (array_chunk(array_values(array_unique(array_column($installations, 'verid'))), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()
+                ->select('v.id, v.name, IDENTITY(v.softwares) AS softwares_id')
+                ->from(SoftwareVersion::class, 'v')
+                ->where('v.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
+            foreach ($rows as $row) {
+                $data['versions'][(int)$row['id']] = $row;
+            }
+        }
+        $categories = array_filter(array_unique(array_column($installations, 'softwarecategories_id')));
+        foreach (array_chunk(array_values($categories), 250) as $ids) {
+            $rows = $this->em->createQueryBuilder()
+                ->select('c.id, c.name, c.completename')
+                ->from(SoftwareCategory::class, 'c')
+                ->where('c.id IN (:ids)')
+                ->setParameter('ids', $ids)
+                ->getQuery()
+                ->getScalarResult();
+            foreach ($rows as $row) {
+                $data['categories'][(int)$row['id']] = $row;
+            }
+        }
+        return $data;
+    }
+
+    /** API expansion already has an authorized owner; it has no UI category filter. */
+    public function apiForSubject(string $kind, int $id): array
+    {
+        $rows = $this->subjectVersions($kind, $id)
+            ->select('IDENTITY(s.softwarecategories) AS softwarecategories_id, s.id AS softwares_id, v.id AS softwareversions_id')
+            ->addSelect('i.is_dynamic AS is_dynamic, IDENTITY(v.states) AS states_id, s.is_valid AS is_valid')
+            ->andWhere('i.is_deleted = :deleted')
+            ->setParameter('deleted', false, Types::BOOLEAN)
+            ->orderBy('s.name')
+            ->addOrderBy('v.name')
+            ->addOrderBy('i.id')
+            ->getQuery()
+            ->getScalarResult();
+        foreach ($rows as &$row) {
+            $row['is_dynamic'] = (int)$row['is_dynamic'];
+            $row['is_valid'] = (int)$row['is_valid'];
+        }
+        return $rows;
+    }
+
+    /**
+     * Display fields for the installation rows already scoped by the caller.
+     *
+     * @param list<array{itemtype: string, items_id: int, softwareversions_id: int}> $installations
+     * @return array<string, array<int, array<int, array<int, array{id: int, name: ?string, serial: ?string, type: ?string}>>>>
+     */
+    public function licensesForInstallations(array $installations): array
+    {
+        if ($installations === []) {
+            return [];
+        }
+        $requested = [];
+        $tuples = [];
+        foreach ($installations as $installation) {
+            $kind = $installation['itemtype'];
+            $owner = (int)$installation['items_id'];
+            $version = (int)$installation['softwareversions_id'];
+            if (isset($requested[$kind][$owner][$version])) {
+                continue;
+            }
+            $requested[$kind][$owner][$version] = true;
+            $tuples[] = [ItemSoftwareLicense::referenceAssociation($kind), $owner, $version];
+        }
+        $rows = [];
+        // This view has no row limit. Bound both the parameter count and OR expression size.
+        foreach (array_chunk($tuples, 250) as $batch) {
+            $query = $this->em->createQueryBuilder()
+                ->select('DISTINCT i.itemtype AS itemtype, i.items_id AS owner, v.id AS version')
+                ->addSelect('l.id AS id, l.name AS name, l.serial AS serial, t.name AS type')
+                ->from(ItemSoftwareLicense::class, 'i')
+                ->innerJoin('i.softwarelicenses', 'l')
+                ->innerJoin(SoftwareVersion::class, 'v', 'WITH', 'l.useVersion = v.id OR l.buyVersion = v.id')
+                ->leftJoin('l.softwarelicensetypes', 't')
+                ->orderBy('l.id');
+            $predicates = [];
+            foreach ($batch as $index => [$association, $owner, $version]) {
+                $predicates[] = '(IDENTITY(i.' . $association . ') = :owner' . $index . ' AND v.id = :version' . $index . ')';
+                $query->setParameter('owner' . $index, $owner, Types::BIGINT)
+                    ->setParameter('version' . $index, $version, Types::BIGINT);
+            }
+            foreach ($query->where(implode(' OR ', $predicates))
+                ->getQuery()
+                ->getScalarResult() as $row) {
+                // Each unique tuple belongs to one batch, retaining its license-ID order.
+                $rows[$row['itemtype']][(int)$row['owner']][(int)$row['version']][(int)$row['id']] = [
+                    'id' => (int)$row['id'],
+                    'name' => $row['name'],
+                    'serial' => $row['serial'],
+                    'type' => $row['type'],
+                ];
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * Assigned license IDs for the selected owner's installed versions, in allocation order.
+     * A use version overrides the purchase version; duplicate allocations remain visible.
+     *
+     * @return array<int, list<int>>
+     */
+    public function effectiveLicenseIdsForVersions(string $kind, int $owner, array $versions): array
+    {
+        $rows = [];
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $versions))), 250) as $batch) {
+            $query = $this->em->createQueryBuilder()
+                ->select('l.id AS id, IDENTITY(l.useVersion) AS use_version, IDENTITY(l.buyVersion) AS buy_version')
+                ->from(ItemSoftwareLicense::class, 'i')
+                ->innerJoin('i.softwarelicenses', 'l')
+                ->where('IDENTITY(i.' . ItemSoftwareLicense::referenceAssociation($kind) . ') = :owner')
+                ->andWhere('IDENTITY(l.useVersion) IN (:versions) OR (l.useVersion IS NULL AND IDENTITY(l.buyVersion) IN (:versions))')
+                ->setParameter('owner', $owner, Types::BIGINT)
+                ->setParameter('versions', $batch)
+                ->orderBy('i.id');
+            foreach ($query->getQuery()->getScalarResult() as $row) {
+                $rows[(int)($row['use_version'] ?? $row['buy_version'])][] = (int)$row['id'];
+            }
+        }
+        return $rows;
+    }
+
+    /** Presentation deduplicates licence IDs while persisted assignments retain multiplicity. */
+    public function licensesForInstallation(string $kind, int $id, int $version): array
+    {
+        $query = $this->em->createQueryBuilder()
+            ->select('l, t')
+            ->from(SoftwareLicense::class, 'l')
+            ->innerJoin(ItemSoftwareLicense::class, 'i', 'WITH', 'i.softwarelicenses = l.id')
+            ->leftJoin('l.softwarelicensetypes', 't')
+            ->where('IDENTITY(i.' . ItemSoftwareLicense::referenceAssociation($kind) . ') = :owner')
+            ->andWhere('IDENTITY(l.useVersion) = :version OR IDENTITY(l.buyVersion) = :version')
+            ->setParameter('owner', $id, Types::BIGINT)
+            ->setParameter('version', $version, Types::BIGINT)
+            ->orderBy('l.id');
+        $rows = [];
+        $records = new RecordRepository($this->em);
+        foreach ($query->getQuery()->getResult() as $license) {
+            $rows[$license->id] = $records->toRow($license) + ['type' => $license->softwarelicensetypes?->name];
+        }
+        return $rows;
+    }
+
+    /** Snapshot every active or locked assignment for the existing public clone lifecycle. */
+    public function assignmentsForClone(bool $licenses, string $kind, int $id): array
+    {
+        $class = $licenses ? ItemSoftwareLicense::class : ItemSoftwareVersion::class;
+        $query = $this->em->createQueryBuilder()
+            ->select('i')
+            ->from($class, 'i')
+            ->where('IDENTITY(i.' . $class::referenceAssociation($kind) . ') = :owner')
+            ->setParameter('owner', $id, Types::BIGINT)
+            ->orderBy('i.id');
+        $records = new RecordRepository($this->em);
+        return array_map($records->toRow(...), $query->getQuery()->getResult());
+    }
+
+    private function subjectVersions(string $kind, int $id): QueryBuilder
+    {
+        return $this->em->createQueryBuilder()
+            ->from(ItemSoftwareVersion::class, 'i')
+            ->innerJoin('i.softwareversions', 'v')
+            ->innerJoin('v.softwares', 's')
+            ->where('IDENTITY(i.' . ItemSoftwareVersion::referenceAssociation($kind) . ') = :owner')
+            ->setParameter('owner', $id, Types::BIGINT);
+    }
+}

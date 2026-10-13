@@ -47,7 +47,7 @@ if (class_exists($_POST["itemtype"])) {
     $params   = [
        'entity'    => $_POST["entity_restrict"],
        'condition' => [
-          'id' => new \QuerySubQuery([
+          'id' => new QuerySubQuery([
              'SELECT' => 'items_id',
              'FROM'   => 'glpi_networkports',
              'WHERE'  => [

@@ -39,6 +39,9 @@ if (!defined('GLPI_ROOT')) {
 
 use Config;
 use DB;
+use DBAdapter;
+use DBmysql;
+use DBpgsql;
 use GLPI;
 use Glpi\Application\ErrorHandler;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
@@ -46,18 +49,20 @@ use Glpi\Console\Command\GlpiCommandInterface;
 use Glpi\System\RequirementsManager;
 use Plugin;
 use Session;
-use Toolbox;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\CommandNotFoundException;
+use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Helper\Helper;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Exception\CommandNotFoundException;
-use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
+use Toolbox;
+use itsmng\Database\Migration\History;
 
 class Application extends BaseApplication
 {
@@ -95,6 +100,10 @@ class Application extends BaseApplication
      * @var OutputInterface
      */
     private $output;
+
+    /** Request-local readiness snapshot; derived from the canonical ledger. */
+    private ?array $pendingHistory = null;
+    private ?string $historyError = null;
 
     public function __construct()
     {
@@ -235,16 +244,26 @@ class Application extends BaseApplication
     {
 
         $begin_time = microtime(true);
+        // One Application can execute several commands in-process. Recheck the
+        // ledger after an updater or diagnostic command changed its state.
+        $this->pendingHistory = null;
+        $this->historyError = null;
 
         if (
             $command instanceof GlpiCommandInterface && $command->requiresUpToDateDb()
-            && (!array_key_exists('dbversion', $this->config) || (trim((string) $this->config['dbversion']) != ITSM_SCHEMA_VERSION))
+            && (!array_key_exists('dbversion', $this->config) || (trim((string) $this->config['dbversion']) != ITSM_SCHEMA_VERSION) || $this->pendingHistory())
         ) {
             $output->writeln(
                 '<error>'
                 . __('The version of the database is not compatible with the version of the installed files. An update is necessary.')
                 . '</error>'
             );
+            if ($this->pendingHistory()) {
+                $output->writeln('Canonical history is pending. Use db:migrate to preview, then db:migrate --apply or db:update during maintenance.');
+                if ($this->historyError !== null) {
+                    $output->writeln('<error>' . $this->historyError . '</error>');
+                }
+            }
             return self::ERROR_DB_OUTDATED;
         }
 
@@ -316,7 +335,11 @@ class Application extends BaseApplication
     private function initDb()
     {
 
-        if (!class_exists('DB', false) || !class_exists('mysqli', false)) {
+        if (
+            !class_exists('DB', false)
+            || (is_subclass_of(DB::class, DBmysql::class) && !extension_loaded('pdo_mysql'))
+            || (is_subclass_of(DB::class, DBpgsql::class) && !extension_loaded('pdo_pgsql'))
+        ) {
             return;
         }
 
@@ -364,7 +387,7 @@ class Application extends BaseApplication
     /**
      * Initialize GLPI cache.
      *
-     * @global Laminas\Cache\Storage\StorageInterface $GLPI_CACHE
+     * @global Psr\SimpleCache\CacheInterface $GLPI_CACHE
      *
      * @return void
      */
@@ -392,7 +415,10 @@ class Application extends BaseApplication
             return;
         }
 
-        Config::loadLegacyConfiguration(false);
+        Config::loadLegacyConfiguration(false, false);
+        if (!$this->pendingHistory()) {
+            Config::loadLockProfileConfiguration();
+        }
     }
 
     /**
@@ -456,7 +482,6 @@ class Application extends BaseApplication
         if (!($this->db instanceof DB) || !$this->db->connected) {
             return false;
         }
-
         $input = new ArgvInput();
 
         try {
@@ -469,7 +494,23 @@ class Application extends BaseApplication
             $command = null; // Say hello to CS checker
         }
 
-        return !$input->hasParameterOption('--no-plugins', true);
+        return !$this->pendingHistory() && !$input->hasParameterOption('--no-plugins', true);
+    }
+
+    private function pendingHistory(): array
+    {
+        if (!($this->db instanceof DBAdapter) || !$this->db->connected) {
+            return [];
+        }
+        if ($this->pendingHistory === null) {
+            try {
+                $this->pendingHistory = History::pendingVersions($this->db->getDoctrineConnection());
+            } catch (Throwable $error) {
+                $this->historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
+                $this->pendingHistory = History::versions();
+            }
+        }
+        return $this->pendingHistory;
     }
 
     /**
@@ -483,7 +524,7 @@ class Application extends BaseApplication
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $db instanceof \DBmysql && $db->connected ? $db : null
+            $db instanceof DBAdapter && $db->connected ? $db : null
         );
 
         if ($core_requirements->hasMissingMandatoryRequirements()) {

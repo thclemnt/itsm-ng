@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -104,27 +108,17 @@ class IPNetwork_Vlan extends CommonDBRelation
         $canedit = $port->canEdit($ID);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              self::getTable() . '.id AS assocID',
-              'glpi_vlans.*'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_vlans'   => [
-                 'ON' => [
-                    self::getTable()  => 'vlans_id',
-                    'glpi_vlans'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['ipnetworks_id' => $ID]
-        ]);
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $em, int $network): array =>
+                (new IPNetworkRepository($em))->vlansForNetwork($network)
+        );
 
         $vlans  = [];
         $used   = [];
-        $number = count($iterator);
-        while ($line = $iterator->next()) {
+        $number = count($rows);
+        foreach ($rows as $line) {
             $used[$line["id"]]       = $line["id"];
             $vlans[$line["assocID"]] = $line;
         }
@@ -212,17 +206,13 @@ class IPNetwork_Vlan extends CommonDBRelation
     {
         global $DB;
 
-        $vlans = [];
-        $iterator = $DB->request([
-           'SELECT' => 'vlans_id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['ipnetworks_id' => $portID]
-        ]);
-        while ($data = $iterator->next()) {
-            $vlans[$data['vlans_id']] = $data['vlans_id'];
-        }
-
-        return $vlans;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): ?int => $portID === null || (is_string($portID) && strtolower($portID) === 'null')
+                ? null : (int)$portID,
+            static fn (EntityManager $em, ?int $network): array =>
+                (new IPNetworkRepository($em))->vlanIdsForNetwork($network)
+        );
     }
 
 

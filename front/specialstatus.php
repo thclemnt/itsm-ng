@@ -33,6 +33,8 @@
 
 include('../inc/includes.php');
 
+Session::checkRight(SpecialStatus::$rightname, READ);
+
 $dropdown = new SpecialStatus();
 
 $dropdown->displayHeader();

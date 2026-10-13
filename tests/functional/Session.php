@@ -33,6 +33,18 @@
 
 namespace tests\units;
 
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Entity\Group as GroupEntity;
+use itsmng\Database\Entity\ProfileUser;
+use itsmng\Database\Orm;
+use itsmng\Translation\Translator;
+use Laminas\I18n\Translator\TextDomain;
+use Plugin;
+use Rule;
+use Session as SessionModel;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+
 /* Test for inc/session.class.php */
 
 class Session extends \DbTestCase
@@ -186,6 +198,22 @@ class Session extends \DbTestCase
 
         $this->login('normal', 'normal');
 
+        // No profile grants make init() select key([]), which is null. Refusal
+        // must keep the active context usable without emitting PHP warnings.
+        $session_backup = $_SESSION;
+        try {
+            $_SESSION['glpiprofiles'] = [];
+            foreach ([key($_SESSION['glpiprofiles']), 0, '0', -1] as $profile_id) {
+                $_SESSION['glpimenu'] = ['stale profile menu'];
+                $expected_session = $_SESSION;
+                unset($expected_session['glpimenu']);
+                SessionModel::changeProfile($profile_id);
+                $this->array($_SESSION)->isIdenticalTo($expected_session);
+            }
+        } finally {
+            $_SESSION = $session_backup;
+        }
+
         // Test groups from whole entity tree
         $session_backup = $_SESSION;
         $_SESSION['glpiactiveentities'] = $entities_ids;
@@ -216,6 +244,83 @@ class Session extends \DbTestCase
             $groups = $_SESSION['glpigroups'];
             $_SESSION = $session_backup;
             $this->array($groups)->isEqualTo($expected_groups);
+        }
+        global $DB;
+        $session_backup = $_SESSION;
+        $writer = Orm::create($DB);
+        try {
+            $firstGroup = (int)$user_groups[0]['id'];
+            $managed = $writer->find(GroupEntity::class, $firstGroup);
+            $connection = $DB->getDoctrineConnection();
+            $_SESSION['glpiactiveentities'] = [$entid_1];
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isFalse();
+            $this->integer($connection->update('glpi_groups', ['is_recursive' => true], ['id' => $firstGroup], ['is_recursive' => Types::BOOLEAN]))->isIdenticalTo(1);
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isTrue();
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->boolean($managed->is_recursive)->isFalse();
+            $this->integer($connection->delete('glpi_groups_users', ['groups_id' => $firstGroup, 'users_id' => $uid]))->isIdenticalTo(1);
+            SessionModel::loadGroups();
+            $this->boolean(in_array($firstGroup, $_SESSION['glpigroups'], true))->isFalse();
+            // A stale all-entities flag must not broaden an explicit empty scope.
+            $_SESSION['glpishowallentities'] = 1;
+            $_SESSION['glpiactiveentities'] = [];
+            SessionModel::loadGroups();
+            $this->array($_SESSION['glpigroups'])->isEmpty();
+            $_SESSION['glpiactiveentities'] = $entities_ids;
+            unset($_SESSION['glpiID']);
+            SessionModel::loadGroups();
+            $this->array($_SESSION['glpigroups'])->isEmpty();
+            $this->boolean($writer->contains($managed))->isTrue();
+        } finally {
+            $writer->clear();
+            $_SESSION = $session_backup;
+        }
+    }
+
+    public function testEntityProfileSnapshotsStayFresh(): void
+    {
+        global $DB;
+        $this->login();
+        $savedSession = $_SESSION;
+        $writer = null;
+        try {
+            $user = (int)SessionModel::getLoginUserID();
+            $profile = $this->createItem('Profile', ['name' => 'Session profile ' . $this->getUniqueString(), 'interface' => 'central']);
+            $grant = $this->createItem('Profile_User', [
+                'users_id' => $user, 'profiles_id' => $profile->getID(), 'entities_id' => 0, 'is_recursive' => 0,
+            ]);
+            $profileId = (int)$profile->getID();
+            SessionModel::initEntityProfiles((string)$user);
+            $snapshot = $_SESSION['glpiprofiles'];
+            $this->string($snapshot[$profileId]['name'])->isIdenticalTo($profile->fields['name']);
+            $this->integer($snapshot[$profileId]['entities'][0]['id'])->isIdenticalTo(0);
+            $this->integer($snapshot[$profileId]['entities'][0]['is_recursive'])->isIdenticalTo(0);
+            $writer = Orm::create($DB);
+            $managed = $writer->find(ProfileUser::class, (int)$grant->getID());
+            $connection = $DB->getDoctrineConnection();
+            $this->integer($connection->update('glpi_profiles', ['name' => 'Updated session profile'], ['id' => $profileId]))->isIdenticalTo(1);
+            $this->integer($connection->update('glpi_profiles_users', ['is_recursive' => true], ['id' => $grant->getID()], ['is_recursive' => Types::BOOLEAN]))->isIdenticalTo(1);
+            for ($repeat = 0; $repeat < 2; ++$repeat) {
+                SessionModel::initEntityProfiles($user);
+                $this->string($_SESSION['glpiprofiles'][$profileId]['name'])->isIdenticalTo('Updated session profile');
+                $this->integer($_SESSION['glpiprofiles'][$profileId]['entities'][0]['is_recursive'])->isIdenticalTo(1);
+            }
+            $this->string($snapshot[$profileId]['name'])->isIdenticalTo($profile->fields['name']);
+            $this->boolean($writer->contains($managed))->isTrue();
+            $this->boolean($managed->is_recursive)->isFalse();
+            $this->boolean($grant->delete(['id' => $grant->getID()], true))->isTrue();
+            SessionModel::initEntityProfiles($user);
+            $this->array($_SESSION['glpiprofiles'])->notHasKey($profileId);
+            foreach ([null, false, '0', -1] as $noUser) {
+                SessionModel::initEntityProfiles($noUser);
+                $this->array($_SESSION['glpiprofiles'])->isEmpty();
+            }
+            $this->boolean($writer->contains($managed))->isTrue();
+        } finally {
+            $writer?->clear();
+            $_SESSION = $savedSession;
         }
     }
 
@@ -253,6 +358,121 @@ class Session extends \DbTestCase
         //cleanup -- keep at the end
         unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.php');
         unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.mo');
+
+        global $TRANSLATE;
+        $originalTranslator = $TRANSLATE;
+        $domain = 'i18nfixture' . $this->getUniqueString();
+        $directory = GLPI_LOCAL_I18N_DIR . '/' . $domain;
+        mkdir($directory);
+        $file = $directory . '/en_GB.php';
+        $messages = [
+            '' => ['plural_forms' => 'nplurals=2; plural=(n > 1);'],
+            'Late message' => 'Late plugin translation',
+            'Entry' => ['First entry', 'Many entries'],
+            "menu\x04Context" => 'Context translation',
+            $domain . "\x04Context entries" => ['Context first', 'Context many'],
+        ];
+        file_put_contents($file, '<?php return ' . var_export($messages, true) . ';');
+        try {
+            // A plugin domain may be registered after core translation has begun.
+            SessionModel::loadLanguage('en_GB', false);
+            $this->string(__('Login'))->isIdenticalTo('Login');
+            // Before registration, v2 used raw strict identity for the default rule.
+            foreach ([null, '', '1', 1, 1.0, 1.9, 2, false, true] as $count) {
+                $expected = $count === 1 ? 'Unregistered' : 'Unregistered entries';
+                $this->string(_n('Unregistered', 'Unregistered entries', $count, $domain))->isIdenticalTo($expected);
+                $this->string(_nx('menu', 'Unregistered', 'Unregistered entries', $count, $domain))->isIdenticalTo($expected);
+            }
+            $this->string(__('Late message', $domain))->isIdenticalTo('Late message');
+            Plugin::loadLang($domain, 'en_GB', 'en_GB');
+            $this->string(__('Late message', $domain))->isIdenticalTo('Late plugin translation');
+            $this->string(__('Entry', $domain))->isIdenticalTo('First entry');
+            $this->string(_n('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
+            $this->string(_n('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            foreach ([null, '', '0', '1', '2', 1.9, 2.9, -1.9, -2.9, false, true] as $count) {
+                // This fixture uses n > 1; v2 first cast to int, then took abs.
+                $expected = abs((int)$count) > 1 ? 'Many entries' : 'First entry';
+                $this->string(_n('Entry', 'Entries', $count, $domain))->isIdenticalTo($expected);
+                $missing = abs((int)$count) > 1 ? 'Missing entries' : 'Missing entry';
+                $this->string(_n('Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
+                $this->string(_nx('menu', 'Missing entry', 'Missing entries', $count, $domain))->isIdenticalTo($missing);
+            }
+            $this->string(Rule::getTypeName())->isIdenticalTo('Rules');
+            $this->string(Rule::getTypeName(null))->isIdenticalTo('Rules');
+            $this->string(Rule::getTypeName(1.9))->isIdenticalTo('Rule');
+            $loadedTranslator = $TRANSLATE;
+            try {
+                $TRANSLATE = null;
+                $this->string(_n('Entry', 'Entries', null, $domain))->isIdenticalTo('Entries');
+            } finally {
+                $TRANSLATE = $loadedTranslator;
+            }
+
+            $this->string(_x('menu', 'Context', $domain))->isIdenticalTo('Context translation');
+            $this->string(__('Context entries', $domain))->isIdenticalTo('Context first');
+            $this->string($TRANSLATE->translate('Late message', $domain, ''))->isIdenticalTo('Late plugin translation');
+
+            // A backend can report physical presence while the value fetch is a miss.
+            $inconsistent = new class (new ArrayAdapter()) extends Psr16Cache {
+                public int $presenceChecks = 0;
+                public function has($key): bool
+                {
+                    ++$this->presenceChecks;
+                    return true;
+                }
+            };
+            $key = 'itsmng-i18n3-' . $domain . '-en_GB';
+            $this->boolean($inconsistent->has($key))->isTrue();
+            $this->variable($inconsistent->get($key))->isNull();
+            $checks = $inconsistent->presenceChecks;
+            $recover = new Translator('en_GB', $inconsistent);
+            $recover->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($recover->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            $this->integer($inconsistent->presenceChecks)->isIdenticalTo($checks);
+            $this->object($inconsistent->get($key))->isInstanceOf(TextDomain::class);
+            foreach ([null, 'undecodable catalogue'] as $invalid) {
+                $inconsistent->set($key, $invalid);
+                $recover = new Translator('en_GB', $inconsistent);
+                $recover->addTranslationFile('phparray', $file, $domain, 'en_GB');
+                $this->string($recover->translate('Late message', $domain))->isIdenticalTo('Late plugin translation');
+                $this->object($inconsistent->get($key))->isInstanceOf(TextDomain::class);
+            }
+            $inconsistent->delete($key);
+            $late = new Translator('en_GB', $inconsistent);
+            $this->string($late->translate('Late message', $domain))->isIdenticalTo('Late message');
+            $this->variable($inconsistent->get($key))->isNull();
+            $late->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($late->translate('Late message', $domain))->isIdenticalTo('Late plugin translation');
+
+            // Cached TextDomain objects retain their plural AST when serialized.
+            $raw = new ArrayAdapter();
+            $cache = new Psr16Cache($raw);
+            $cached = new Translator('en_GB', $cache);
+            $cached->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($cached->translatePlural('Entry', 'Entries', 0, $domain))->isIdenticalTo('First entry');
+            $key = 'itsmng-i18n3-' . $domain . '-en_GB';
+            $catalogue = $cache->get($key);
+            $this->object($catalogue)->isInstanceOf(TextDomain::class);
+            $cache->set($key, unserialize(serialize($catalogue)));
+            unlink($file);
+            $warm = new Translator('en_GB', $cache);
+            $warm->addTranslationFile('phparray', $file, $domain, 'en_GB');
+            $this->string($warm->translatePlural('Entry', 'Entries', 2, $domain))->isIdenticalTo('Many entries');
+            $this->array($warm->translate('Entry', $domain))->isIdenticalTo(['First entry', 'Many entries']);
+            $this->string($warm->translate('Missing', $domain))->isIdenticalTo('Missing');
+            $cacheOnly = new Translator('en_GB', $cache);
+            $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain))->isIdenticalTo('First entry');
+            $this->string($cacheOnly->translatePlural('Entry', 'Entries', '1', $domain, ''))->isIdenticalTo('Entries');
+            $this->string($cacheOnly->translatePlural('Missing entry', 'Missing entries', 0, $domain))->isIdenticalTo('Missing entry');
+            $this->string($cacheOnly->translatePlural('Unregistered', 'Unregistered entries', '1', $domain . '_absent'))->isIdenticalTo('Unregistered entries');
+            $this->boolean($cache->has('itsmng-i18n3-' . $domain . '_absent-en_GB'))->isFalse();
+        } finally {
+            $TRANSLATE = $originalTranslator;
+            if (is_file($file)) {
+                unlink($file);
+            }
+            rmdir($directory);
+        }
     }
 
     protected function mustChangePasswordProvider()

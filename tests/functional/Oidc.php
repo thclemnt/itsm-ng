@@ -69,8 +69,8 @@ class Oidc extends \DbTestCase
         ]);
         $this->integer($manualId)->isGreaterThan(0);
 
-        $DB->delete('glpi_oidc_mapping', [1 => 1]);
-        $DB->insert('glpi_oidc_mapping', ['group' => 'groups', 'email' => 'email']);
+        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::forConnection($DB->getDoctrineConnection())))
+            ->saveMapping(['group' => 'groups', 'email' => 'email']);
         $rule = new \RuleRight();
         $ruleId = $rule->add([
             'name' => '_oidc_group_rule_' . $authtype, 'sub_type' => 'RuleRight',
@@ -131,6 +131,38 @@ class Oidc extends \DbTestCase
             $this->boolean($manual->getFromDB($manualId))->isTrue();
         } finally {
             $this->resetRules();
+        }
+    }
+
+    public function testRejectedAuthorizationUpdateRollsBackMappedProfile()
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $user = $this->createItem(\User::class, ['name' => $this->getUniqueString(), 'firstname' => 'Original']);
+        $connection = $DB->getDoctrineConnection();
+        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::forConnection($connection)))
+            ->saveMapping(['given_name' => 'given']);
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $hooks = $PLUGIN_HOOKS;
+        $depth = $connection->getTransactionNestingLevel();
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$user->getID()]);
+        try {
+            $plugins->setValue(null, [...$active, 'oidc_authorization_fixture']);
+            $PLUGIN_HOOKS['pre_item_update']['oidc_authorization_fixture'][\User::class] = static function (\User $model): void {
+                $model->input = false;
+            };
+            $this->exception(static fn () => \Oidc::addUserData(['given' => 'Rejected profile'], $user->getID()))
+                ->isInstanceOf(\RuntimeException::class)
+                ->hasMessage('Unable to apply OIDC authorization rules.');
+            $this->boolean($user->getFromDB($user->getID()))->isTrue();
+            $this->string($user->fields['firstname'])->isIdenticalTo('Original');
+            $this->variable($connection->fetchAssociative('SELECT * FROM glpi_oidc_users WHERE user_id = ?', [$user->getID()]))
+                ->isIdenticalTo($before);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
         }
     }
 

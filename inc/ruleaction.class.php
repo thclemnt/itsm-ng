@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -324,11 +329,8 @@ class RuleAction extends CommonDBChild
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
-        ]);
+        $records = new RecordRepository(Orm::create($DB));
+        $iterator = new RowIterator($records->matching($this->getTable(), [static::$items_id => $ID], 'id'));
 
         $rules_actions = [];
         while ($rule = $iterator->next()) {
@@ -487,11 +489,8 @@ class RuleAction extends CommonDBChild
             $actions_options = $rule->getAllActions();
 
             $actions = [];
-            $iterator = $DB->request([
-               'SELECT' => 'field',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [static::$items_id => $rules_id],
-            ]);
+            $records = new RecordRepository(Orm::create($DB));
+            $iterator = new RowIterator($records->matching($this->getTable(), [static::$items_id => $rules_id]));
 
             while ($action = $iterator->next()) {
                 if (
@@ -715,11 +714,9 @@ class RuleAction extends CommonDBChild
                             }
 
                             $param['name']      = 'value';
-                            $param['condition'] = [new QuerySubQuery([
-                               'SELECT' => ['COUNT' => ['users_id']],
-                               'FROM'   => 'glpi_groups_users',
-                               'WHERE'  => ['groups_id' => new \QueryExpression('glpi_groups.id')]
-                            ])];
+                            global $DB;
+                            $groups = (new GroupMembershipRepository(Orm::create($DB)))->groupsWithMembers();
+                            $param['condition'] = ['id' => $groups ?: [-1]];
                             $param['right']     = ['validate_incident', 'validate_request'];
                             $param['used']      = $used;
                             renderTwigTemplate('macros/input.twig', [

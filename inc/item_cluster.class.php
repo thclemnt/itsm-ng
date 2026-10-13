@@ -1,5 +1,9 @@
 <?php
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -94,12 +98,7 @@ class Item_Cluster extends CommonDBRelation
         }
         $canedit = $cluster->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'clusters_id' => $ID
-           ]
-        ]);
+        $items = MappedReads::matching($DB, self::getTable(), ['clusters_id' => $ID]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -126,7 +125,6 @@ class Item_Cluster extends CommonDBRelation
             echo "</div>";
         }
 
-        $items = iterator_to_array($items);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No item Found'><tr><th>" . __('No item found') . "</th></tr>";
@@ -181,14 +179,7 @@ class Item_Cluster extends CommonDBRelation
     {
         global $DB, $CFG_GLPI;
 
-        //get all used items
-        $used = [];
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
+        $used = (new PlacementRepository(Orm::create($DB)))->clusterSelection();
         $jsUsed = json_encode($used);
 
         $loadItemDropdownScript = <<<JS
@@ -278,14 +269,19 @@ class Item_Cluster extends CommonDBRelation
         renderTwigForm($form, '', $this->fields);
     }
 
+    protected function reportInvalidLifecycleEndpointInput(array $input): void
+    {
+        $this->validateLifecycleEndpoints($input);
+    }
+
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     /**
@@ -295,7 +291,7 @@ class Item_Cluster extends CommonDBRelation
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
         $error_detected = [];
 

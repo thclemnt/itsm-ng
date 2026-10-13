@@ -33,6 +33,14 @@
 
 namespace tests\units;
 
+use Config;
+use InvalidArgumentException;
+use Throwable;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\Repository\RecordRepository;
+
 /* Test for inc/migration.class.php */
 /**
  * @engine inline
@@ -54,8 +62,13 @@ class Migration extends \GLPITestCase
      */
     private $queries;
 
+    /** The configured writer must survive each legacy query-mock method. */
+    private $configuredDatabase;
+
     public function beforeTestMethod($method)
     {
+        global $DB;
+        $this->configuredDatabase = $DB;
         parent::beforeTestMethod($method);
         if ($method !== 'testConstructor') {
             $this->db = new \mock\DB();
@@ -79,6 +92,13 @@ class Migration extends \GLPITestCase
                 }
             );
         }
+    }
+
+    public function afterTestMethod($method)
+    {
+        global $DB;
+        $DB = $this->configuredDatabase;
+        parent::afterTestMethod($method);
     }
 
     public function testConstructor()
@@ -115,102 +135,132 @@ class Migration extends \GLPITestCase
     public function testAddConfig()
     {
         global $DB;
-        $this->calling($this->db)->numrows = 0;
-        $this->calling($this->db)->fetchAssoc = [];
-        $this->calling($this->db)->dataSeek = true;
-        $this->calling($this->db)->listFields = [
-           'id'        => '',
-           'context'   => '',
-           'name'      => '',
-           'value'     => ''
-        ];
-        $DB = $this->db;
 
-        //test with non existing value => new keys should be inserted
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ]);
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
+        // The real configured writer owns Config and its mapped audit lifecycle.
+        // Mocking only DB::query no longer observes those writes.
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $savedSession = $_SESSION;
+        $prefix = 'migration_config_' . bin2hex(random_bytes(6));
+        $one = $prefix . '_one';
+        $two = $prefix . '_two';
+        $context = $prefix . '_context';
+        $existingContext = $prefix . '_existing';
+        $rows = static function (string $table, array $criteria = []) use ($DB): array {
+            $em = Orm::create($DB);
+            try {
+                return (new RecordRepository($em))->matching($table, $criteria, ['id ASC']);
+            } finally {
+                $em->clear();
             }
-        )->isIdenticalTo('Configuration values added for one, two (core).Task completed.');
-
-        $core_queries = [
-           0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'core\' AND `name` IN (\'one\', \'two\')',
-           1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'one\'',
-           2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'one\', \'key\')',
-           3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one \', \'key\')',
-           5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'two\'',
-           6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
-           7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
-        ];
-        $this->array($this->queries)->isIdenticalTo($core_queries);
-
-        //test with existing value on different context => new keys should be inserted in correct context
-        $this->queries = [];
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ], 'test-context');
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
-            }
-        )->isIdenticalTo('Configuration values added for one, two (test-context).Task completed.');
-
-        $this->array($this->queries)->isIdenticalTo([
-           0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` IN (\'one\', \'two\')',
-           1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'one\'',
-           2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'one\', \'key\')',
-           3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one (test-context) \', \'key\')',
-           5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'two\'',
-           6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'two\', \'value\')',
-           7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two (test-context) \', \'value\')',
-        ]);
-
-        //test with one existing value => only new key should be inserted
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ]);
-        $this->queries = [];
-        $this->calling($this->db)->request = function ($table) {
-            // Call using 'glpi_configs' value for first parameter
-            // corresponds to the call made to retrieve exisintg values
-            // -> returns a value for config 'one'
-            if ('glpi_configs' === $table) {
-                $dbresult = [[
-                   'id'        => '42',
-                   'context'   => 'core',
-                   'name'      => 'one',
-                   'value'     => 'setted value'
-                ]];
-                return new \ArrayIterator($dbresult);
-            }
-            // Other calls corresponds to call made in Config::setConfigurationValues()
-            return new \ArrayIterator();
         };
-
-        $DB = $this->db;
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
+        $configsBefore = $rows('glpi_configs');
+        $logsBefore = $rows('glpi_logs', ['itemtype' => Config::getType()]);
+        $frame = OwnedMutationFrame::begin($connection);
+        $primary = null;
+        try {
+            foreach (['core', $context, $existingContext] as $owner) {
+                $this->array($rows('glpi_configs', ['context' => $owner, 'name' => [$one, $two]]))->isEmpty();
             }
-        )->isIdenticalTo('Configuration values added for two (core).Task completed.');
 
-        $this->array($this->queries)->isIdenticalTo([
-           0 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
-           1 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
-        ]);
+            // Both originally absent core values are inserted and audited.
+            $this->object($this->migration->addConfig([$one => 'key', $two => 'value']))->isIdenticalTo($this->migration);
+            // First registration wins, even before the queue is persisted.
+            $this->migration->addConfig([$one => 'replacement']);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $one, $two (core).Task completed.");
+            $core = $rows('glpi_configs', ['context' => 'core', 'name' => [$one, $two]]);
+            $this->array($core)->hasSize(2);
+            $this->array(array_column($core, 'value', 'name'))->isIdenticalTo([$one => 'key', $two => 'value']);
+            $this->array(array_column($core, 'context'))->isIdenticalTo(['core', 'core']);
+            foreach ($core as $record) {
+                $this->integer($record['id'])->isGreaterThan(0);
+                $config = new Config();
+                $this->boolean($config->getFromDB($record['id']))->isTrue();
+                $this->array($config->fields)->isIdenticalTo($record);
+            }
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($logsBefore));
+            $this->array($history)->hasSize(2);
+            $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . ' ', $two . ' ']);
+            $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
+
+            // Existing names in core do not prevent independent context values.
+            $this->migration->addConfig([$one => 'key', $two => 'value'], $context);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $one, $two ($context).Task completed.");
+            $other = $rows('glpi_configs', ['context' => $context, 'name' => [$one, $two]]);
+            $this->array($other)->hasSize(2);
+            $this->array(array_column($other, 'value', 'name'))->isIdenticalTo([$one => 'key', $two => 'value']);
+            $this->array(array_column($other, 'context'))->isIdenticalTo([$context, $context]);
+            $this->array($rows('glpi_configs', ['context' => 'core', 'name' => [$one, $two]]))->isIdenticalTo($core);
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($logsBefore) + 2);
+            $this->array($history)->hasSize(2);
+            $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . " ($context) ", $two . " ($context) "]);
+            $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
+
+            // With one actual existing value, only the missing key is inserted.
+            Config::setConfigurationValues($existingContext, [$one => 'setted value']);
+            $existing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $one]);
+            $historyBeforeMissing = $rows('glpi_logs', ['itemtype' => Config::getType()]);
+            $this->array($existing)->hasSize(1);
+            $this->string($existing[0]['value'])->isIdenticalTo('setted value');
+            $this->migration->addConfig([$one => 'key', $two => 'value'], $existingContext);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $two ($existingContext).Task completed.");
+            $this->array($rows('glpi_configs', ['context' => $existingContext, 'name' => $one]))->isIdenticalTo($existing);
+            $missing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $two]);
+            $this->array($missing)->hasSize(1);
+            $this->string($missing[0]['value'])->isIdenticalTo('value');
+            $history = array_slice($rows('glpi_logs', ['itemtype' => Config::getType()]), count($historyBeforeMissing));
+            $this->array($history)->hasSize(1);
+            $this->string($history[0]['old_value'])->isIdenticalTo($two . " ($existingContext) ");
+            $this->string($history[0]['new_value'])->isIdenticalTo('value');
+
+            // Re-registering persisted keys and executing an empty queue are
+            // idempotent: full rows and audit identities remain unchanged.
+            $persisted = $rows('glpi_configs');
+            $audited = $rows('glpi_logs', ['itemtype' => Config::getType()]);
+            foreach (['core', $context, $existingContext] as $owner) {
+                $this->migration->addConfig([$one => 'replacement', $two => 'replacement'], $owner);
+            }
+            for ($attempt = 0; $attempt < 2; ++$attempt) {
+                $this->output(function () {
+                    $this->migration->executeMigration();
+                })->isIdenticalTo('Task completed.');
+                $this->array($rows('glpi_configs'))->isIdenticalTo($persisted);
+                $this->array($rows('glpi_logs', ['itemtype' => Config::getType()]))->isIdenticalTo($audited);
+            }
+            $this->integer(count($persisted))->isIdenticalTo(count($configsBefore) + 6);
+            $ownedIds = array_column(array_merge($core, $other, $existing, $missing), 'id');
+            $this->array(array_values(array_filter($persisted, static fn (array $row): bool => !in_array($row['id'], $ownedIds, true))))->isIdenticalTo($configsBefore);
+            foreach (array_slice($audited, count($logsBefore)) as $record) {
+                $this->integer($record['items_id'])->isIdenticalTo(1);
+                $this->integer($record['id_search_option'])->isIdenticalTo(1);
+                $this->integer($record['linked_action'])->isIdenticalTo(0);
+                $this->string($record['itemtype_link'])->isIdenticalTo('');
+                $this->string($record['user_name'])->isIdenticalTo('');
+                $this->string($record['date_mod'])->isIdenticalTo($_SESSION['glpi_currenttime']);
+            }
+        } catch (Throwable $error) {
+            $primary = $error;
+        } finally {
+            try {
+                $frame->rollBack();
+            } catch (Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
+            } finally {
+                $_SESSION = $savedSession;
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        $this->array($rows('glpi_configs'))->isIdenticalTo($configsBefore);
+        $this->array($rows('glpi_logs', ['itemtype' => Config::getType()]))->isIdenticalTo($logsBefore);
     }
 
     public function testBackupTables()
@@ -227,14 +277,22 @@ class Migration extends \GLPITestCase
             }
         )->isIdenticalTo("Task completed.");
 
-        $this->array($this->queries)->isIdenticalTo([
+        $expected = $DB->getProvider() === 'pgsql' ? [
+           0 => 'SELECT "table_name" AS "TABLE_NAME" FROM "information_schema"."tables"'
+                 . ' WHERE "table_schema" = \'' . $DB->dbschema
+                 . '\' AND "table_type" = \'BASE TABLE\' AND "table_name" ILIKE \'table1\' ORDER BY "table_name"',
+           1 => 'SELECT "table_name" AS "TABLE_NAME" FROM "information_schema"."tables"'
+                 . ' WHERE "table_schema" = \'' . $DB->dbschema
+                 . '\' AND "table_type" = \'BASE TABLE\' AND "table_name" ILIKE \'table2\' ORDER BY "table_name"'
+        ] : [
            0 => 'SELECT `table_name` AS `TABLE_NAME` FROM `information_schema`.`tables`' .
                  ' WHERE `table_schema` = \'' . $DB->dbdefault .
                  '\' AND `table_type` = \'BASE TABLE\' AND `table_name` LIKE \'table1\'',
            1 => 'SELECT `table_name` AS `TABLE_NAME` FROM `information_schema`.`tables`' .
                  ' WHERE `table_schema` = \'' . $DB->dbdefault  .
                  '\' AND `table_type` = \'BASE TABLE\' AND `table_name` LIKE \'table2\''
-               ]);
+        ];
+        $this->array($this->queries)->isIdenticalTo($expected);
 
         //try to backup existant tables
         $this->queries = [];
@@ -484,15 +542,17 @@ class Migration extends \GLPITestCase
         $this->calling($this->db)->fieldExists = false;
         $this->queries = [];
 
-        $this->when(
-            function () {
-                $this->migration->addField('my_table', 'my_field', 'bool', ['value' => 2]);
-                $this->migration->executeMigration();
-            }
-        )->error()
-           ->withType(E_USER_ERROR)
-           ->withMessage('default_value must be 0 or 1')
-           ->exists();
+        foreach ([
+            fn () => $this->migration->addField('my_table', 'my_field', 'bool', ['value' => 2]),
+            fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'bool', ['value' => 2]),
+        ] as $invalidField) {
+            $this->exception($invalidField)
+                ->isInstanceOf(InvalidArgumentException::class)
+                ->hasMessage('default_value must be 0 or 1');
+        }
+        $this->array($this->queries)->isEmpty();
+        $this->output(fn () => $this->migration->executeMigration())->isIdenticalTo('Task completed.');
+        $this->array($this->queries)->isEmpty();
     }
 
     public function testFormatIntegerBadDefault()
@@ -502,15 +562,17 @@ class Migration extends \GLPITestCase
         $this->calling($this->db)->fieldExists = false;
         $this->queries = [];
 
-        $this->when(
-            function () {
-                $this->migration->addField('my_table', 'my_field', 'integer', ['value' => 'foo']);
-                $this->migration->executeMigration();
-            }
-        )->error()
-           ->withType(E_USER_ERROR)
-           ->withMessage('default_value must be numeric')
-           ->exists();
+        foreach ([
+            fn () => $this->migration->addField('my_table', 'my_field', 'integer', ['value' => 'foo']),
+            fn () => $this->migration->changeField('my_table', 'old_field', 'my_field', 'integer', ['value' => 'foo']),
+        ] as $invalidField) {
+            $this->exception($invalidField)
+                ->isInstanceOf(InvalidArgumentException::class)
+                ->hasMessage('default_value must be numeric');
+        }
+        $this->array($this->queries)->isEmpty();
+        $this->output(fn () => $this->migration->executeMigration())->isIdenticalTo('Task completed.');
+        $this->array($this->queries)->isEmpty();
     }
 
     public function testAddRight()
@@ -533,6 +595,30 @@ class Migration extends \GLPITestCase
         ]);
         //Test adding a READ right when profile with no requirements
         $this->migration->addRight('testright4', READ, []);
+
+        // The database generates identities on both supported providers. Every
+        // profile receives a row, including profiles whose requirements fail.
+        $registered = iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => ['testright1', 'testright2', 'testright3', 'testright4']],
+           'ORDER' => 'id'
+        ]));
+        $this->array($registered)->hasSize(32);
+        $ids = [];
+        foreach ($registered as $right) {
+            $id = (int) $right['id'];
+            $this->integer($id)->isGreaterThan(0);
+            $ids[] = $id;
+        }
+        $this->array(array_unique($ids))->hasSize(32);
+        // A retry must preserve identities and existing grants, even when the
+        // requested mask changes.
+        $this->migration->addRight('testright4', READ | UPDATE, []);
+        $this->array(iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => ['testright1', 'testright2', 'testright3', 'testright4']],
+           'ORDER' => 'id'
+        ])))->isIdenticalTo($registered);
 
         $right1 = $DB->request([
            'FROM' => 'glpi_profilerights',
@@ -571,6 +657,11 @@ class Migration extends \GLPITestCase
         $this->integer(count($right1))->isEqualTo(8);
 
         //Test adding a READ right only on profiles where it has not been set yet
+        $survivors = iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => 'testright4', 'NOT' => ['profiles_id' => [1, 2, 3, 4]]],
+           'ORDER' => 'id'
+        ]));
         $DB->delete('glpi_profilerights', [
            'profiles_id' => [1, 2, 3, 4],
            'name' => 'testright4'
@@ -586,6 +677,11 @@ class Migration extends \GLPITestCase
            ]
         ]);
         $this->integer(count($right4))->isEqualTo(4);
+        $this->array(iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => 'testright4', 'NOT' => ['profiles_id' => [1, 2, 3, 4]]],
+           'ORDER' => 'id'
+        ])))->isIdenticalTo($survivors);
     }
 
     public function testRenameTable()
@@ -788,7 +884,17 @@ class Migration extends \GLPITestCase
             )
         );
 
-        $this->array($this->queries)->isIdenticalTo([
+        // The query mock records legacy DDL before translation; generated DML uses provider quoting.
+        $expected = $DB->getProvider() === 'pgsql' ? [
+           "RENAME TABLE `glpi_someoldtypes` TO `glpi_newnames`",
+           "ALTER TABLE `glpi_oneitem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ",
+           "ALTER TABLE `glpi_anotheritem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ,\n"
+           . "CHANGE `someoldtypes_id_tech` `newnames_id_tech` INT(11) NOT NULL DEFAULT '0'   ",
+           "UPDATE \"glpi_computers\" SET \"itemtype\" = 'NewName' WHERE \"itemtype\" = 'SomeOldType'",
+           "UPDATE \"glpi_users\" SET \"itemtype\" = 'NewName' WHERE \"itemtype\" = 'SomeOldType'",
+           "UPDATE \"glpi_stuffs\" SET \"itemtype_source\" = 'NewName' WHERE \"itemtype_source\" = 'SomeOldType'",
+           "UPDATE \"glpi_stuffs\" SET \"itemtype_dest\" = 'NewName' WHERE \"itemtype_dest\" = 'SomeOldType'",
+        ] : [
            "RENAME TABLE `glpi_someoldtypes` TO `glpi_newnames`",
            "ALTER TABLE `glpi_oneitem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ",
            "ALTER TABLE `glpi_anotheritem_with_fkey` CHANGE `someoldtypes_id` `newnames_id` INT(11) NOT NULL DEFAULT '0'   ,\n"
@@ -797,7 +903,8 @@ class Migration extends \GLPITestCase
            "UPDATE `glpi_users` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
            "UPDATE `glpi_stuffs` SET `itemtype_source` = 'NewName' WHERE `itemtype_source` = 'SomeOldType'",
            "UPDATE `glpi_stuffs` SET `itemtype_dest` = 'NewName' WHERE `itemtype_dest` = 'SomeOldType'",
-        ]);
+        ];
+        $this->array($this->queries)->isIdenticalTo($expected);
 
         // Test renaming without DB structure update
         $this->queries = [];
@@ -818,12 +925,18 @@ class Migration extends \GLPITestCase
             )
         );
 
-        $this->array($this->queries)->isIdenticalTo([
+        $expected = $DB->getProvider() === 'pgsql' ? [
+           "UPDATE \"glpi_computers\" SET \"itemtype\" = 'NewName' WHERE \"itemtype\" = 'SomeOldType'",
+           "UPDATE \"glpi_users\" SET \"itemtype\" = 'NewName' WHERE \"itemtype\" = 'SomeOldType'",
+           "UPDATE \"glpi_stuffs\" SET \"itemtype_source\" = 'NewName' WHERE \"itemtype_source\" = 'SomeOldType'",
+           "UPDATE \"glpi_stuffs\" SET \"itemtype_dest\" = 'NewName' WHERE \"itemtype_dest\" = 'SomeOldType'",
+        ] : [
            "UPDATE `glpi_computers` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
            "UPDATE `glpi_users` SET `itemtype` = 'NewName' WHERE `itemtype` = 'SomeOldType'",
            "UPDATE `glpi_stuffs` SET `itemtype_source` = 'NewName' WHERE `itemtype_source` = 'SomeOldType'",
            "UPDATE `glpi_stuffs` SET `itemtype_dest` = 'NewName' WHERE `itemtype_dest` = 'SomeOldType'",
-        ]);
+        ];
+        $this->array($this->queries)->isIdenticalTo($expected);
     }
 
     public function testChangeSearchOption()
@@ -878,10 +991,15 @@ class Migration extends \GLPITestCase
         $this->migration->changeSearchOption('Computer', 40, 100);
         $this->migration->executeMigration();
 
-        $this->array($this->queries)->isIdenticalTo([
+        $expected = $DB->getProvider() === 'pgsql' ? [
+           "UPDATE \"glpi_displaypreferences\" SET \"num\" = '100' WHERE \"itemtype\" = 'Computer' AND \"num\" = '40'",
+           "UPDATE \"glpi_savedsearches\" SET \"query\" = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=100&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Budget&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=4&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE \"id\" = '0'",
+           "UPDATE \"glpi_savedsearches\" SET \"query\" = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Computer&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=100&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE \"id\" = '1'",
+        ] : [
            "UPDATE `glpi_displaypreferences` SET `num` = '100' WHERE `itemtype` = 'Computer' AND `num` = '40'",
            "UPDATE `glpi_savedsearches` SET `query` = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=100&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Budget&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=4&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE `id` = '0'",
            "UPDATE `glpi_savedsearches` SET `query` = 'is_deleted=0&as_map=0&criteria%5B0%5D%5Blink%5D=AND&criteria%5B0%5D%5Bfield%5D=40&criteria%5B0%5D%5Bsearchtype%5D=contains&criteria%5B0%5D%5Bvalue%5D=LT1&criteria%5B1%5D%5Blink%5D=AND&criteria%5B1%5D%5Bitemtype%5D=Computer&criteria%5B1%5D%5Bmeta%5D=1&criteria%5B1%5D%5Bfield%5D=100&criteria%5B1%5D%5Bsearchtype%5D=contains&criteria%5B1%5D%5Bvalue%5D=&search=Search&itemtype=Computer' WHERE `id` = '1'",
-        ]);
+        ];
+        $this->array($this->queries)->isIdenticalTo($expected);
     }
 }

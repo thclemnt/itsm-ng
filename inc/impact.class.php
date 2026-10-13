@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\ImpactRepository;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -82,7 +88,9 @@ class Impact extends CommonGLPI
             );
         }
 
-        $is_enabled_asset = self::isEnabled($class);
+        // One operation uses the same configured itemtypes for admission and counting.
+        $enabled = self::getEnabledItemtypes();
+        $is_enabled_asset = in_array($class, $enabled);
         $is_itil_object = is_a($item, "CommonITILObject", true);
 
         // Check if itemtype is valid
@@ -101,24 +109,8 @@ class Impact extends CommonGLPI
             $total = 0;
         } elseif ($is_enabled_asset) {
             // If on an asset, get the number of its direct dependencies
-            $total = count($DB->request([
-               'FROM'  => ImpactRelation::getTable(),
-               'WHERE' => [
-                  'OR' => [
-                     [
-                        // Source item is our item
-                        'itemtype_source' => get_class($item),
-                        'items_id_source' => $item->fields['id'],
-                     ],
-                     [
-                        // Impacted item is our item AND source item is enabled
-                        'itemtype_impacted' => get_class($item),
-                        'items_id_impacted' => $item->fields['id'],
-                        'itemtype_source'   => self::getEnabledItemtypes()
-                     ]
-                  ]
-               ]
-            ]));
+            $total = Orm::read($DB, static fn (EntityManager $manager): int =>
+                (new ImpactRepository($manager))->relationCount(get_class($item), (int)$item->getID(), $enabled));
         }
 
         return self::createTabEntry(__("Impact analysis"), $total);
@@ -245,7 +237,7 @@ class Impact extends CommonGLPI
         array $graph,
         bool $scripts = false
     ) {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         $impact_item = ImpactItem::findForItem($item);
         $impact_context = ImpactContext::findForImpactItem($impact_item);
@@ -265,6 +257,7 @@ class Impact extends CommonGLPI
            __("Impacted by") => self::DIRECTION_BACKWARD,
         ];
         $has_impact = false;
+        $priority_colors = null;
 
         foreach ($lists as $label => $direction) {
             $start_node_id = self::getNodeID($item);
@@ -328,20 +321,41 @@ class Impact extends CommonGLPI
 
                     echo '</div></td>';
 
+                    if ($priority_colors === null && (
+                        $itemtype_item['node']['ITILObjects']['incidents']
+                        || $itemtype_item['node']['ITILObjects']['problems']
+                        || $itemtype_item['node']['ITILObjects']['changes']
+                    )) {
+                        $database = $DB;
+                        $connection = $database->getDoctrineConnection();
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        $overrides = Orm::withConnection($connection, static fn (EntityManager $manager): array =>
+                            (new UserRepository($manager))->priorityColors((int)Session::getLoginUserID()));
+                        // Match User::computePreferences: only NULL inherits a default.
+                        $priority_colors = [];
+                        for ($priority = 1; $priority <= 6; ++$priority) {
+                            $field = 'priority_' . $priority;
+                            $priority_colors[$priority] = $overrides[$field] ?? $CFG_GLPI[$field];
+                        }
+                    }
+
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['incidents'],
                         Ticket::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['problems'],
                         Problem::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['changes'],
                         Change::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
 
                     echo '<td class="center"><div></div></td>';
@@ -508,13 +522,10 @@ class Impact extends CommonGLPI
      * @param array   $itil_objects
      * @param string  $type
      * @param string  $node_id
+     * @param array   $priority_colors Account/configuration colors for this render
      */
-    private static function displayListNumber($itil_objects, $type, $node_id)
+    private static function displayListNumber($itil_objects, $type, $node_id, array $priority_colors)
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
-        $user->computePreferences();
-
         $count = count($itil_objects) ?: "";
         $extra = "";
         $node_details = explode(self::NODE_ID_DELIMITER, $node_id);
@@ -557,7 +568,7 @@ class Impact extends CommonGLPI
                     $priority = $itil_object['priority'];
                 }
             }
-            $extra = 'id="' . $id . '" style="background-color:' .  $user->fields["priority_$priority"] . '; cursor:pointer;"';
+            $extra = 'id="' . $id . '" style="background-color:' . $priority_colors[$priority] . '; cursor:pointer;"';
 
             echo Html::scriptBlock('
             $(document).on("click", "#' . $id . '", function(e) {
@@ -699,7 +710,7 @@ class Impact extends CommonGLPI
                 break;
 
             default:
-                throw new \InvalidArgumentException("Invalid direction : $direction");
+                throw new InvalidArgumentException("Invalid direction : $direction");
         }
 
         // Insert start node in the queue
@@ -888,14 +899,14 @@ class Impact extends CommonGLPI
 
         // Check if this type is enabled in config
         if (!self::isEnabled($itemtype)) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 "itemtype ($itemtype) must be enabled in config"
             );
         }
 
         // Check class exist and is a child of CommonDBTM
         if (!is_subclass_of($itemtype, "CommonDBTM", true)) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 "itemtype ($itemtype) must be a valid child of CommonDBTM"
             );
         }
@@ -908,72 +919,32 @@ class Impact extends CommonGLPI
             ];
         }
 
-        // This array can't be empty since we will use it in the NOT IN part of the reqeust
-        if (!count($used)) {
-            $used[] = -1;
-        }
-
-        // Search for items
-        $table = $itemtype::getTable();
-        $base_request = [
-           'FROM'   => $table,
-           'WHERE'  => [
-              'NOT' => [
-                 "$table.id" => $used
-              ],
-           ],
-        ];
-
-        // Add friendly name search criteria
-        $base_request['WHERE'] = array_merge(
-            $base_request['WHERE'],
-            $itemtype::getFriendlyNameSearchCriteria($filter)
-        );
-
-        if (is_subclass_of($itemtype, "ExtraVisibilityCriteria", true)) {
-            $base_request = array_merge_recursive(
-                $base_request,
-                $itemtype::getVisibilityCriteria()
-            );
-        }
-
+        $criteria = [];
         $item = new $itemtype();
         if ($item->isEntityAssign()) {
-            $base_request['WHERE'] = array_merge_recursive(
-                $base_request['WHERE'],
-                getEntitiesRestrictCriteria($itemtype::getTable())
+            $criteria = getEntitiesRestrictCriteria($itemtype::getTable());
+        }
+        if ($item->maybeDeleted()) {
+            $criteria['is_deleted'] = false;
+        }
+        if ($item->maybeTemplate()) {
+            $criteria['is_template'] = false;
+        }
+        $config = Config::getConfigurationValues('core');
+        return Orm::read($DB, static function (EntityManager $manager) use ($itemtype, $criteria, $used, $filter, $page, $config): array {
+            return (new ImpactRepository($manager))->searchAssets(
+                $itemtype::getTable(),
+                $itemtype::getNameField(),
+                $criteria,
+                $used,
+                $filter,
+                $page,
+                ($config['names_format'] ?? User::FIRSTNAME_BEFORE) == User::FIRSTNAME_BEFORE,
+                Session::haveRight('project', Project::READALL),
+                (int)Session::getLoginUserID(),
+                $_SESSION['glpigroups'] ?? [],
             );
-        }
-
-        if ($item->mayBeDeleted()) {
-            $base_request['WHERE']["$table.is_deleted"] = 0;
-        }
-
-        if ($item->mayBeTemplate()) {
-            $base_request['WHERE']["$table.is_template"] = 0;
-        }
-
-        $select = [
-           'SELECT' => ["$table.id", $itemtype::getFriendlyNameFields()],
-        ];
-        $limit = [
-           'START' => $page * 20,
-           'LIMIT' => "20",
-        ];
-        $count = [
-           'COUNT' => "total",
-        ];
-
-        // Get items
-        $rows = $DB->request($base_request + $select + $limit);
-
-        // Get total
-        $total = $DB->request($base_request + $count);
-
-        return [
-           "items" => iterator_to_array($rows, false),
-           "total" => iterator_to_array($total, false)[0]['total'],
-        ];
+        });
     }
 
     /**
@@ -1210,13 +1181,8 @@ class Impact extends CommonGLPI
         }
 
         // Get relations of the current node
-        $relations = $DB->request([
-           'FROM'   => ImpactRelation::getTable(),
-           'WHERE'  => [
-              'itemtype_' . $target => get_class($node),
-              'items_id_' . $target => $node->fields['id']
-           ]
-        ]);
+        $relations = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ImpactRepository($manager))->relations(get_class($node), (int)$node->getID(), $target));
 
         // Add current code to the graph if we found at least one impact relation
         if (count($relations)) {
@@ -1346,7 +1312,7 @@ class Impact extends CommonGLPI
 
         // Load node position and parent
         $new_node['impactitem_id'] = $impact_item->fields['id'];
-        $new_node['parent']        = $impact_item->fields['parent_id'];
+        $new_node['parent']        = (int)($impact_item->fields['parent_id'] ?? 0);
 
         // If the node has a parent, add it to the node list aswell
         if (!empty($new_node['parent'])) {
@@ -1457,6 +1423,9 @@ class Impact extends CommonGLPI
            'impactcontexts_id' => 1,
            'is_slave'          => 1,
         ]);
+
+        $params['parent_id'] = (int)($params['parent_id'] ?? 0);
+        $params['impactcontexts_id'] = (int)($params['impactcontexts_id'] ?? 0);
 
         // Load context if exist
         if ($params['impactcontexts_id']) {
@@ -1676,7 +1645,7 @@ class Impact extends CommonGLPI
      *
      * @param CommonDBTM $item The item being purged
      */
-    public static function clean(\CommonDBTM $item)
+    public static function clean(CommonDBTM $item)
     {
         global $DB;
 
@@ -1685,72 +1654,8 @@ class Impact extends CommonGLPI
             return;
         }
 
-        // Remove each relations
-        $DB->delete(\ImpactRelation::getTable(), [
-           'OR' => [
-              [
-                 'itemtype_source' => get_class($item),
-                 'items_id_source' => $item->fields['id']
-              ],
-              [
-                 'itemtype_impacted' => get_class($item),
-                 'items_id_impacted' => $item->fields['id']
-              ],
-           ]
-        ]);
-
-        // Remove associated ImpactItem
-        $impact_item = ImpactItem::findForItem($item, false);
-        if (!$impact_item) {
-            // Stop here if no impactitem, nothing more to delete
-            return;
-        }
-
-        $impact_item->delete($impact_item->fields);
-
-        // Remove impact context if defined and not a slave, update others
-        // contexts if they are slave to us
-        if (
-            $impact_item->fields['impactcontexts_id'] != 0
-            && $impact_item->fields['is_slave'] != 0
-        ) {
-            $DB->update(
-                ImpactItem::getTable(),
-                [
-                  'impactcontexts_id' => 0,
-                ],
-                [
-                  'impactcontexts_id' => $impact_item->fields['impactcontexts_id'],
-                ]
-            );
-
-            $DB->delete(ImpactContext::getTable(), [
-               'id' => $impact_item->fields['impactcontexts_id']
-            ]);
-        }
-
-        // Delete group if less than two children remaining
-        if ($impact_item->fields['parent_id'] != 0) {
-            $count = countElementsInTable(ImpactItem::getTable(), [
-               'parent_id' => $impact_item->fields['parent_id']
-            ]);
-
-            if ($count < 2) {
-                $DB->update(
-                    ImpactItem::getTable(),
-                    [
-                      'parent_id' => 0,
-                    ],
-                    [
-                      'parent_id' => $impact_item->fields['parent_id']
-                    ]
-                );
-
-                $DB->delete(ImpactCompound::getTable(), [
-                   'id' => $impact_item->fields['parent_id']
-                ]);
-            }
-        }
+        (new ImpactRepository(Orm::create($DB)))
+            ->clean(get_class($item), (int)$item->getID());
     }
 
     /**
@@ -1772,7 +1677,7 @@ class Impact extends CommonGLPI
     public static function getEnabledItemtypes(): array
     {
         // Get configured values
-        $conf = Config::getConfigurationValues('core');
+        $conf = Config::getConfigurationValues('core', [self::CONF_ENABLED]);
 
         if (!isset($conf[self::CONF_ENABLED])) {
             return [];

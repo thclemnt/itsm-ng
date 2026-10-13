@@ -1,7 +1,11 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
+
+# Doctrine and domain units use the isolated Composer bootstrap.
+composer test:units:isolated
 
 ATOUM_ADDITIONNAL_OPTIONS=""
-if [[ "$CODE_COVERAGE" = true ]]; then
+if [[ "${CODE_COVERAGE:-false}" = true ]]; then
   export COVERAGE_DIR="coverage-unit"
 else
   ATOUM_ADDITIONNAL_OPTIONS="--no-code-coverage";
@@ -16,6 +20,6 @@ vendor/bin/atoum \
   --fail-if-skipped-methods \
   $ATOUM_ADDITIONNAL_OPTIONS \
   --max-children-number 1 \
-  -d tests/units
+  --glob 'tests/units/*.php' 'tests/units/Glpi'
 
 unset COVERAGE_DIR

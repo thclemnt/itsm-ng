@@ -510,7 +510,9 @@ class ITILTemplate extends DbTestCase
         //reset entities and profiles to default, for next entry in dataProvider
         $this->login();
         $this->boolean($entity->update(['id' => $entity->fields['id'], $field => -2]))->isTrue();
-        $this->boolean($profile->update(['id' => $profile->fields['id'], $field => -2]))->isTrue();
+        $this->boolean($profile->update(['id' => $profile->fields['id'], $field => 0]))->isTrue();
+        $this->boolean($profile->getFromDB($profile->fields['id']))->isTrue();
+        $this->variable($profile->fields[$field])->isNull();
     }
 
     /**

@@ -72,6 +72,15 @@ class TicketSatisfaction extends DbTestCase
            'date_begin' => $_SESSION['glpi_currenttime'],
         ]))->isTrue();
 
+        // PostgreSQL does not advance the sequence after assigned-ID fixture inserts.
+        $connection = $DB->getDoctrineConnection();
+        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+            $connection->executeStatement(
+                "SELECT setval(pg_get_serial_sequence('glpi_ticketsatisfactions', 'id'), ?, false)",
+                [$collision_tickets_id]
+            );
+        }
+
         $satisfaction = new \TicketSatisfaction();
         $satisfactions_id = $satisfaction->add([
            'tickets_id'  => $target_tickets_id,

@@ -42,7 +42,7 @@ Html::header_nocache();
 Session::checkLoginUser();
 
 if (!isset($_POST['revid'])) {
-    throw new \RuntimeException('Required argument missing!');
+    throw new RuntimeException('Required argument missing!');
 }
 
 $revid = $_POST['revid'];

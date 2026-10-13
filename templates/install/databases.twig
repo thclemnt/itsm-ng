@@ -28,7 +28,11 @@
 <p>{{"Database version seems correct (%s) - Perfect!"|trans|format(version)}}</p>
 <form aria-label="Install" action='install.php?step=6' method='post'>
 
-        {% if action == 'install' %}
+        {% if provider == 'pgsql' %}
+
+    <p>{{'The empty database will be initialized:'|trans}} {{database_name}}</p>
+
+        {% elseif action == 'install' %}
 
     <p>{{"Create a new database or use an existing one:"|trans}}</p>
     <input type="text" name="newdatabasename" autocomplete="off">
@@ -40,11 +44,13 @@
 
         {% endif %}
 
+    {% if provider != 'pgsql' %}
     {% include 'table.twig' with {
         fields: {'name': 'name', 'table_count': 'table count', 'creation_date': 'creation date', 'last_update': 'last update'},
         values: databases,
         radio: 'database',
     } %}
+    {% endif %}
     <div class="buttons">
         {{button('submit', 'Continue'|trans)}}
     </div>

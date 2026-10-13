@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CostRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -75,12 +78,12 @@ class ProjectCost extends CommonDBChild
     public function prepareInputForUpdate($input)
     {
 
-        if (
-            empty($input['end_date'])
-            || ($input['end_date'] == 'NULL')
-            || ($input['end_date'] < $input['begin_date'])
-        ) {
-            $input['end_date'] = $input['begin_date'];
+        if (array_key_exists('begin_date', $input) || array_key_exists('end_date', $input)) {
+            $begin = array_key_exists('begin_date', $input) ? $input['begin_date'] : ($this->fields['begin_date'] ?? null);
+            $end = array_key_exists('end_date', $input) ? $input['end_date'] : ($this->fields['end_date'] ?? null);
+            if (empty($end) || $end === 'NULL' || ($begin !== null && $end < $begin)) {
+                $input['end_date'] = $begin;
+            }
         }
 
         return parent::prepareInputForUpdate($input);
@@ -211,14 +214,8 @@ class ProjectCost extends CommonDBChild
     **/
     public static function cloneProject($oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $oldid]
-        ]);
-        while ($data = $iterator->next()) {
+        foreach ((new static())->find(['projects_id' => $oldid]) as $data) {
             $cd                   = new self();
             unset($data['id']);
             $data['projects_id'] = $newid;
@@ -268,17 +265,13 @@ class ProjectCost extends CommonDBChild
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['projects_id' => $projects_id],
-           'ORDER'  => ['end_date DESC', 'id DESC']
-        ]);
-
-        if (count($iterator)) {
-            return $iterator->next();
+        $em = Orm::create($DB);
+        try {
+            $rows = (new CostRepository($em))->rows(self::getType(), (int)$projects_id, true);
+            return $rows[0] ?? [];
+        } finally {
+            $em->clear();
         }
-
-        return [];
     }
 
     /**
@@ -390,11 +383,12 @@ class ProjectCost extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $ID],
-           'ORDER'  => ['begin_date']
-        ]);
+        $em = Orm::create($DB);
+        try {
+            $iterator = (new CostRepository($em))->rows(self::getType(), (int)$ID);
+        } finally {
+            $em->clear();
+        }
 
         $rand   = mt_rand();
 
@@ -441,7 +435,7 @@ class ProjectCost extends CommonDBChild
                 )
             );
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2' " .
                       ($canedit
                          ? "style='cursor:pointer' onClick=\"viewEditCost" . $data['projects_id'] . "_" .

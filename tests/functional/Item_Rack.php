@@ -33,12 +33,413 @@
 
 namespace tests\units;
 
+use Computer;
+use ComputerModel as LegacyComputerModel;
 use DbTestCase;
+use DOMDocument;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Query;
+use Item_Rack as LegacyItem_Rack;
+use PDU;
+use PDU_Rack as LegacyPduRack;
+use Rack;
+use itsmng\Database\Entity\ComputerModel;
+use itsmng\Database\Entity\ItemRack as RackPlacement;
+use itsmng\Database\Entity\PDURack as SidePduPlacement;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
 
 /* Test for inc/item_rack.class.php */
 
 class Item_Rack extends DbTestCase
 {
+    public function testPlacementFormsUseCurrentExclusionsAndPreserveDirtyOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(Rack::class, [
+            'name' => '_form_selection_rack',
+            'entities_id' => $entity,
+            'number_units' => 20,
+            'max_weight' => 100,
+            'max_power' => 1000,
+        ]);
+        $computer = $this->createItem(Computer::class, [
+            'name' => '_form_selection_computer',
+            'entities_id' => $entity,
+        ]);
+        $rackPdu = $this->createItem(PDU::class, [
+            'name' => '_form_selection_racked_pdu',
+            'entities_id' => $entity,
+        ]);
+        $sidePdu = $this->createItem(PDU::class, [
+            'name' => '_form_selection_side_pdu',
+            'entities_id' => $entity,
+        ]);
+        $placement = $this->createItem(LegacyItem_Rack::class, [
+            'racks_id' => $rack->getID(),
+            'itemtype' => Computer::class,
+            'items_id' => $computer->getID(),
+            'position' => 1,
+            'orientation' => Rack::FRONT,
+            'hpos' => Rack::POS_NONE,
+            'is_reserved' => 1,
+        ]);
+        $pduPlacement = $this->createItem(LegacyItem_Rack::class, [
+            'racks_id' => $rack->getID(),
+            'itemtype' => PDU::class,
+            'items_id' => $rackPdu->getID(),
+            'position' => 5,
+            'orientation' => Rack::FRONT,
+            'hpos' => Rack::POS_NONE,
+        ]);
+        $freePdu = $this->createItem(
+            PDU::class,
+            [
+                'name' => '_form_selection_available_pdu',
+                'entities_id' => $entity,
+            ]
+        );
+        $sideInput = [
+            'racks_id' => $rack->getID(),
+            'pdus_id' => $sidePdu->getID(),
+            'position' => 1,
+            'side' => LegacyPduRack::SIDE_LEFT,
+        ];
+        $sidePlacement = new LegacyPduRack();
+        $this->boolean($sidePlacement->can(-1, CREATE, $sideInput))->isTrue();
+        $sideID = $sidePlacement->add($sideInput);
+        $this->integer($sideID)->isGreaterThan(0);
+        $this->checkInput($sidePlacement, $sideID, $sideInput);
+        $render = function (bool $reserved = false) use ($rack, $sidePlacement, $rackPdu, $freePdu): array {
+            $form = new LegacyItem_Rack();
+            $form->getEmpty();
+            ob_start();
+            try {
+                $form->showForm(0, [
+                    'racks_id' => $rack->getID(),
+                    'is_reserved' => $reserved,
+                ]);
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->integer(preg_match('/<input\b(?=[^>]*\bid="used_input")[^>]*\bvalue="([^"]*)"/s', $html, $input))->isIdenticalTo(1);
+            $used = json_decode(html_entity_decode($input[1], ENT_QUOTES, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+            $sideForm = new LegacyPduRack();
+            $this->boolean($sideForm->getFromDB($sidePlacement->getID()))->isTrue();
+            ob_start();
+            try {
+                $sideForm->showForm($sidePlacement->getID());
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            preg_match_all('/const params = (\{[^\n]*\});/', $html, $matches);
+            $pduUsed = null;
+            foreach ($matches[1] as $json) {
+                $params = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+                if (($params['data']['itemtype'] ?? null) === PDU::class) {
+                    $pduUsed = $params['data']['used'];
+                    break;
+                }
+            }
+            $this->array($pduUsed)->contains((int)$sidePlacement->fields['pdus_id']);
+            $this->integer(preg_match('/<select\b(?=[^>]*\bname="pdus_id")[^>]*>.*?<\/select>/s', $html, $select))
+                ->isIdenticalTo(1);
+            $dom = new DOMDocument();
+            $this->boolean($dom->loadHTML('<html><body>' . $select[0] . '</body></html>'))->isTrue();
+            $choices = [];
+            foreach ($dom->getElementsByTagName('option') as $option) {
+                $choices[] = (int)$option->getAttribute('value');
+            }
+            $this->array($choices)->contains((int)$freePdu->getID());
+            foreach ($pduUsed as $id) {
+                $this->array($choices)->notContains((int)$id);
+            }
+            if (!in_array((int)$rackPdu->getID(), $pduUsed, true)) {
+                $this->array($choices)->contains((int)$rackPdu->getID());
+            }
+            $this->integer(preg_match('/<select\b(?=[^>]*\bname="racks_id")[^>]*>/s', $html))->isIdenticalTo(1);
+            return [$used, $pduUsed];
+        };
+        [$used, $pduUsed] = $render();
+        $this->array($used[Computer::class])->contains((int)$computer->getID());
+        $this->array($used[PDU::class])->contains((int)$rackPdu->getID())->contains((int)$sidePdu->getID());
+        $this->array($pduUsed)->contains((int)$rackPdu->getID());
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $independent = Orm::create($DB);
+        try {
+            $dirty = $independent->find(RackPlacement::class, (int)$placement->getID());
+            $dirty->is_reserved = false;
+            [$reserved] = $render(true);
+            $this->array($reserved[Computer::class])->contains((int)$computer->getID());
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->boolean($dirty->is_reserved)->isFalse();
+            Orm::read($DB, function (EntityManager $outer) use ($placement, $sidePlacement, $computer, $rackPdu, $render): void {
+                $dirty = $outer->find(RackPlacement::class, (int)$placement->getID());
+                $dirty->is_reserved = false;
+                $side = $outer->find(SidePduPlacement::class, (int)$sidePlacement->getID());
+                $side->pdus = null;
+                [$reserved, $pduUsed] = $render(true);
+                $this->array($reserved[Computer::class])->contains((int)$computer->getID());
+                $this->array($pduUsed)->contains((int)$rackPdu->getID())->contains((int)$sidePlacement->fields['pdus_id']);
+                $this->boolean($outer->contains($dirty))->isTrue();
+                $this->boolean($outer->contains($side))->isTrue();
+                $this->boolean($dirty->is_reserved)->isFalse();
+                $this->variable($side->pdus)->isNull();
+            });
+            $this->boolean($placement->update([
+                'id' => $placement->getID(),
+                'is_reserved' => 0,
+            ]))->isTrue();
+            [$reserved] = $render(true);
+            $this->array($reserved[Computer::class] ?? [])->notContains((int)$computer->getID());
+            $this->boolean($pduPlacement->delete(['id' => $pduPlacement->getID()], true))->isTrue();
+            [$used, $pduUsed] = $render();
+            $this->array($used[PDU::class])->notContains((int)$rackPdu->getID())->contains((int)$sidePdu->getID());
+            $this->array($pduUsed)->notContains((int)$rackPdu->getID());
+            $this->boolean($independent->contains($dirty))->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $independent->clear();
+        }
+    }
+
+    public function testRackOccupancyBatchesMappedTypesWithoutHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(Rack::class, [
+            'name' => '_projected_occupancy', 'entities_id' => $entity, 'number_units' => 30,
+            'max_weight' => 100, 'max_power' => 1000,
+        ]);
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $em = new class ($connection, Orm::configuration($connection->getDatabasePlatform())) extends EntityManager {
+            public array $queries = [];
+
+            public function createQuery(string $dql = ''): Query
+            {
+                return $this->queries[] = parent::createQuery($dql);
+            }
+        };
+        $listener = new class () {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([Events::postLoad], $listener);
+        try {
+            $repository = new PlacementRepository($em);
+            $this->array($repository->rackOccupancy((int)$rack->getID()))->isEmpty();
+            $this->array($em->queries)->hasSize(1);
+            $models = [];
+            $expected = [];
+            $half = [Rack::POS_LEFT => [1, 1, 0, 0], Rack::POS_RIGHT => [1, 1, 0, 0]];
+            foreach (['Computer', 'Monitor', 'NetworkEquipment', 'Peripheral', 'Enclosure', 'PDU', 'PassiveDCEquipment', 'Computer'] as $index => $kind) {
+                $models[$kind] ??= $this->createItem($kind . 'Model', [
+                    'name' => '_projected_occupancy_' . $kind, 'required_units' => 2, 'depth' => 0.5,
+                    'weight' => 10,
+                ] + ($kind === 'PDU' ? ['max_power' => 10000] : ['power_consumption' => 100]));
+                $asset = $this->createItem($kind, [
+                    'name' => '_projected_occupancy_' . $index, 'entities_id' => $entity,
+                    strtolower($kind) . 'models_id' => $models[$kind]->getID(),
+                ]);
+                $position = 3 * $index + 1;
+                $this->createItem(LegacyItem_Rack::class, [
+                    'racks_id' => $rack->getID(), 'itemtype' => $kind, 'items_id' => $asset->getID(),
+                    'position' => $position, 'orientation' => Rack::FRONT, 'hpos' => Rack::POS_NONE,
+                    'is_reserved' => $index % 2,
+                ]);
+                $expected[$position] = $expected[$position + 1] = $half;
+            }
+            $em->queries = [];
+            $rows = $repository->rackOccupancy((int)$rack->getID());
+            $this->array($rows)->hasSize(8);
+            // Two Computer assignments still use one asset/model projection.
+            $this->array($em->queries)->hasSize(8);
+            foreach ($rows as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo(['required_units' => 2, 'depth' => 0.5]);
+            }
+            $em->queries = [];
+            $statistics = $repository->rackStatistics((int)$rack->getID());
+            $this->array($statistics)->hasSize(8);
+            $this->array($em->queries)->hasSize(8);
+            foreach ($statistics as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo([
+                    'required_units' => 2, 'depth' => 0.5, 'weight' => 10,
+                    'power_consumption' => $row['itemtype'] === 'PDU' ? 0 : 100,
+                ]);
+            }
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->array($rack->getFilled())->isEqualTo($expected);
+            $render = static function () use ($rack): string {
+                ob_start();
+                try {
+                    LegacyItem_Rack::showStats($rack);
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            // PDU rated supply power must not become rack power consumption.
+            $this->string($render())->contains('.text("53%")')
+                ->contains('.text("80 / 100")')->contains('.text("700 / 1000")');
+
+            $managed = $em->find(ComputerModel::class, (int)$models['Computer']->getID());
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_computermodels', [
+                'required_units' => 1, 'depth' => 0.25, 'weight' => 30, 'power_consumption' => 200,
+            ], ['id' => $managed->id]);
+            $em->queries = [];
+            $rows = $repository->rackOccupancy((int)$rack->getID());
+            foreach ($rows as $row) {
+                $this->array($row['dimensions'])->isIdenticalTo($row['itemtype'] === 'Computer'
+                    ? ['required_units' => 1, 'depth' => 0.25]
+                    : ['required_units' => 2, 'depth' => 0.5]);
+            }
+            $this->array($em->queries)->hasSize(8);
+            $em->queries = [];
+            foreach ($repository->rackStatistics((int)$rack->getID()) as $row) {
+                $this->integer($row['dimensions']['weight'])->isIdenticalTo($row['itemtype'] === 'Computer' ? 30 : 10);
+                $this->integer($row['dimensions']['power_consumption'])->isIdenticalTo(match ($row['itemtype']) {
+                    'Computer' => 200, 'PDU' => 0, default => 100,
+                });
+            }
+            $this->array($em->queries)->hasSize(8);
+            $this->integer($managed->required_units)->isIdenticalTo(2);
+            $this->float($managed->depth)->isIdenticalTo(0.5);
+            $this->integer($managed->weight)->isIdenticalTo(10);
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $quarter = [Rack::POS_LEFT => [1, 0, 0, 0], Rack::POS_RIGHT => [1, 0, 0, 0]];
+            $expected[1] = $expected[22] = $quarter;
+            unset($expected[2], $expected[23]);
+            $this->array($rack->getFilled())->isEqualTo($expected);
+            $this->string($render())->contains('.text("47%")')
+                ->contains('.text("120 / 100")')->contains('.text("900 / 1000")');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->getEventManager()->removeEventListener([Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
+    public function testRackStatsAndOccupancyUseCurrentModelDimensions(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(Rack::class, [
+            'name' => '_stats_rack', 'entities_id' => $entity, 'number_units' => 10,
+            'max_weight' => 100, 'max_power' => 1000,
+        ]);
+        $model = $this->createItem(LegacyComputerModel::class, [
+            'name' => '_stats_half_model', 'required_units' => 2, 'depth' => 0.5,
+            'is_half_rack' => 1, 'weight' => 20, 'power_consumption' => 100,
+        ]);
+        $computers = $placements = [];
+        foreach ([
+            [1, Rack::FRONT, Rack::POS_LEFT, 0],
+            [4, Rack::REAR, Rack::POS_RIGHT, 1],
+            [7, Rack::FRONT, Rack::POS_NONE, 0],
+        ] as $index => [$position, $orientation, $hpos, $reserved]) {
+            $input = ['name' => '_stats_computer_' . $index, 'entities_id' => $entity];
+            if ($index < 2) {
+                $input['computermodels_id'] = $model->getID();
+            }
+            $computer = $this->createItem(Computer::class, $input);
+            $computers[] = (int)$computer->getID();
+            $placements[] = $this->createItem(LegacyItem_Rack::class, [
+                'racks_id' => $rack->getID(), 'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'position' => $position, 'orientation' => $orientation, 'hpos' => $hpos, 'is_reserved' => $reserved,
+            ]);
+        }
+        $this->boolean($rack->can((int)$rack->getID(), READ))->isTrue();
+        $this->boolean($rack->canEdit((int)$rack->getID()))->isTrue();
+        $renderItems = static function () use ($rack): string {
+            ob_start();
+            try {
+                LegacyItem_Rack::showItems($rack);
+                return ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+        };
+        $html = $renderItems();
+        // The list transports its rich links as JSON for the table renderer;
+        // the rack graph independently owns the itemrack_name anchor markup.
+        $this->integer(preg_match('/<script type="application\/json" id="massItem_Rack[0-9]+_config">(.*?)<\/script>/s', $html, $tableConfig))->isIdenticalTo(1);
+        $table = json_decode($tableConfig[1], true, 512, JSON_THROW_ON_ERROR);
+        $this->string($table['dataSource']['type'])->isIdenticalTo('local');
+        $this->array($table['dataSource']['rows'])->hasSize(3);
+        foreach ($placements as $index => $placement) {
+            $asset = new Computer();
+            $this->boolean($asset->getFromDB($computers[$index]))->isTrue();
+            $this->boolean($asset->can($computers[$index], READ))->isTrue();
+            $this->array(array_column($table['dataSource']['rows'], 'item'))->contains($asset->getLink());
+            $this->string($html)->contains("<a href='" . $placement->getLinkURL() . "'>")
+                ->contains("<a href='" . $asset->getLinkURL() . "' class='itemrack_name'")
+                ->contains("'>" . $asset->getName() . '</a>');
+        }
+        $session = $_SESSION;
+        try {
+            $_SESSION['glpiactiveprofile'][Rack::$rightname] = 0;
+            $this->string($renderItems())->isIdenticalTo('');
+        } finally {
+            $_SESSION = $session;
+        }
+        $frontLeft = [Rack::POS_LEFT => [1, 1, 0, 0], Rack::POS_RIGHT => [0, 0, 0, 0]];
+        $rearRight = [Rack::POS_LEFT => [0, 0, 0, 0], Rack::POS_RIGHT => [0, 0, 1, 1]];
+        $full = [Rack::POS_LEFT => [1, 1, 1, 1], Rack::POS_RIGHT => [1, 1, 1, 1]];
+        $this->array($rack->getFilled())->isEqualTo([1 => $frontLeft, 2 => $frontLeft, 4 => $rearRight, 5 => $rearRight, 7 => $full]);
+        $this->array($rack->getFilled('Computer', $computers[0]))->isEqualTo([4 => $rearRight, 5 => $rearRight, 7 => $full]);
+        $manager = Orm::create($DB);
+        try {
+            $rows = (new PlacementRepository($manager))->rackStatistics((int)$rack->getID());
+            $byAsset = array_column($rows, 'dimensions', 'items_id');
+            $this->variable($byAsset[$computers[2]])->isNull();
+            $this->array($byAsset[$computers[0]])->isIdenticalTo([
+                'required_units' => 2, 'depth' => 0.5, 'weight' => 20, 'power_consumption' => 100,
+            ]);
+        } finally {
+            $manager->clear();
+        }
+        $render = static function () use ($rack): string {
+            ob_start();
+            try {
+                LegacyItem_Rack::showStats($rack);
+                return ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+        };
+        // Reserved assignments count; an asset without a model still occupies one full unit.
+        $this->string($render())->contains('.text("30%")')
+            ->contains('.text("40 / 100")')->contains('.text("200 / 1000")');
+
+        $this->boolean($DB->update('glpi_computermodels', [
+            'required_units' => 3, 'depth' => 1, 'weight' => 30, 'power_consumption' => 200,
+        ], ['id' => $model->getID()]))->isTrue();
+        $left = [Rack::POS_LEFT => [1, 1, 1, 1], Rack::POS_RIGHT => [0, 0, 0, 0]];
+        $right = [Rack::POS_LEFT => [0, 0, 0, 0], Rack::POS_RIGHT => [1, 1, 1, 1]];
+        $this->array($rack->getFilled())->isEqualTo([1 => $left, 2 => $left, 3 => $left, 4 => $right, 5 => $right, 6 => $right, 7 => $full]);
+        $this->string($render())->contains('.text("70%")')
+            ->contains('.text("60 / 100")')->contains('.text("400 / 1000")');
+    }
+
     /**
      * Models provider
      *

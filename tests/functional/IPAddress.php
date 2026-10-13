@@ -34,11 +34,96 @@
 namespace tests\units;
 
 use DbTestCase;
+use Computer as ComputerModel;
+use NetworkPort as NetworkPortModel;
+use NetworkPortEthernet as NetworkPortEthernetModel;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
+use Doctrine\DBAL\Exception as DatabaseException;
+use IPNetwork as IPNetworkModel;
+use ReflectionProperty;
+use NetworkName as NetworkNameModel;
+use Plugin;
+use itsmng\Database\CloneInput;
+use IPAddress as IPAddressModel;
+use IPAddressCustomNameParent;
+use itsmng\Database\Entity\IPAddress as IPAddressEntity;
+use itsmng\Database\Orm;
+
+require_once dirname(__DIR__) . '/fixtures/IPAddressCustomNameParent.php';
 
 /* Test for inc/networkport.class.php */
 
 class IPAddress extends DbTestCase
 {
+    public function testNetworkNameFormsUseCurrentAddressValuesWithoutClearingLiveOwners(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        $writer = null;
+        try {
+            $this->login();
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem(ComputerModel::class, ['name' => 'form-address-' . $this->getUniqueString(), 'entities_id' => $entity]);
+            $port = $this->createItem(NetworkPortModel::class, ['itemtype' => ComputerModel::class, 'items_id' => $computer->getID(), 'instantiation_type' => NetworkPortEthernetModel::class, 'name' => 'form-address-port']);
+            $name = $this->createItem(NetworkNameModel::class, ['itemtype' => NetworkPortModel::class, 'items_id' => $port->getID(), 'name' => 'form-address-name']);
+            $other = $this->createItem(NetworkNameModel::class, ['name' => 'other-form-address', 'entities_id' => $entity]);
+            $first = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.201']);
+            $second = $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $name->getID(), 'name' => '192.0.2.202']);
+            $this->createItem(IPAddressModel::class, ['itemtype' => NetworkNameModel::class, 'items_id' => $other->getID(), 'name' => '192.0.2.204']);
+            $readForm = static function () use ($port): array {
+                $form = NetworkNameModel::showFormForNetworkPort($port->getID());
+                $section = reset($form);
+                $fields = array_values(array_filter($section['inputs'], static fn ($field): bool => is_array($field) && ($field['type'] ?? null) === 'multiSelect'));
+                return $fields[0]['values'];
+            };
+            $values = $readForm();
+            $this->array($values)->hasSize(2);
+            $byId = array_column($values, null, 'id');
+            $this->array(array_keys($byId[$first->getID()]))->isIdenticalTo(['id', 'NetworkName__ipaddresses']);
+            $this->string($byId[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.201');
+            $this->output(static fn () => $name->showForm($name->getID()))->contains('192.0.2.201')->notContains('192.0.2.204');
+            $connection = $DB->getDoctrineConnection();
+            if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+                foreach ($values as $value) {
+                    $this->integer($value['id']);
+                }
+            }
+            foreach ([null, 'null', 'NULL', 'Null', 'nUlL'] as $sentinel) {
+                $this->array(IPAddressModel::getFormOptions(NetworkNameModel::class, $sentinel))->isEmpty();
+            }
+            $writer = Orm::create($DB);
+            $live = $writer->find(IPAddressEntity::class, (int)$first->getID());
+            $live->name = 'Independent unflushed address';
+            $this->boolean($first->update(['id' => $first->getID(), 'name' => '192.0.2.203']))->isTrue();
+            $connection->update('glpi_ipaddresses', ['name' => null, 'is_deleted' => true, 'is_dynamic' => true], ['id' => $second->getID()]);
+            $fresh = array_column($readForm(), null, 'id');
+            $this->string($fresh[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.203');
+            $this->variable($fresh[$second->getID()]['NetworkName__ipaddresses'])->isNull();
+            $this->string($byId[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.201');
+            $this->boolean($writer->contains($live))->isTrue();
+            $this->string($live->name)->isIdenticalTo('Independent unflushed address');
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($first, $readForm): void {
+                    $owned = $outer->find(IPAddressEntity::class, (int)$first->getID());
+                    $owned->name = 'Outer unflushed address';
+                    $fresh = array_column($readForm(), null, 'id');
+                    $this->string($fresh[$first->getID()]['NetworkName__ipaddresses'])->isIdenticalTo('192.0.2.203');
+                    $this->boolean($outer->contains($owned))->isTrue();
+                    $this->string($owned->name)->isIdenticalTo('Outer unflushed address');
+                }
+            );
+            $this->output(static fn () => $name->showForm($name->getID()))->contains('192.0.2.203')->notContains('192.0.2.201');
+            $this->boolean($first->delete(['id' => $first->getID()], true))->isTrue();
+            $this->array($readForm())->hasSize(1);
+        } finally {
+            $writer?->clear();
+            $_SESSION = $session;
+        }
+    }
+
     public function testAddIPV4()
     {
         $this->login();
@@ -135,7 +220,82 @@ class IPAddress extends DbTestCase
             unset($currentIP['is_dynamic']);
             unset($currentIP['mainitems_id']);
             unset($currentIP['mainitemtype']);
+            $expected += ['networknames_id' => $networkName_id, 'opaque_parent_id' => null];
+            ksort($currentIP);
+            ksort($expected);
             $this->array($currentIP)->isIdenticalTo($expected);
+            $matches = array_values(array_filter(
+                IPAddressModel::getItemsByIPAddress($name),
+                static fn (array $chain): bool => (int)$chain[array_key_last($chain)]->getID() === (int)$id
+            ));
+            $this->array($matches)->hasSize(1);
+            $this->array($matches[0])->hasSize(2);
+            $this->string($matches[0][0]->getType())->isIdenticalTo('NetworkName');
+            $this->integer((int)$matches[0][0]->getID())->isIdenticalTo((int)$networkName_id);
+            $this->string($matches[0][1]->getType())->isIdenticalTo('IPAddress');
+            $this->string($matches[0][1]->getTextual())->isIdenticalTo($expected['name']);
+        }
+
+        // Exercise the production rule path with an actual asset/port/name/address chain.
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $computer = $this->createItem('Computer', [
+            'name' => 'parsed-ip-' . $this->getUniqueString(), 'entities_id' => $entityId,
+        ]);
+        $port = $this->createItem('NetworkPort', [
+            'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entityId,
+            'instantiation_type' => 'NetworkPortEthernet', 'name' => 'parsed-ip-port', 'logical_number' => 1,
+        ]);
+        $ownedName = $this->createItem('NetworkName', [
+            'itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'entities_id' => $entityId,
+            'name' => 'parsed-ip-owner',
+        ]);
+        $lookup = sprintf('198.18.%d.%d', $computer->getID() % 255, $port->getID() % 254 + 1);
+        $ownedAddress = $this->createItem(IPAddressModel::class, [
+            'name' => $lookup, 'itemtype' => 'NetworkName', 'items_id' => $ownedName->getID(),
+        ]);
+        $addressId = (int)$ownedAddress->getID();
+        $chains = IPAddressModel::getItemsByIPAddress('  ' . $lookup . '  ');
+        $ownedChains = array_values(array_filter($chains, static fn (array $chain): bool =>
+            (int)$chain[array_key_last($chain)]->getID() === $addressId));
+        $this->array($ownedChains)->hasSize(1);
+        $this->array(array_map(static fn ($item): string => $item->getType(), $ownedChains[0]))
+            ->isIdenticalTo(['Computer', 'NetworkPort', 'NetworkName', 'IPAddress']);
+        $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))
+            ->isEqualTo(['id' => $computer->getID(), 'itemtype' => 'Computer']);
+        $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, PHP_INT_MAX))->isEmpty();
+
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $oldWord = (int)$ownedAddress->getField('binary_3');
+        $external = Orm::create($GLOBALS['DB']);
+        try {
+            $retained = $external->find(IPAddressEntity::class, $addressId);
+            $this->object($retained)->isInstanceOf(IPAddressEntity::class);
+            $nextWord = $oldWord + 1;
+            $parsedNext = new IPAddressModel();
+            $this->boolean($parsedNext->setAddressFromBinary([0, 0, 65535, $nextWord]))->isTrue();
+            $nextLookup = $parsedNext->getTextual();
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_3' => $nextWord], ['id' => $addressId]))->isIdenticalTo(1);
+            $oldIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($lookup));
+            $this->array($oldIds)->notContains($addressId);
+            $newIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($nextLookup));
+            $this->array($newIds)->contains($addressId);
+            $this->string($ownedChains[0][3]->getTextual())->isIdenticalTo($lookup);
+            $this->boolean($external->contains($retained))->isTrue();
+            $this->integer($retained->binary_3)->isIdenticalTo($oldWord);
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_3' => $oldWord, 'is_deleted' => 1], ['id' => $addressId]))->isIdenticalTo(1);
+            $deletedIds = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($lookup));
+            $this->array($deletedIds)->contains($addressId);
+            $this->integer($connection->update('glpi_computers', ['is_deleted' => 1], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))->isEmpty();
+            $this->integer($connection->update('glpi_computers', ['is_deleted' => 0, 'is_template' => 1], ['id' => $computer->getID()]))->isIdenticalTo(1);
+            $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))->isEmpty();
+        } finally {
+            $connection->update('glpi_ipaddresses', ['binary_3' => $oldWord, 'is_deleted' => 0], ['id' => $addressId]);
+            $connection->update('glpi_computers', ['is_deleted' => 0, 'is_template' => 0], ['id' => $computer->getID()]);
+            $external->clear();
+        }
+        foreach (['', 'not an address', null, ['198.18.0.1']] as $invalid) {
+            $this->array(IPAddressModel::getItemsByIPAddress($invalid))->isEmpty();
         }
 
         $IPV4ShouldNotWork = [
@@ -167,7 +327,6 @@ class IPAddress extends DbTestCase
 
         }
     }
-
 
     public function testAddIPV6()
     {
@@ -242,7 +401,84 @@ class IPAddress extends DbTestCase
             unset($currentIP['mainitems_id']);
             unset($currentIP['mainitemtype']);
             //var_dump($currentIP);
+            $expected += ['networknames_id' => $networkName_id, 'opaque_parent_id' => null];
+            ksort($currentIP);
+            ksort($expected);
             $this->array($currentIP)->isIdenticalTo($expected);
+            $matches = array_values(array_filter(
+                IPAddressModel::getItemsByIPAddress($name),
+                static fn (array $chain): bool => (int)$chain[array_key_last($chain)]->getID() === (int)$id
+            ));
+            $this->array($matches)->hasSize(1);
+            $this->array($matches[0])->hasSize(2);
+            $this->string($matches[0][0]->getType())->isIdenticalTo('NetworkName');
+            $this->integer((int)$matches[0][0]->getID())->isIdenticalTo((int)$networkName_id);
+            $this->string($matches[0][1]->getType())->isIdenticalTo('IPAddress');
+            $this->string($matches[0][1]->getTextual())->isIdenticalTo($expected['name']);
+        }
+
+        // A changed IPv6 prefix must stop matching the old normalized address.
+        $connection = $GLOBALS['DB']->getDoctrineConnection();
+        $ipv6Id = (int)$id;
+        try {
+            $this->integer($connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0'] + 1], ['id' => $ipv6Id]))->isIdenticalTo(1);
+            $identifiers = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($name));
+            $this->array($identifiers)->notContains($ipv6Id);
+            $changed = new IPAddressModel();
+            $this->boolean($changed->setAddressFromBinary([
+                $expected['binary_0'] + 1, $expected['binary_1'], $expected['binary_2'], $expected['binary_3'],
+            ]))->isTrue();
+            $changedIdentifiers = array_map(static fn (array $chain): int => (int)$chain[array_key_last($chain)]->getID(), IPAddressModel::getItemsByIPAddress($changed->getTextual()));
+            $this->array($changedIdentifiers)->contains($ipv6Id);
+        } finally {
+            $connection->update('glpi_ipaddresses', ['binary_0' => $expected['binary_0']], ['id' => $ipv6Id]);
+        }
+
+        // Two real assets in the same entity differ only in the first IPv6 word.
+        // Entity filtering cannot mask an incorrect prefix match in the rule path.
+        $entityId = (int)$_SESSION['glpiactive_entity'];
+        $owners = [];
+        foreach (['2001', '2002'] as $prefix) {
+            $computer = $this->createItem('Computer', [
+                'name' => 'exact-ipv6-' . $this->getUniqueString(), 'entities_id' => $entityId,
+            ]);
+            $port = $this->createItem('NetworkPort', [
+                'itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entityId,
+                'instantiation_type' => 'NetworkPortEthernet', 'name' => 'exact-ipv6-port', 'logical_number' => 1,
+            ]);
+            $ownedName = $this->createItem('NetworkName', [
+                'itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'entities_id' => $entityId,
+                'name' => 'exact-ipv6-owner',
+            ]);
+            if (!$owners) {
+                $suffix = [$computer->getID() % 65535 + 1, $port->getID() % 65535 + 1];
+            }
+            $compressed = sprintf('%s:db8:5a6b::%x:%x', $prefix, $suffix[0], $suffix[1]);
+            $address = $this->createItem(IPAddressModel::class, [
+                'name' => $compressed, 'itemtype' => 'NetworkName', 'items_id' => $ownedName->getID(),
+            ]);
+            $owners[] = [$computer, $port, $ownedName, $address, $compressed,
+                sprintf('%s:0DB8:5A6B:0000:0000:0000:%04X:%04X', $prefix, $suffix[0], $suffix[1])];
+        }
+        $this->integer((int)$owners[0][3]->getField('binary_0'))
+            ->isNotEqualTo((int)$owners[1][3]->getField('binary_0'));
+        foreach ([1, 2, 3] as $word) {
+            $this->integer((int)$owners[0][3]->getField('binary_' . $word))
+                ->isIdenticalTo((int)$owners[1][3]->getField('binary_' . $word));
+        }
+        foreach ($owners as [$computer, $port, $ownedName, $address, $compressed, $expanded]) {
+            foreach ([$compressed, $expanded, '  ' . $expanded . '  '] as $lookup) {
+                $chains = IPAddressModel::getItemsByIPAddress($lookup);
+                $this->array($chains)->hasSize(1);
+                $this->array(array_map(static fn ($item): string => $item->getType(), $chains[0]))
+                    ->isIdenticalTo(['Computer', 'NetworkPort', 'NetworkName', 'IPAddress']);
+                $this->array(array_map(static fn ($item): int => (int)$item->getID(), $chains[0]))
+                    ->isIdenticalTo([(int)$computer->getID(), (int)$port->getID(), (int)$ownedName->getID(), (int)$address->getID()]);
+                $this->string($chains[0][3]->getTextual())->isIdenticalTo($compressed);
+                $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, $entityId))
+                    ->isEqualTo(['id' => $computer->getID(), 'itemtype' => 'Computer']);
+                $this->array(IPAddressModel::getUniqueItemByIPAddress($lookup, PHP_INT_MAX))->isEmpty();
+            }
         }
 
         $IPV6ShouldNotWork = [
@@ -274,6 +510,190 @@ class IPAddress extends DbTestCase
             $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo($expectedSession);
             $_SESSION['MESSAGE_AFTER_REDIRECT'] = [];
 
+        }
+    }
+    public function testAdoptedNameOwnershipPreservesAddressContextCloneAndPurge(): void
+    {
+        $this->login();
+        global $DB;
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $computer = $this->createItem('Computer', ['name' => 'ip-parent-' . $this->getUniqueString(), 'entities_id' => $entity]);
+        $port = $this->createItem('NetworkPort', ['itemtype' => 'Computer', 'items_id' => $computer->getID(), 'entities_id' => $entity, 'instantiation_type' => 'NetworkPortEthernet', 'name' => 'ip-port-' . $this->getUniqueString()]);
+        $first = $this->createItem(NetworkNameModel::class, ['itemtype' => 'NetworkPort', 'items_id' => $port->getID(), 'name' => 'ip-first-' . strtolower($this->getUniqueString())]);
+        $second = $this->createItem(NetworkNameModel::class, ['entities_id' => $entity, 'name' => 'ip-second-' . strtolower($this->getUniqueString())]);
+        $network = $this->createItem(IPNetworkModel::class, ['name' => 'ip-link-' . $this->getUniqueString(), 'entities_id' => $entity, 'network' => '192.0.2.0 / 255.255.255.0', 'gateway' => '192.0.2.1']);
+        $address = $this->createItem(IPAddressModel::class, ['itemtype' => 'NetworkName', 'items_id' => $first->getID(), 'name' => '192.0.2.61']);
+        $id = (int)$address->getID();
+        $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id = ? AND ipnetworks_id = ?', [$id, $network->getID()]))->isIdenticalTo(1);
+        $this->integer((int)$address->fields['networknames_id'])->isIdenticalTo((int)$first->getID());
+        $this->variable($address->fields['opaque_parent_id'])->isNull();
+        $this->string($address->fields['mainitemtype'])->isIdenticalTo('Computer');
+        $this->integer((int)$address->fields['mainitems_id'])->isIdenticalTo((int)$computer->getID());
+        $cloneId = $address->clone(['items_id' => $second->getID()]);
+        $this->integer($cloneId)->isGreaterThan(0);
+        $clone = new IPAddressModel();
+        $this->boolean($clone->getFromDB($cloneId))->isTrue();
+        $this->integer((int)$clone->fields['networknames_id'])->isIdenticalTo((int)$second->getID());
+        $this->variable($clone->fields['opaque_parent_id'])->isNull();
+        $this->integer((int)$clone->fields['mainitems_id'])->isIdenticalTo(0);
+        $this->variable($clone->fields['mainitemtype'])->isNull();
+        $this->string($clone->fields['name'])->isIdenticalTo('192.0.2.61');
+        foreach (['version', 'binary_0', 'binary_1', 'binary_2', 'binary_3'] as $field) {
+            $this->variable($clone->fields[$field])->isIdenticalTo($address->fields[$field]);
+        }
+        $this->integer((int)$DB->getDoctrineConnection()->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id = ? AND ipnetworks_id = ?', [$cloneId, $network->getID()]))->isIdenticalTo(1);
+        $overrideId = $address->clone(['items_id' => $second->getID(), 'name' => '192.0.2.65']);
+        $this->integer($overrideId)->isGreaterThan(0);
+        $override = new IPAddressModel();
+        $this->boolean($override->getFromDB($overrideId))->isTrue();
+        $this->string($override->fields['name'])->isIdenticalTo('192.0.2.65');
+        $this->integer((int)$override->fields['networknames_id'])->isIdenticalTo((int)$second->getID());
+        $repeatId = $address->clone(['items_id' => $second->getID()]);
+        $this->integer($repeatId)->isGreaterThan(0);
+        $repeat = new IPAddressModel();
+        $this->boolean($repeat->getFromDB($repeatId))->isTrue();
+        $this->string($repeat->fields['name'])->isIdenticalTo('192.0.2.61');
+        $this->boolean($address->clone(['items_id' => $second->getID(), 'name' => 'not-an-address']))->isFalse();
+        $this->hasSessionMessages(ERROR, [sprintf(__('%1$s: %2$s'), __('Invalid IP address'), 'not-an-address')]);
+        $customType = IPAddressCustomNameParent::class;
+        $wireType = addslashes($customType);
+        $this->object(getItemForItemtype($wireType))->isInstanceOf(IPAddressCustomNameParent::class);
+        $custom = $this->createItem(IPAddressModel::class, [
+            'itemtype' => $wireType,
+            'items_id' => $second->getID(),
+            'name' => '192.0.2.62'
+        ]);
+        $customId = (int)$custom->getID();
+        $this->integer($customId)->isGreaterThan(0);
+        $this->string($custom->fields['itemtype'])->isIdenticalTo($customType);
+        $actualParent = getItemForItemtype($custom->fields['itemtype']);
+        $this->object($actualParent)->isInstanceOf(IPAddressCustomNameParent::class);
+        $this->boolean($actualParent->getFromDB((int)$custom->fields['items_id']))->isTrue();
+        $this->integer((int)$actualParent->getID())->isIdenticalTo((int)$second->getID());
+        $this->string($actualParent::getTable())->isIdenticalTo(NetworkNameModel::getTable());
+        $this->variable($custom->fields['networknames_id'])->isNull();
+        $this->integer((int)$custom->fields['opaque_parent_id'])->isIdenticalTo((int)$second->getID());
+        $this->boolean($custom->update(['id' => $customId, 'name' => '192.0.2.64']))->isTrue();
+        $this->string($custom->fields['itemtype'])->isIdenticalTo(IPAddressCustomNameParent::class);
+        $this->integer((int)$custom->fields['items_id'])->isIdenticalTo((int)$second->getID());
+        foreach ([0, -1, null] as $invalid) {
+            $refused = new IPAddressModel();
+            $this->boolean($refused->add(['itemtype' => 'NetworkName', 'items_id' => $invalid, 'name' => '192.0.2.63']))->isFalse();
+        }
+        $connection = $DB->getDoctrineConnection();
+        foreach ([
+            ['networknames_id' => PHP_INT_MAX],
+            ['networknames_id' => 0],
+            ['itemtype' => 'IPAddressCustomNameParent'],
+            ['opaque_parent_id' => 1],
+        ] as $invalid) {
+            $connection->beginTransaction();
+            try {
+                $this->exception(static fn () => $connection->update('glpi_ipaddresses', $invalid, ['id' => $id]))->isInstanceOf(DatabaseException::class);
+            } finally {
+                $connection->rollBack();
+            }
+        }
+        $connection->beginTransaction();
+        try {
+            $this->exception(static fn () => $connection->delete('glpi_networknames', ['id' => $first->getID()]))->isInstanceOf(DatabaseException::class);
+        } finally {
+            $connection->rollBack();
+        }
+        $this->boolean($first->delete(['id' => $first->getID()], true))->isTrue();
+        $this->boolean((new IPAddressModel())->getFromDB($id))->isFalse();
+        $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_ipaddresses_ipnetworks WHERE ipaddresses_id = ?', [$id]))->isIdenticalTo(0);
+        $this->boolean((new IPAddressModel())->getFromDB($cloneId))->isTrue();
+        $this->boolean((new IPAddressModel())->getFromDB($customId))->isTrue();
+    }
+
+    public function testOpenAddressParentInputPreservesZeroOpaqueAndCloneIdentity(): void
+    {
+        $record = new IPAddressEntity();
+        $owned = $record->normalizeInput(['itemtype' => 'NetworkName', 'items_id' => '12']);
+        $this->array($owned)->isIdenticalTo(['itemtype' => 'NetworkName', 'networknames_id' => 12, 'opaque_parent_id' => null]);
+        $zero = $record->normalizeInput(['itemtype' => 'NetworkName', 'items_id' => 0]);
+        $this->array($zero)->isIdenticalTo(['itemtype' => 'NetworkName', 'networknames_id' => null, 'opaque_parent_id' => null]);
+        $this->array($record->normalizeInput($zero + ['items_id' => 0]))->isIdenticalTo($zero);
+        foreach (['', 'networkname', 'PluginCustomParent'] as $kind) {
+            $this->array($record->normalizeInput(['itemtype' => $kind, 'items_id' => -9]))
+                ->isIdenticalTo(['itemtype' => $kind, 'networknames_id' => null, 'opaque_parent_id' => -9]);
+        }
+        foreach ([
+            ['itemtype' => 'NetworkName', 'items_id' => -1],
+            ['itemtype' => 'NetworkName', 'items_id' => null],
+            ['itemtype' => null, 'items_id' => 0],
+            ['itemtype' => 'NetworkName', 'networknames_id' => 12, 'items_id' => 13],
+            ['itemtype' => 'NetworkName', 'networknames_id' => 12, 'opaque_parent_id' => 12],
+            ['itemtype' => 'PluginCustomParent', 'items_id' => 12, 'networknames_id' => 12],
+        ] as $invalid) {
+            $this->exception(static fn () => $record->normalizeInput($invalid))->isInstanceOf(InvalidArgumentException::class);
+        }
+        $source = ['itemtype' => 'NetworkName', 'items_id' => 12, 'networknames_id' => 12, 'opaque_parent_id' => null];
+        $opaque = CloneInput::merge(IPAddressModel::getTable(), $source, ['itemtype' => 'PluginCustomParent', 'items_id' => -9]);
+        $this->variable($opaque['networknames_id'])->isNull();
+        $this->integer($opaque['opaque_parent_id'])->isIdenticalTo(-9);
+        $this->integer($opaque['items_id'])->isIdenticalTo(-9);
+    }
+
+    public function testPreparedAddressOwnerWriteRechecksActualNamePermission(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $entity = (int)$_SESSION['glpiactive_entity'];
+        $first = $this->createItem(NetworkNameModel::class, ['name' => 'ip-allowed-' . strtolower($this->getUniqueString()), 'entities_id' => $entity]);
+        $second = $this->createItem(NetworkNameModel::class, ['name' => 'ip-denied-' . strtolower($this->getUniqueString()), 'entities_id' => $entity]);
+        $address = $this->createItem(IPAddressModel::class, ['itemtype' => 'NetworkName', 'items_id' => $first->getID(), 'name' => '192.0.2.65']);
+        $id = (int)$address->getID();
+        $probe = new IPAddressPreparedNameOwner();
+        $this->boolean($probe->getFromDB($id))->isTrue();
+        $probe->preparedName = (int)$second->getID();
+        $connection = $DB->getDoctrineConnection();
+        $before = $connection->fetchAssociative('SELECT * FROM glpi_ipaddresses WHERE id=?', [$id]);
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        $denials = 0;
+        try {
+            $plugins->setValue(null, [...$active, 'ip_address_parent_fixture']);
+            $PLUGIN_HOOKS['item_can']['ip_address_parent_fixture'][NetworkNameModel::class] =
+                static function (NetworkNameModel $parent) use ($second, &$denials): void {
+                    if ((int)$parent->getID() === (int)$second->getID()) {
+                        ++$denials;
+                        $parent->right = false;
+                    }
+                };
+            $this->boolean($probe->update(['id' => $id, 'name' => '192.0.2.66']))->isFalse();
+            $this->hasSessionMessages(ERROR, [__('Cannot update item: not enough right on the parent(s) item(s)')]);
+            $this->integer($denials)->isGreaterThan(0);
+            $this->array($connection->fetchAssociative('SELECT * FROM glpi_ipaddresses WHERE id=?', [$id]))->isIdenticalTo($before);
+            $this->integer((int)$probe->fields['items_id'])->isIdenticalTo((int)$first->getID());
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+        $this->boolean($probe->update(['id' => $id, 'name' => '192.0.2.66']))->isTrue();
+        $this->integer((int)$connection->fetchOne('SELECT networknames_id FROM glpi_ipaddresses WHERE id=?', [$id]))->isIdenticalTo((int)$second->getID());
+        $this->variable($connection->fetchOne('SELECT opaque_parent_id FROM glpi_ipaddresses WHERE id=?', [$id]))->isNull();
+    }
+
+}
+
+class IPAddressPreparedNameOwner extends IPAddressModel
+{
+    public ?int $preparedName = null;
+
+    public static function getTable($classname = null)
+    {
+        return IPAddressModel::getTable();
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        if ($this->preparedName !== null) {
+            $this->fields['networknames_id'] = $this->preparedName;
+            $this->updates[] = 'networknames_id';
         }
     }
 }

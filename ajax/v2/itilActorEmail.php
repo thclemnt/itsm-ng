@@ -35,8 +35,6 @@ if (!defined('GLPI_ROOT')) {
     include('../../inc/includes.php');
 }
 
-use function __;
-
 header('Content-Type: application/json; charset=UTF-8');
 Html::header_nocache();
 

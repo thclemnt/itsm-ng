@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DropdownDictionaryRepository;
+
 class RuleDictionnaryDropdownCollection extends RuleCollection
 {
     public static $rightname = 'rule_dictionnary_dropdown';
@@ -62,14 +65,8 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
             printf(__('Replay rules on existing database started on %s') . "\n", date("r"));
         }
 
-        // Get All items
-        $criteria = ['FROM' => $this->item_table];
-        if ($offset) {
-            $criteria['START'] = $offset;
-            $criteria['LIMIT'] = 999999999;
-        }
-        $iterator   = $DB->request($criteria);
-        $nb         = count($iterator) + $offset;
+        $repository = new DropdownDictionaryRepository(Orm::create($DB));
+        $nb         = max((int)$offset, $repository->count($this->item_table));
         $i          = $offset;
         if ($nb > $offset) {
             // Step to refresh progressbar
@@ -77,7 +74,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
             $send              = [];
             $send["tablename"] = $this->item_table;
 
-            while ($data = $iterator->next()) {
+            foreach ($repository->rows($this->item_table, (int)$offset) as $data) {
                 if (!($i % $step)) {
                     if (isCommandLine()) {
                         //TRANS: %1$s is a row, %2$s is total rows
@@ -147,43 +144,8 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
         }
 
         $model_table = getPlural(str_replace('models', '', $this->item_table));
-        $model_field = getForeignKeyFieldForTable($this->item_table);
-
-        // Need to give manufacturer from item table
-        $criteria = [
-           'SELECT'          => [
-              'glpi_manufacturers.id AS idmanu',
-              'glpi_manufacturers.name AS manufacturer',
-              $this->item_table . '.id',
-              $this->item_table . '.name AS name',
-              $this->item_table . '.comment'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $this->item_table,
-           'INNER JOIN'      => [
-              $model_table         => [
-                 'ON' => [
-                    $this->item_table => 'id',
-                    $model_table      => $model_field
-                 ]
-              ]
-           ],
-           'LEFT JOIN'       => [
-              'glpi_manufacturers' => [
-                 'ON' => [
-                    'glpi_manufacturers' => 'id',
-                    $model_table         => 'manufacturers_id'
-                 ]
-              ]
-           ]
-        ];
-
-        if ($offset) {
-            $criteria['START'] = (int)$offset;
-        }
-
-        $iterator = $DB->request($criteria);
-        $nb      = count($iterator) + $offset;
+        $repository = new DropdownDictionaryRepository(Orm::create($DB));
+        $nb      = max((int)$offset, $repository->modelCount($this->item_table, $model_table));
         $i       = $offset;
 
         if ($nb > $offset) {
@@ -191,7 +153,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
             $step    = (($nb > 20) ? floor($nb / 20) : 1);
             $tocheck = [];
 
-            while ($data = $iterator->next()) {
+            foreach ($repository->modelRows($this->item_table, $model_table, (int)$offset) as $data) {
                 if (!($i % $step)) {
                     if (isCommandLine()) {
                         printf(__('Replay rules on existing database: %1$s/%2$s') . "\r", $i, $nb);
@@ -215,24 +177,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                 );
 
                 if ($data['id'] != $ID) {
-                    $tocheck[$data["id"]][] = $ID;
-                    $where = [
-                       $model_field => $data['id']
-                    ];
-
-                    if (empty($data['idmanu'])) {
-                        $where['OR'] = [
-                           ['manufacturers_id'  => null],
-                           ['manufacturers_id'  => 0]
-                        ];
-                    } else {
-                        $where['manufacturers_id'] = $data['idmanu'];
-                    }
-                    $DB->update(
-                        $model_table,
-                        [$model_field => $ID],
-                        $where
-                    );
+                    $tocheck[(int)$data['id']][(int)($data['idmanu'] ?? 0)] = (int)$ID;
                 }
 
                 $i++;
@@ -244,61 +189,9 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                 }
             }
 
-            foreach ($tocheck as $ID => $tab) {
-                $result = $DB->request([
-                   'COUNT'  => 'cpt',
-                   'FROM'   => $model_table,
-                   'WHERE'  => [$model_field => $ID]
-                ])->next();
-
-                $deletecartmodel  = false;
-
-                // No item left : delete old item
-                if (
-                    $result
-                    && ($result['cpt'] == 0)
-                ) {
-                    $DB->delete(
-                        $this->item_table,
-                        [
-                          'id'  => $ID
-                        ]
-                    );
-                    $deletecartmodel  = true;
-                }
-
-                // Manage cartridge assoc Update items
-                if ($this->getRuleClassName() == 'RuleDictionnaryPrinterModel') {
-                    $iterator2 = $DB->request([
-                       'FROM'   => 'glpi_cartridgeitems_printermodels',
-                       'WHERE'  => ['printermodels_id' => $ID]
-                    ]);
-
-                    if (count($iterator2)) {
-                        // Get compatible cartridge type
-                        $carttype = [];
-                        while ($data = $iterator2->next()) {
-                            $carttype[] = $data['cartridgeitems_id'];
-                        }
-                        // Delete cartrodges_assoc
-                        if ($deletecartmodel) {
-                            $DB->delete(
-                                'glpi_cartridgeitems_printermodels',
-                                [
-                                  'printermodels_id'   => $ID
-                                ]
-                            );
-                        }
-                        // Add new assoc
-                        $ct = new CartridgeItem();
-                        foreach ($carttype as $cartID) {
-                            foreach ($tab as $model) {
-                                $ct->addCompatibleType($cartID, $model);
-                            }
-                        }
-                    }
-                }
-            } // each tocheck
+            foreach ($tocheck as $ID => $moves) {
+                $repository->replaceModel($this->item_table, $model_table, (int)$ID, $moves);
+            }
         }
 
         if (isCommandLine()) {

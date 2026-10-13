@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ObjectLockRepository;
+
 /**
  * @since 9.1
  */
@@ -222,10 +225,6 @@ class ObjectLock extends CommonDBTM
     {
         global $CFG_GLPI;
 
-        // should get locking user info
-        $user = new User();
-        $user->getFromDB($this->fields['users_id']);
-
         $useremail     = new UserEmail();
         $showAskUnlock = $useremail->getFromDBByCrit([
            'users_id'     => $this->fields['users_id'],
@@ -289,7 +288,7 @@ class ObjectLock extends CommonDBTM
         echo $ret;
 
         $msg = "<strong class='nowrap'>";
-        $msg .= sprintf(__('Locked by %s'), "<a href='" . $user->getLinkURL() . "'>" . $userdata['name'] . "</a>");
+        $msg .= sprintf(__('Locked by %s'), "<a href='" . $userdata['link'] . "'>" . $userdata['name'] . "</a>");
         $msg .= "&nbsp;" . Html::showToolTip($userdata["comment"], ['link' => $userdata['link'], 'display' => false]);
         $msg .= " -> " . Html::convDateTime($this->fields['date_mod']);
         $msg .= "</strong>";
@@ -682,12 +681,10 @@ class ObjectLock extends CommonDBTM
         $actionCode = 0; // by default
         $task->setVolume(0); // start with zero
 
-        $lockedItems = getAllDataFromTable(
-            getTableForItemType(__CLASS__),
-            [
-              'date_mod' => ['<', date("Y-m-d H:i:s", time() - ($task->fields['param'] * HOUR_TIMESTAMP))]
-            ]
-        );
+        global $DB;
+        $before = (new DateTimeImmutable())->setTimestamp(time() - ($task->fields['param'] * HOUR_TIMESTAMP));
+        $lockedItems = (new ObjectLockRepository(Orm::create($DB)))
+            ->expired($before);
 
         foreach ($lockedItems as $row) {
             $ol = new self();

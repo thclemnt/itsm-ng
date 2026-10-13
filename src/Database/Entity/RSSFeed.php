@@ -1,0 +1,99 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use DateTimeInterface;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ApplicationManaged;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_rssfeeds')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_rssfeeds_name')]
+#[SchemaIndex('users_id', ['users_id'], postgresqlName: 'glpi_rssfeeds_users_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_rssfeeds_date_mod')]
+#[SchemaIndex('have_error', ['have_error'], postgresqlName: 'glpi_rssfeeds_have_error')]
+#[SchemaIndex('is_active', ['is_active'], postgresqlName: 'glpi_rssfeeds_is_active')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_rssfeeds_date_creation')]
+class RSSFeed
+{
+    /** @var Collection<int, RSSFeedUser> */
+    #[ORM\OneToMany(targetEntity: RSSFeedUser::class, mappedBy: 'rssfeeds')]
+    public Collection $audienceUsers;
+
+    /** @var Collection<int, GroupRSSFeed> */
+    #[ORM\OneToMany(targetEntity: GroupRSSFeed::class, mappedBy: 'rssfeeds')]
+    public Collection $audienceGroups;
+
+    /** @var Collection<int, ProfileRSSFeed> */
+    #[ORM\OneToMany(targetEntity: ProfileRSSFeed::class, mappedBy: 'rssfeeds')]
+    public Collection $audienceProfiles;
+
+    /** @var Collection<int, EntityRSSFeed> */
+    #[ORM\OneToMany(targetEntity: EntityRSSFeed::class, mappedBy: 'rssfeeds')]
+    public Collection $audienceEntities;
+
+    public function __construct()
+    {
+        $this->audienceUsers = new ArrayCollection();
+        $this->audienceGroups = new ArrayCollection();
+        $this->audienceProfiles = new ArrayCollection();
+        $this->audienceEntities = new ArrayCollection();
+    }
+
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
+    public ?string $name = null;
+
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_rssfeeds_users_id', options: ['default' => null])]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[ApplicationManaged]
+    public ?User $users = null;
+
+    #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
+    public ?string $comment = null;
+
+    #[ORM\Column(name: '`url`', type: 'text', nullable: true)]
+    public ?string $url = null;
+
+    #[ORM\Column(name: '`refresh_rate`', type: 'integer', nullable: false, options: ['default' => '86400'])]
+    public int $refresh_rate = 86400;
+
+    #[ORM\Column(name: '`max_items`', type: 'integer', nullable: false, options: ['default' => '20'])]
+    public int $max_items = 20;
+
+    #[ORM\Column(name: '`have_error`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $have_error = false;
+
+    #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_active = false;
+
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
+
+    #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
+}

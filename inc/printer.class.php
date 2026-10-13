@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use itsmng\Database\ComputerItemReadOperation;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CartridgeRepository;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -41,7 +48,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Printer extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -131,8 +139,6 @@ class Printer extends CommonDBTM
     **/
     public function canUnrecurs()
     {
-        global $DB;
-
         $ID = $this->fields['id'];
 
         if (
@@ -149,56 +155,7 @@ class Printer extends CommonDBTM
         $entities = getAncestorsOf("glpi_entities", $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
 
-        // RELATION : printers -> _port -> _wire -> _port -> device
-
-        // Evaluate connection in the 2 ways
-        $tabend = ['networkports_id_1' => 'networkports_id_2',
-                   'networkports_id_2' => 'networkports_id_1'];
-        foreach ($tabend as $enda => $endb) {
-            $criteria = [
-               'SELECT'       => [
-                  'itemtype',
-                  new QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ' . $DB->quoteName('ids'))
-               ],
-               'FROM'         => 'glpi_networkports_networkports',
-               'INNER JOIN'   => [
-                  'glpi_networkports'  => [
-                     'ON'  => [
-                        'glpi_networkports_networkports' => $endb,
-                        'glpi_networkports'              => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_networkports_networkports.' . $enda   => new QuerySubQuery([
-                     'SELECT' => 'id',
-                     'FROM'   => 'glpi_networkports',
-                     'WHERE'  => [
-                        'itemtype'  => $this->getType(),
-                        'items_id'  => $ID
-                     ]
-                  ])
-               ],
-               'GROUPBY'      => 'itemtype'
-            ];
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $itemtable = getTableForItemType($data["itemtype"]);
-                if ($item = getItemForItemtype($data["itemtype"])) {
-                    // For each itemtype which are entity dependant
-                    if ($item->isEntityAssign()) {
-                        if (
-                            countElementsInTable($itemtable, ['id' => $data["ids"],
-                                                   'NOT' => [ 'entities_id' => $entities]]) > 0
-                        ) {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-        return true;
+        return !NetworkPort::hasConnectionsOutsideEntities($this->getType(), (int)$ID, $entities);
     }
 
 
@@ -244,15 +201,12 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $DB->update(
-            'glpi_cartridges',
-            [
-              'printers_id' => 'NULL'
-            ],
-            [
-              'printers_id' => $this->fields['id']
-            ]
-        );
+        $em = Orm::create($DB);
+        try {
+            (new CartridgeRepository($em))->detachPrinter((int)$this->getID());
+        } finally {
+            $em->clear();
+        }
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -461,19 +415,12 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'computers_id',
-           'FROM'   => 'glpi_computers_items',
-           'WHERE'  => [
-              'itemtype'  => $this->getType(),
-              'items_id'  => $this->fields['id']
-           ]
-        ]);
-        $tab = [];
-        while ($data = $iterator->next()) {
-            $tab['Computer'][$data['computers_id']] = $data['computers_id'];
+        $read = ComputerItemReadOperation::forDatabase($DB);
+        try {
+            return $read->linkedItems($this->getType(), (int)$this->getID());
+        } finally {
+            $read->close();
         }
-        return $tab;
     }
 
 
@@ -814,23 +761,16 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        //Look for the software by his name in GLPI for a specific entity
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'is_deleted'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'name'         => $name,
-              'is_template'  => 0,
-              'entities_id'  => $entity
-           ]
-        ]);
+        $rows = MappedReads::matching($DB, self::getTable(), [
+            'name' => $name,
+            'is_template' => false, 'entities_id' => $entity,
+        ], ['id ASC'], 1);
 
-        if (count($iterator) > 0) {
-            //Printer already exists for this entity, get its ID
-            $data = $iterator->next();
+        if ($rows) {
+            $data = reset($rows);
             $ID   = $data["id"];
 
-            // restore software
+            // Restore the printer.
             if ($data['is_deleted']) {
                 $this->removeFromTrash($ID);
             }
@@ -864,17 +804,13 @@ class Printer extends CommonDBTM
             $manufacturer_id = Dropdown::importExternal('Manufacturer', $manufacturer);
         }
 
-        //If there's a printer in a parent entity with the same name and manufacturer
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'manufacturers_id'   => $manufacturer_id,
-              'name'               => $name,
-           ] + getEntitiesRestrictCriteria(self::getTable, 'entities_id', $entity, true)
-        ]);
+        // Reuse an asset visible from the requested entity, including recursive ancestors.
+        $rows = MappedReads::matching($DB, self::getTable(), [
+            'manufacturers_id' => $manufacturer_id,
+            'name' => $name,
+        ] + getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $entity, true), ['id ASC'], 1);
 
-        if ($printer = $iterator->next()) {
+        if ($printer = reset($rows)) {
             $id = $printer["id"];
         } else {
             $input["name"]             = $name;

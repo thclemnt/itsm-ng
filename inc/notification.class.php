@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\LegacyValues;
+use itsmng\Database\RowIterator;
+use itsmng\Domain\NotificationDeliveryPlan;
+use itsmng\Domain\NotificationDeliveryService;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -614,13 +619,19 @@ class Notification extends CommonDBTM
      *
      * @param array $options Options
      *
-     * @return void
+     * @return bool|int|null False on refusal (including a mode's integer 0),
+     *                       otherwise the mode result; legacy void returns NULL.
     **/
     public static function send($options)
     {
         $classname = Notification_NotificationTemplate::getModeClass($options['mode']);
+        if (!class_exists($classname)) {
+            Toolbox::logWarning('Missing notification class for mode ' . $options['mode'] . ' (' . $classname . ')');
+            return false;
+        }
         $notif = new $classname();
-        $notif->sendNotification($options);
+        $result = $notif->sendNotification($options);
+        return $result === 0 ? false : $result;
     }
 
     /**
@@ -628,12 +639,14 @@ class Notification extends CommonDBTM
      *
      * @param array $options Options
      *
-     * @return void
+     * @return bool|int|null False on refusal (including a mode's integer 0),
+     *                       otherwise the mode result; legacy void returns NULL.
     **/
     public static function sendChat($options)
     {
         $sendRocket = new NotificationChat();
-        $sendRocket->sendNotification($options);
+        $result = $sendRocket->sendNotification($options);
+        return $result === 0 ? false : $result;
     }
 
 
@@ -660,58 +673,36 @@ class Notification extends CommonDBTM
      * @param string $itemtype Item type
      * @param int    $entity   Restrict to entity
      *
-     * @return ResultSet
+     * @return RowIterator
     **/
     public static function getNotificationsByEventAndType($event, $itemtype, $entity)
     {
+        // Public legacy callers supply values escaped for the old SQL builder.
+        // The actual event producer uses the raw typed plan API below.
+        return new RowIterator(self::getDeliveryPlan(
+            LegacyValues::decodeString($event),
+            LegacyValues::decodeString($itemtype),
+            $entity
+        )->legacyRows());
+    }
+
+    /** The caller owns entity scope and the existing registered-mode policy. */
+    public static function getDeliveryPlan($event, $itemtype, $entity): NotificationDeliveryPlan
+    {
         global $DB, $CFG_GLPI;
 
-        $criteria = [
-           'SELECT'    => [
-              Notification::getTable() . '.*',
-              Notification_NotificationTemplate::getTable() . '.mode',
-              Notification_NotificationTemplate::getTable() . '.notificationtemplates_id'
-           ],
-           'FROM'      => Notification::getTable(),
-           'LEFT JOIN' => [
-              Entity::getTable()                              => [
-                 'ON' => [
-                    Entity::getTable()         => 'id',
-                    Notification::getTable()   => 'entities_id'
-                 ]
-              ],
-              Notification_NotificationTemplate::getTable()   => [
-                 'ON' => [
-                    Notification_NotificationTemplate::getTable()   => 'notifications_id',
-                    Notification::getTable()                        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              Notification::getTable() . '.itemtype' => $itemtype,
-              Notification::getTable() . '.event'    => $event,
-              Notification::getTable() . '.is_active' => 1,
-           ] + getEntitiesRestrictCriteria(
-               Notification::getTable(),
-               'entities_id',
-               $entity,
-               true
-           ),
-           'ORDER'     => Entity::getTable() . '.level DESC'
-        ];
-
-        $modes = Notification_NotificationTemplate::getModes();
-        $restrict_modes = [];
-        foreach ($modes as $mode => $conf) {
+        $enabledModes = [];
+        foreach (Notification_NotificationTemplate::getModes() as $mode => $configuration) {
             if ($CFG_GLPI['notifications_' . $mode]) {
-                $restrict_modes[] = $mode;
+                $enabledModes[] = $mode;
             }
         }
-        if (count($restrict_modes)) {
-            $criteria['WHERE'][Notification_NotificationTemplate::getTable() . '.mode'] = $restrict_modes;
-        }
-
-        return $DB->request($criteria);
+        return (new NotificationDeliveryService($DB))->plan(
+            $event,
+            $itemtype,
+            getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $entity, true),
+            $enabledModes
+        );
     }
 
 

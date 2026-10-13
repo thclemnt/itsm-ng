@@ -42,7 +42,7 @@ Html::header_nocache();
 Session::checkLoginUser();
 
 if (!isset($_POST['kbid']) || !isset($_POST['oldid']) || !isset($_POST['diffid'])) {
-    throw new \RuntimeException('Required argument missing!');
+    throw new RuntimeException('Required argument missing!');
 }
 
 $oldid = $_POST['oldid'];

@@ -1,0 +1,15 @@
+{
+    "provenance": {
+        "source_commit": "b66ec2f474973e779de1043a8a7d308e36531552",
+        "purpose": "Frozen processor assignment adoption. Historical targets and stock semantics never inspect current ORM metadata.",
+        "subject_policy_source": "inc/define.php itemdeviceprocessor_types; inc/item_devices.class.php mustBeAttached_1 and device-screen stock creation"
+    },
+    "table": "glpi_items_deviceprocessors",
+    "targets": {
+        "Computer": "computers"
+    },
+    "allows_empty_reference": true,
+    "minimum_selected_id": 1,
+    "canonical_stock_kind": null,
+    "legacy_stock_identity": 0
+}

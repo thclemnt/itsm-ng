@@ -33,6 +33,8 @@
 
 namespace Glpi\System\Requirement;
 
+use Toolbox;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -107,7 +109,7 @@ class DirectoryWriteAccess extends AbstractRequirement
     protected function check()
     {
 
-        $result = \Toolbox::testWriteAccessToDirectory($this->path);
+        $result = Toolbox::testWriteAccessToDirectory($this->path);
 
         $this->validated = $result === 0;
 

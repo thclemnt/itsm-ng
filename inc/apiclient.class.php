@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\APIClientRepository;
+
 /**
  * @since 9.1
  */
@@ -49,6 +53,15 @@ class APIClient extends CommonDBTM
     public static $undisclosedFields = [
        'app_token'
     ];
+
+    /** Completed active-client identities before API authentication and usage logging. */
+    public function allowedForAddress(int|string|false $ipv4, string $address): array
+    {
+        global $DB;
+
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new APIClientRepository($manager))->allowedTokens($ipv4, $address), clearCustomManager: true);
+    }
 
     public static function canCreate()
     {
@@ -312,7 +325,7 @@ class APIClient extends CommonDBTM
         }
 
         if (isset($input['ipv6']) && empty($input['ipv6'])) {
-            $input['ipv6'] = "NULL";
+            $input['ipv6'] = null;
         }
 
         if (!empty($input['_reset_app_token'])) {

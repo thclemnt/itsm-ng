@@ -35,6 +35,10 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRepository;
+
 class NotificationTargetSavedSearch_Alert extends NotificationTarget
 {
     public function getEvents()
@@ -43,24 +47,26 @@ class NotificationTargetSavedSearch_Alert extends NotificationTarget
 
         $events = [];
 
-        $iterator = $DB->request([
-           'SELECT'          => 'event',
-           'DISTINCT'        => true,
-           'FROM'            => Notification::getTable(),
-           'WHERE'           => ['itemtype' => SavedSearch_Alert::getType()]
-        ]);
+        // Resolve public table/type values before selecting the read route.
+        $table = Notification::getTable();
+        $type = SavedSearch_Alert::getType();
+        $storedEvents = Orm::readPrepared(
+            $DB,
+            static fn (): array => [(string)$table, (string)$type],
+            static fn (EntityManager $em, array $prepared): array =>
+                (new NotificationRepository($em))->savedSearchAlertEvents($prepared[0], $prepared[1])
+        );
 
-        if ($iterator->numRows()) {
-            while ($row = $iterator->next()) {
-                if (strpos((string) $row['event'], 'alert_') !== false) {
-                    $search = new SavedSearch();
-                    $search->getFromDB(str_replace('alert_', '', $row['event']));
-                    $events[$row['event']] = sprintf(
-                        __('Search  alert for "%1$s" (%2$s)'),
-                        $search->getName(),
-                        $search->getID()
-                    );
-                }
+        // The projection is closed before public saved-search loading or plugin work.
+        foreach ($storedEvents as $event) {
+            if (strpos((string) $event, 'alert_') !== false) {
+                $search = new SavedSearch();
+                $search->getFromDB(str_replace('alert_', '', $event));
+                $events[$event] = sprintf(
+                    __('Search  alert for "%1$s" (%2$s)'),
+                    $search->getName(),
+                    $search->getID()
+                );
             }
         }
         $events['alert'] = __('Private search alert');

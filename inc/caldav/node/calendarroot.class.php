@@ -39,13 +39,14 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Backend\Calendar;
 use Glpi\CalDAV\Backend\Principal;
+use Sabre\CalDAV\CalendarRoot as CalDAVCalendarRoot;
 
 /**
  * Calendar root node for CalDAV server.
  *
  * @since 9.5.0
  */
-class CalendarRoot extends \Sabre\CalDAV\CalendarRoot
+class CalendarRoot extends CalDAVCalendarRoot
 {
     public function getName()
     {

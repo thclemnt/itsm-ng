@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\DropdownChoiceContext;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContractAssetRepository;
+use itsmng\Database\Repository\TransferBindingRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -303,19 +309,10 @@ class Contract_Item extends CommonDBRelation
             $newitemtype = $itemtype;
         }
 
-        $result = $DB->request(
-            [
-              'SELECT' => 'contracts_id',
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'items_id' => $oldid,
-                 'itemtype' => $itemtype,
-              ],
-            ]
-        );
-        foreach ($result as $data) {
+        $repository = TransferBindingRepository::contracts(Orm::create($DB));
+        foreach ($repository->links($itemtype, (int)$oldid) as $data) {
             $contractitem = new self();
-            $contractitem->add(['contracts_id' => $data["contracts_id"],
+            $contractitem->add(['contracts_id' => $data["parent_id"],
                                      'itemtype'     => $newitemtype,
                                      'items_id'     => $newid]);
         }
@@ -334,8 +331,6 @@ class Contract_Item extends CommonDBRelation
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
-        global $DB;
-
         $itemtype = $item->getType();
         $ID       = $item->fields['id'];
 
@@ -357,11 +352,6 @@ class Contract_Item extends CommonDBRelation
             $used[$data['id']]      = $data['id'];
         }
         if ($canedit && ($withtemplate != 2)) {
-            if (!count($used)) {
-                $usedCondition = [];
-            } else {
-                $usedCondition = ['NOT' => [Contract::getTable() . '.id' => $used]];
-            };
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                'buttons' => [
@@ -389,15 +379,7 @@ class Contract_Item extends CommonDBRelation
                         __('Add a contract') => [
                            'type' => 'select',
                            'name' => 'contracts_id',
-                           'values' => getOptionForItems('Contract', array_merge([
-                              'entities_id' => $item->fields['entities_id'],
-                              'OR' => [
-                                 'renewal' => 1,
-                                 new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName('begin_date') . ', INTERVAL ' . $DB->quoteName('duration') . ' MONTH), CURDATE()) > 0'),
-                                 'begin_date'   => null,
-                              ],
-                              'is_deleted' => 0,
-                           ], $usedCondition)),
+                           'values' => Contract::connectionChoices($item->fields['entities_id'], false, $used, false, false),
                         ]
                      ]
                   ]
@@ -459,12 +441,7 @@ class Contract_Item extends CommonDBRelation
                 ($con->fields["begin_date"] != '')
                 && !empty($con->fields["begin_date"])
             ) {
-                $newValue[] = Infocom::getWarrantyExpir(
-                    $con->fields["begin_date"],
-                    $con->fields["duration"],
-                    0,
-                    true
-                );
+                $newValue[] = Contract::formatDeadline($con->fields, false, true);
             }
             $massive_action_values[] = 'item[' . __CLASS__ . '][' . $assocID . ']';
             $values[] = $newValue;
@@ -512,68 +489,20 @@ class Contract_Item extends CommonDBRelation
                 continue;
             }
             if ($item->canView()) {
-                $itemtable = getTableForItemType($itemtype);
-                $itemtype_2 = null;
-                $itemtable_2 = null;
-
-                $params = [
-                   'SELECT' => [
-                      $itemtable . '.*',
-                      self::getTable() . '.id AS linkid',
-                      'glpi_entities.id AS entity'
-                   ],
-                   'FROM'   => 'glpi_contracts_items',
-                   'WHERE'  => [
-                      'glpi_contracts_items.itemtype'     => $itemtype,
-                      'glpi_contracts_items.contracts_id' => $instID
-                   ]
-                ];
-
-                if ($item instanceof Item_Devices) {
-                    $itemtype_2 = $itemtype::$itemtype_2;
-                    $itemtable_2 = $itemtype_2::getTable();
-                    $namefield = 'name_device';
-                    $params['SELECT'][] = $itemtable_2 . '.designation AS ' . $namefield;
-                } else {
-                    $namefield = $item->getNameField();
-                    $namefield = "$itemtable.$namefield";
-                }
-
-                $params['LEFT JOIN'][$itemtable] = [
-                   'FKEY' => [
-                      $itemtable        => 'id',
-                      self::getTable()  => 'items_id'
-                   ]
-                ];
-                if ($itemtype != 'Entity') {
-                    $params['LEFT JOIN']['glpi_entities'] = [
-                       'FKEY' => [
-                          $itemtable        => 'entities_id',
-                          'glpi_entities'   => 'id'
-                       ]
-                    ];
-                }
-
-                if ($item instanceof Item_Devices) {
-                    $id_2 = $itemtype_2::getIndexName();
-                    $fid_2 = $itemtype::$items_id_2;
-
-                    $params['LEFT JOIN'][$itemtable_2] = [
-                       'FKEY' => [
-                          $itemtable     => $fid_2,
-                          $itemtable_2   => $id_2
-                       ]
-                    ];
-                }
-
+                $criteria = getEntitiesRestrictCriteria($item->getTable(), '', '', $item->maybeRecursive());
                 if ($item->maybeTemplate()) {
-                    $params['WHERE'][] = [$itemtable . '.is_template' => 0];
+                    $criteria['is_template'] = false;
                 }
-                $params['WHERE'] += getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive());
-                $params['ORDER'] = "glpi_entities.completename, $namefield";
-
-                $iterator = $DB->request($params);
-                $nb = count($iterator);
+                $bindings = Orm::read($DB, static fn (EntityManager $manager): array =>
+                    (new ContractAssetRepository($manager))->assets(
+                        (int)$instID,
+                        $itemtype,
+                        $criteria,
+                        $item->getNameField(),
+                        (int)$_SESSION['glpilist_limit'],
+                        $item instanceof Item_Devices ? $itemtype::$items_id_2 : null
+                    ));
+                $nb = $bindings['count'];
 
                 if ($nb > $_SESSION['glpilist_limit']) {
                     $opt = ['order'      => 'ASC',
@@ -599,7 +528,7 @@ class Contract_Item extends CommonDBRelation
                                              'link'     => $link];
                 } elseif ($nb > 0) {
                     $data[$itemtype] = [];
-                    while ($objdata = $iterator->next()) {
+                    foreach ($bindings['rows'] as $objdata) {
                         $data[$itemtype][$objdata['id']] = $objdata;
                         $used[$itemtype][$objdata['id']] = $objdata['id'];
                     }
@@ -619,6 +548,12 @@ class Contract_Item extends CommonDBRelation
             foreach ($itemtypes as $itemtype) {
                 $options[$itemtype] = $itemtype::getTypeName(1);
             };
+
+            $dropdownChoiceTokens = [];
+            foreach (array_keys(array_unique($options)) as $kind) {
+                $dropdownChoiceTokens[$kind] = DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
 
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
@@ -647,11 +582,17 @@ class Contract_Item extends CommonDBRelation
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                        display_emptychoice: 1,
                                     },
                                     success: function(response) {

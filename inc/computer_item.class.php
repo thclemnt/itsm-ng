@@ -31,6 +31,18 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\AssetRepository;
+use itsmng\Database\Repository\ComputerAttachmentRepository;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,6 +61,246 @@ class Computer_Item extends CommonDBRelation
     public static $itemtype_2          = 'itemtype';
     public static $items_id_2          = 'items_id';
     public static $checkItem_2_Rights  = self::HAVE_VIEW_RIGHT_ON_ITEM;
+
+    private bool $relationOperationActive = false;
+    private ?array $relationWriter = null;
+    private ?array $admittedPair = null;
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        return $this->relationOperation(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        return $this->relationOperation(fn () => parent::update($input, $history, $options));
+    }
+
+    /** A nested public command keeps its result but cannot replace the outer model's identity. */
+    private function relationOperation(callable $operation): mixed
+    {
+        $nested = $this->relationOperationActive;
+        $writer = $this->relationWriter;
+        $admitted = $this->admittedPair;
+        $journal = new LifecycleModelJournal();
+        if ($nested) {
+            $journal->remember($this);
+        }
+        $this->relationOperationActive = true;
+        $this->relationWriter = null;
+        $this->admittedPair = null;
+        try {
+            return $operation();
+        } finally {
+            if ($nested) {
+                $journal->restore();
+            }
+            $this->relationOperationActive = $nested;
+            $this->relationWriter = $writer;
+            $this->admittedPair = $admitted;
+        }
+    }
+
+    protected function captureLifecycleWriter(DBAdapter $writer): void
+    {
+        parent::captureLifecycleWriter($writer);
+        $connection = $writer->getDoctrineConnection();
+        if (($GLOBALS['DB'] ?? null) !== $writer) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected writer.');
+        }
+        TransactionOwnership::assertManaged($connection);
+        $level = $connection->getTransactionNestingLevel();
+        $this->relationWriter = [
+            $writer, $connection, $level,
+            $level > 0 ? $connection->captureManagedTransactionScope() : null,
+        ];
+        $this->assertRelationWriter();
+    }
+
+    private function assertRelationWriter(): void
+    {
+        if ($this->relationWriter === null) {
+            throw new TransactionOwnershipMismatch('Computer attachment has no selected writer.');
+        }
+        $state = LifecycleModelJournal::state($this);
+        [$writer, $connection, $level, $scope] = $this->relationWriter;
+        if (($GLOBALS['DB'] ?? null) !== $writer) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected writer.');
+        }
+        $resolved = $writer->getDoctrineConnection();
+        if (($GLOBALS['DB'] ?? null) !== $writer || $resolved !== $connection
+            || $connection->getTransactionNestingLevel() !== $level) {
+            throw new TransactionOwnershipMismatch('Computer attachment changed its selected connection or frame.');
+        }
+        TransactionOwnership::assertManaged($connection);
+        $scope?->assertActive();
+        if (LifecycleModelJournal::state($this) !== $state) {
+            throw new RuntimeException('The selected writer callback changed the computer attachment.');
+        }
+    }
+
+    public function filterValues($display = true)
+    {
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        $result = parent::filterValues($display);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        return $result;
+    }
+
+    public function checkUnicity($add = false, $options = [])
+    {
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        $result = parent::checkUnicity($add, $options);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+        return $result;
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        parent::assertLifecycleUpdateContext($persisted);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+    }
+
+    /** Every virtual parent decision observes the same final relation and loaded subjects. */
+    private function attachmentDecision(callable $decision, array $parents = []): mixed
+    {
+        $state = LifecycleModelJournal::state($this);
+        $writer = $this->relationWriter;
+        $admitted = $this->admittedPair;
+        $parentStates = array_map(LifecycleModelJournal::state(...), $parents);
+        $assertState = function () use ($state, $writer, $admitted, $parents, $parentStates): void {
+            if (LifecycleModelJournal::state($this) !== $state
+                || $this->relationWriter !== $writer || $this->admittedPair !== $admitted) {
+                throw new RuntimeException('A parent callback changed the prepared computer attachment.');
+            }
+            foreach ($parents as $index => $parent) {
+                if (LifecycleModelJournal::state($parent) !== $parentStates[$index]) {
+                    throw new RuntimeException('A parent callback changed its resolved permission subject.');
+                }
+            }
+        };
+        $this->assertRelationWriter();
+        $assertState();
+        $result = $decision();
+        $this->assertRelationWriter();
+        $assertState();
+        return $result;
+    }
+
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        $endpoint = $this->attachmentDecision(fn () => ConnexityInput::endpoints($this)['items_id'] ?? null);
+        if ($endpoint === null) {
+            // A different physical relation table does not acquire the canonical owning policy.
+            return parent::executePreparedAdd($operation, $priorState);
+        }
+        $pair = array_intersect_key($this->fields, array_fill_keys(['computers_id', 'itemtype', 'items_id'], true));
+        if (count($pair) !== 3 || $this->admittedPair === null) {
+            return false;
+        }
+        $computer = $this->attachmentDecision(fn () => getItemForItemtype(static::$itemtype_1));
+        $item = $this->attachmentDecision(fn () => getItemForItemtype($pair['itemtype']));
+        if (!$computer instanceof Computer || !$item instanceof CommonDBTM) {
+            return false;
+        }
+        $parents = [$computer, $item];
+        $computerTable = $this->attachmentDecision(fn () => $computer->getTable(), $parents);
+        $itemTable = $this->attachmentDecision(fn () => $item->getTable(), $parents);
+        $relationTable = $this->attachmentDecision(fn () => static::getTable(), $parents);
+        if ((EntityRegistry::discriminatedReferences($relationTable)['items_id'] ?? null) !== $endpoint) {
+            return false;
+        }
+        $target = $endpoint['selections'][$pair['itemtype']]['target'] ?? null;
+        if ($computerTable !== EntityRegistry::relations()[$relationTable]['computers_id']
+            || ($target !== null && $itemTable !== $target)) {
+            return false;
+        }
+        $targetsMatch = function () use ($computer, $item, $parents, $computerTable, $itemTable, $relationTable): bool {
+            return $this->attachmentDecision(fn () => static::getTable(), $parents) === $relationTable
+                && $this->attachmentDecision(fn () => $computer->getTable(), $parents) === $computerTable
+                && $this->attachmentDecision(fn () => $item->getTable(), $parents) === $itemTable;
+        };
+        if (!$targetsMatch()
+            || !$this->attachmentDecision(fn () => $computer->getFromDB($pair['computers_id']), [$item])
+            || !$targetsMatch()
+            || !$this->attachmentDecision(fn () => $item->getFromDB($pair['items_id']), [$computer])
+            || !$targetsMatch()
+            || $this->attachmentDecision(fn () => $computer->getID(), $parents) != $pair['computers_id']
+            || $this->attachmentDecision(fn () => $item->getID(), $parents) != $pair['items_id']) {
+            return false;
+        }
+        $unchanged = $pair['itemtype'] === $this->admittedPair['itemtype']
+            && $pair['computers_id'] == $this->admittedPair['computers_id']
+            && $pair['items_id'] == $this->admittedPair['items_id'];
+        if (!$unchanged && !$this->authorizePreparedAttachment($computer, $item)) {
+            return false;
+        }
+        $kind = $this->attachmentDecision(fn () => $item->getType(), $parents);
+        $computerId = $this->attachmentDecision(fn () => $computer->getField('id'), $parents);
+        $itemId = $this->attachmentDecision(fn () => $item->getField('id'), $parents);
+        $global = $this->attachmentDecision(fn () => $item->getField('is_global'), $parents);
+        $scope = null;
+        if (!$global && !Session::isCron()) {
+            $linked = $this->attachmentDecision(fn () => new Computer(), $parents);
+            if ($this->attachmentDecision(fn () => $linked->isEntityAssign(), $parents)) {
+                $scope = $this->attachmentDecision(
+                    fn () => (new DbUtils())->getEntityRestriction($computerTable, '', '', 'auto'),
+                    $parents
+                );
+                if (!$scope->hasEntityMembership) {
+                    return false;
+                }
+            }
+        }
+        $this->assertRelationWriter();
+        $repositoryTable = $this->attachmentDecision(fn () => static::getTable(), $parents);
+        if ($repositoryTable !== $relationTable) {
+            return false;
+        }
+        $repository = new ComputerAttachmentRepository($this->relationWriter[1], $repositoryTable);
+        if ($this->attachmentDecision(fn () => $repository->hasDuplicate($computerId, $kind, $itemId), $parents)
+            || (!$global && $this->attachmentDecision(fn () => $repository->hasActiveConnection($kind, $itemId, $scope), $parents))) {
+            return false;
+        }
+        $this->assertRelationWriter();
+        return parent::executePreparedAdd($operation, $priorState);
+    }
+
+    /** Existing CREATE relation roles: Computer UPDATE, other endpoint VIEW, coherent entities. */
+    private function authorizePreparedAttachment(Computer $computer, CommonDBTM $item): bool
+    {
+        $parents = [$computer, $item];
+        if (!$this->attachmentDecision(fn () => $computer->retainItemPermission(UPDATE), $parents)
+            || !$this->attachmentDecision(fn () => $computer->canUpdateItem(), $parents)
+            || !$this->attachmentDecision(fn () => $computer->canUpdate(), $parents)
+            || !$this->attachmentDecision(fn () => $item->retainItemPermission(READ), $parents)
+            || !$this->attachmentDecision(fn () => $item->canView(), $parents)
+            || !$this->attachmentDecision(fn () => $item->canViewItem(), $parents)) {
+            return false;
+        }
+        if (!static::$check_entity_coherency
+            || !$this->attachmentDecision(fn () => $computer->isEntityAssign(), $parents)
+            || !$this->attachmentDecision(fn () => $item->isEntityAssign(), $parents)) {
+            return true;
+        }
+        $computerEntity = $this->attachmentDecision(fn () => $computer->getEntityID(), $parents);
+        $itemEntity = $this->attachmentDecision(fn () => $item->getEntityID(), $parents);
+        return $computerEntity == $itemEntity
+            || ($this->attachmentDecision(fn () => $computer->isRecursive(), $parents)
+                && in_array($computerEntity, $this->attachmentDecision(fn () => getAncestorsOf('glpi_entities', $itemEntity), $parents)))
+            || ($this->attachmentDecision(fn () => $item->isRecursive(), $parents)
+                && in_array($itemEntity, $this->attachmentDecision(fn () => getAncestorsOf('glpi_entities', $computerEntity), $parents)));
+    }
 
 
     public function getForbiddenStandardMassiveAction()
@@ -86,7 +338,14 @@ class Computer_Item extends CommonDBRelation
     {
         global $CFG_GLPI;
 
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
+
         $item = static::getItemFromArray(static::$itemtype_2, static::$items_id_2, $input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
         if (
             !($item instanceof CommonDBTM)
             || (($item->getField('is_global') == 0)
@@ -96,6 +355,9 @@ class Computer_Item extends CommonDBRelation
         }
 
         $comp = static::getItemFromArray(static::$itemtype_1, static::$items_id_1, $input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+        }
         if (
             !($comp instanceof Computer)
             || (self::countForAll($comp, $item) > 0)
@@ -103,6 +365,8 @@ class Computer_Item extends CommonDBRelation
             // no duplicates
             return false;
         }
+
+        $admittedPair = ['computers_id' => $comp->fields['id'], 'itemtype' => $input['itemtype'], 'items_id' => $item->fields['id']];
 
         if (!$item->getField('is_global')) {
             // Autoupdate some fields - should be in post_addItem (here to avoid more DB access)
@@ -176,31 +440,48 @@ class Computer_Item extends CommonDBRelation
                 $item->update($updates, $history);
             }
         }
-        return parent::prepareInputForAdd($input);
+        $prepared = parent::prepareInputForAdd($input);
+        if ($this->relationOperationActive) {
+            $this->assertRelationWriter();
+            if ($prepared !== false) {
+                $this->admittedPair = $admittedPair;
+            }
+        }
+        return $prepared;
     }
 
 
     public function cleanDBonPurge()
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
+
+        $connection = $DB->getDoctrineConnection();
 
         if (!isset($this->input['_no_auto_action'])) {
-            //Get the computer name
-            $computer = new Computer();
-            $computer->getFromDB($this->fields['computers_id']);
-
             //Get device fields
             if ($device = getItemForItemtype($this->fields['itemtype'])) {
                 if ($device->getFromDB($this->fields['items_id'])) {
                     if (!$device->getField('is_global')) {
                         $updates = [];
-                        if ($CFG_GLPI["is_location_autoclean"] && $device->isField('locations_id')) {
+                        if (
+                            $CFG_GLPI["is_location_autoclean"]
+                            && $device->isField('locations_id')
+                            && $device->getField('locations_id') !== null
+                        ) {
                             $updates['locations_id'] = 0;
                         }
-                        if ($CFG_GLPI["is_user_autoclean"] && $device->isField('users_id')) {
+                        if (
+                            $CFG_GLPI["is_user_autoclean"]
+                            && $device->isField('users_id')
+                            && $device->getField('users_id') !== null
+                        ) {
                             $updates['users_id'] = 0;
                         }
-                        if ($CFG_GLPI["is_group_autoclean"] && $device->isField('groups_id')) {
+                        if (
+                            $CFG_GLPI["is_group_autoclean"]
+                            && $device->isField('groups_id')
+                            && $device->getField('groups_id') !== null
+                        ) {
                             $updates['groups_id'] = 0;
                         }
                         if ($CFG_GLPI["is_contact_autoclean"] && $device->isField('contact')) {
@@ -212,6 +493,7 @@ class Computer_Item extends CommonDBRelation
                         if (
                             ($CFG_GLPI["state_autoclean_mode"] < 0)
                             && $device->isField('states_id')
+                            && $device->getField('states_id') !== null
                         ) {
                             $updates['states_id'] = 0;
                         }
@@ -226,7 +508,7 @@ class Computer_Item extends CommonDBRelation
 
                         if (count($updates)) {
                             $updates['id'] = $this->fields['items_id'];
-                            $device->update($updates);
+                            DeletionUnit::requireSuccess($connection, (bool)$device->update($updates));
                         }
                     }
                 }
@@ -516,7 +798,7 @@ class Computer_Item extends CommonDBRelation
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
         // Prints a direct connection to a computer
-        global $DB;
+        global $DB, $PLUGIN_HOOKS;
 
         $comp   = new Computer();
         $ID     = $item->getField('id');
@@ -533,17 +815,11 @@ class Computer_Item extends CommonDBRelation
         $used    = [];
         $compids = [];
         $dynamic = [];
-        $result = $DB->request(
-            [
-              'SELECT' => ['id', 'computers_id', 'is_dynamic'],
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'itemtype'   => $item->getType(),
-                 'items_id'   => $ID,
-                 'is_deleted' => 0,
-              ]
-            ]
-        );
+        // Capture the receiver before table/model callbacks, as request() did.
+        $database = $DB;
+        $itemtype = $item->getType();
+        $result = Orm::read($database, static fn (EntityManager $manager): array =>
+            (new AssetRepository($manager))->activeComputerConnections($itemtype, $ID));
         foreach ($result as $data) {
             $compids[$data['id']] = $data['computers_id'];
             $dynamic[$data['id']] = $data['is_dynamic'];
@@ -616,9 +892,20 @@ class Computer_Item extends CommonDBRelation
             }
             $values = [];
             $massiveActionValues = [];
+            // Form/massive-action callbacks have finished. Permission hooks
+            // still require complete per-row reads and may change later rows.
+            $display = empty($PLUGIN_HOOKS['item_can'])
+                ? (new AssetRepository(Orm::create($DB)))
+                    ->computerDisplayData($compids)
+                : [];
             foreach ($compids as $key => $compid) {
-                $comp->getFromDB($compid);
-
+                if (isset($display[$compid])) {
+                    // Display-only fields stay inside the ordinary getLink/can
+                    // path; this model is never handed to a lifecycle writer.
+                    $comp->fields = $display[$compid];
+                } else {
+                    $comp->getFromDB($compid);
+                }
 
                 if ($canedit) {
                     $massiveActionValues[$key] = 'item[Computer_Item][' . $key . ']';
@@ -651,43 +938,98 @@ class Computer_Item extends CommonDBRelation
      * Unglobalize an item : duplicate item and connections
      *
      * @param $item   CommonDBTM object to unglobalize
+     * @return bool Whether every required change completed
     **/
-    public static function unglobalizeItem(CommonDBTM $item)
+    public static function unglobalizeItem(CommonDBTM $item): bool
     {
         global $DB;
 
-        // Update item to unit management :
-        if ($item->getField('is_global')) {
-            $input = ['id'        => $item->fields['id'],
-                           'is_global' => 0];
-            $item->update($input);
+        if (!$item->getField('is_global')) {
+            return false;
+        }
 
-            // Get connect_wire for this connection
-            $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'items_id'  => $item->getID(),
-                  'itemtype'  => $item->getType()
-               ]
-            ]);
+        $writer = $DB;
+        $connection = $writer->getDoctrineConnection();
+        $itemId = $item->getID();
+        $itemType = $item->getType();
+        return OwnershipUpdateUnit::run($writer, $item, $item->fields, static function () use (
+            $writer,
+            $connection,
+            $item,
+            $itemId,
+            $itemType
+        ): bool {
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            $assertWriter = static function () use ($writer, $connection, $scope, $level): void {
+                $scope->assertActive();
+                if ($writer !== ($GLOBALS['DB'] ?? null)
+                    || $writer->getDoctrineConnection() !== $connection
+                    || $connection->getTransactionNestingLevel() !== $level) {
+                    throw new TransactionOwnershipMismatch('Unglobalize changed its supplied writer or frame.');
+                }
+            };
+            OwnershipUpdateUnit::assertTransactionalStorage($writer, $item->getTable());
+            OwnershipUpdateUnit::assertTransactionalStorage($writer, self::getTable());
 
-            $first = true;
-            while ($data = $iterator->next()) {
-                if ($first) {
-                    $first = false;
-                    unset($input['id']);
-                    $conn = new self();
-                } else {
-                    $temp = clone $item;
-                    unset($temp->fields['id']);
-                    if ($newID = $temp->add($temp->fields)) {
-                        $conn->update(['id'       => $data['id'],
-                                       'items_id' => $newID]);
-                    }
+            $connections = iterator_to_array($writer->request([
+                'SELECT' => ['id', 'computers_id'],
+                'FROM' => self::getTable(),
+                'WHERE' => ['items_id' => $itemId, 'itemtype' => $itemType],
+                'ORDER' => 'id',
+            ]));
+            $toMove = array_slice($connections, 1);
+            $conn = new self();
+            LifecycleModelJournal::capture($connection, $conn);
+            foreach ($toMove as $data) {
+                $allowed = $conn->can($data['id'], UPDATE);
+                $assertWriter();
+                if (!$allowed) {
+                    return false;
                 }
             }
-        }
+
+            $updated = $item->update(['id' => $itemId, 'is_global' => 0]);
+            $assertWriter();
+            if (!$updated) {
+                return false;
+            }
+            $loaded = $item->getFromDB($itemId);
+            $assertWriter();
+            if (!$loaded || $item->getID() != $itemId || $item->getField('is_global')) {
+                return false;
+            }
+
+            foreach ($toMove as $data) {
+                $temp = clone $item;
+                unset($temp->fields['id']);
+                LifecycleModelJournal::capture($connection, $temp);
+                $newId = $temp->add($temp->fields);
+                $assertWriter();
+                if (!$newId) {
+                    return false;
+                }
+                $loaded = $temp->getFromDB($newId);
+                $assertWriter();
+                if (!$loaded || $temp->getID() != $newId || $temp->getField('is_global')) {
+                    return false;
+                }
+                $updated = $conn->update(['id' => $data['id'], 'items_id' => $newId]);
+                $assertWriter();
+                if (!$updated) {
+                    return false;
+                }
+                $loaded = $conn->getFromDB($data['id']);
+                $assertWriter();
+                if (!$loaded || $conn->getID() != $data['id']
+                    || $conn->getField('items_id') != $newId
+                    || $conn->getField('computers_id') != $data['computers_id']
+                    || $conn->getField('itemtype') !== $itemType) {
+                    return false;
+                }
+            }
+            return true;
+        }, guardWriter: true);
     }
 
 
@@ -926,62 +1268,21 @@ class Computer_Item extends CommonDBRelation
     {
         global $DB;
 
-        if ($item instanceof Computer) {
-            // RELATION : items -> computers
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'computers_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
-            ]);
-
-            while ($data = $iterator->next()) {
-                if (!class_exists($data['itemtype'])) {
-                    continue;
-                }
-                if (
-                    countElementsInTable(
-                        $data['itemtype']::getTable(),
-                        [
-                         'id' => $data['ids'],
-                         'NOT' => ['entities_id' => $entities]
-                        ]
-                    ) > 0
-                ) {
-                    return false;
-                }
-            }
-        } else {
-            // RELATION : computers -> items
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-                  'computers_id'
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'itemtype' => $item->getType(),
-                  'items_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
-            ]);
-
-            while ($data = $iterator->next()) {
-                if (
-                    countElementsInTable(
-                        "glpi_computers",
-                        ['id' => $data["computers_id"],
-                         'NOT' => ['entities_id' => $entities]]
-                    ) > 0
-                ) {
-                    return false;
-                }
+        $em = Orm::create($DB);
+        try {
+            $links = (new AssetRepository($em))->linkedItems(
+                $item instanceof Computer ? Computer::class : $item->getType(),
+                (int)$item->getID()
+            );
+        } finally {
+            $em->clear();
+        }
+        foreach ($links as $type => $ids) {
+            $target = getItemForItemtype($type);
+            if ($target && $target->isEntityAssign() && countElementsInTable($target->getTable(), [
+                'id' => array_values($ids), 'NOT' => ['entities_id' => $entities],
+            ]) > 0) {
+                return false;
             }
         }
 

@@ -39,15 +39,18 @@ if (!defined('GLPI_ROOT')) {
 
 use Config;
 use DBConnection;
+use Doctrine\DBAL\Exception;
 use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
+use itsmng\Database\InstallationConnection;
 
 abstract class AbstractConfigureCommand extends AbstractCommand implements ForceNoPluginsOptionCommandInterface
 {
@@ -103,6 +106,8 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
         $this->setName('itsmng:database:install');
         $this->setAliases(['db:install']);
         $this->setDescription('Install database schema');
+
+        $this->addOption('db-type', null, InputOption::VALUE_REQUIRED, 'Database provider: mysql or pgsql (PostgreSQL is experimental)', 'mysql');
 
         $this->addOption(
             'db-host',
@@ -161,7 +166,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
 
         foreach ($questions as $name => $question) {
             if (null === $input->getOption($name)) {
-                /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+                /** @var QuestionHelper $question_helper */
                 $question_helper = $this->getHelper('question');
                 $value = $question_helper->ask($input, $output, $question);
                 $input->setOption($name, $value);
@@ -220,41 +225,49 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
             return self::ABORTED_BY_USER;
         }
 
-        $mysqli = new \mysqli();
-        if (intval($db_port) > 0) {
-            // Network port
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, $db_port);
+        $provider = $input->getOption('db-type');
+        if ($provider === 'pgsql') {
+            // PostgreSQL databases are provisioned by the administrator. The
+            // application role needs schema privileges, not CREATEDB privileges.
+            $connection = DBConnection::createConnection($provider, $db_hostport, $db_user, $db_pass, $db_name);
+            if (!$connection->connected) {
+                $output->writeln('<error>' . $connection->error() . '</error>');
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
+            if (version_compare($connection->getVersion(), '14', '<')) {
+                $output->writeln('<error>PostgreSQL 14 or later is required.</error>');
+                return self::ERROR_DB_ENGINE_UNSUPPORTED;
+            }
+            $connection->close();
         } else {
-            // Unix Domain Socket
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, 0, $db_port);
+            $server = InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            try {
+                $version = $server->getServerVersion();
+            } catch (Exception $error) {
+                $message = sprintf(
+                    __('Database connection failed with message "(%s) %s".'),
+                    $error->getCode(),
+                    $error->getMessage()
+                );
+                $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+                return self::ERROR_DB_CONNECTION_FAILED;
+            } finally {
+                $server->close();
+            }
+            ob_start();
+            $checkdb = Config::displayCheckDbEngine(false, $version);
+            $message = ob_get_clean();
+            if ($checkdb > 0) {
+                $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+                return self::ERROR_DB_ENGINE_UNSUPPORTED;
+            }
         }
-
-        if (0 !== $mysqli->connect_errno) {
-            $message = sprintf(
-                __('Database connection failed with message "(%s) %s".'),
-                $mysqli->connect_errno,
-                $mysqli->connect_error
-            );
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_DB_CONNECTION_FAILED;
-        }
-
-        ob_start();
-        $db_version_data = $mysqli->query('SELECT version()')->fetch_array();
-        $checkdb = Config::displayCheckDbEngine(false, $db_version_data[0]);
-        $message = ob_get_clean();
-        if ($checkdb > 0) {
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_DB_ENGINE_UNSUPPORTED;
-        }
-
-        $db_name = $mysqli->real_escape_string($db_name);
 
         $output->writeln(
             '<comment>' . __('Saving configuration file...') . '</comment>',
             OutputInterface::VERBOSITY_VERBOSE
         );
-        if (!DBConnection::createMainConfig($db_hostport, $db_user, $db_pass, $db_name)) {
+        if (!DBConnection::createMainConfig($db_hostport, $db_user, $db_pass, $db_name, $provider)) {
             $message = sprintf(
                 __('Cannot write configuration file "%s".'),
                 GLPI_CONFIG_DIR . DIRECTORY_SEPARATOR . 'config_db.php'
@@ -295,6 +308,12 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
      */
     protected function validateConfigInput(InputInterface $input)
     {
+
+        DBConnection::getAdapterClass($input->getOption('db-type'));
+        $extension = $input->getOption('db-type') === 'pgsql' ? 'pdo_pgsql' : 'pdo_mysql';
+        if (!extension_loaded($extension)) {
+            throw new InvalidArgumentException('The ' . $extension . ' PHP extension is required for this database provider.');
+        }
 
         $db_name = $input->getOption('db-name');
         $db_user = $input->getOption('db-user');
@@ -350,7 +369,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
             return true;
         }
 
-        /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+        /** @var QuestionHelper $question_helper */
         $question_helper = $this->getHelper('question');
         return $question_helper->ask(
             $input,

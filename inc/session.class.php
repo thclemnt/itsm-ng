@@ -31,8 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use itsmng\Csrf;
+use Psr\Cache\CacheItemPoolInterface;
+use Symfony\Component\Cache\Psr16Cache;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\GroupMembershipRepository;
+use itsmng\Database\Repository\ProfileUserRepository;
+use itsmng\Translation\Translator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -106,14 +113,7 @@ class Session
                 isset($auth->user->fields['id'])
                 && $auth->user->getFromDB($auth->user->fields['id'])
             ) {
-                if (
-                    !$auth->user->fields['is_deleted']
-                    && ($auth->user->fields['is_active']
-                        && (($auth->user->fields['begin_date'] < $_SESSION["glpi_currenttime"])
-                            || is_null($auth->user->fields['begin_date']))
-                        && (($auth->user->fields['end_date'] > $_SESSION["glpi_currenttime"])
-                            || is_null($auth->user->fields['end_date'])))
-                ) {
+                if (self::accountIsAdmitted($auth->user, $_SESSION['glpi_currenttime'])) {
                     $_SESSION["glpiID"]              = $auth->user->fields['id'];
                     $_SESSION["glpifriendlyname"]    = $auth->user->getFriendlyName();
                     $_SESSION["glpiname"]            = $auth->user->fields['name'];
@@ -166,7 +166,7 @@ class Session
                     self::initEntityProfiles(self::getLoginUserID());
 
                     // Use default profile if exist
-                    if (isset($_SESSION['glpiprofiles'][$auth->user->fields['profiles_id']])) {
+                    if (isset($auth->user->fields['profiles_id'], $_SESSION['glpiprofiles'][$auth->user->fields['profiles_id']])) {
                         self::changeProfile($auth->user->fields['profiles_id']);
                     } else { // Else use first
                         self::changeProfile(key($_SESSION['glpiprofiles']));
@@ -383,11 +383,13 @@ class Session
                 $ancestors = getAncestorsOf("glpi_entities", $ID);
                 $ok        = false;
                 foreach ($_SESSION['glpiactiveprofile']['entities'] as $val) {
-                    if (($val['id'] == $ID) || in_array($val['id'], $ancestors)) {
-                        // Not recursive or recursive and root entity is recursive
-                        if (!$is_recursive || $val['is_recursive']) {
-                            $ok = true;
-                        }
+                    $direct = $val['id'] == $ID;
+                    // A direct grant permits its entity alone. Descendants or
+                    // a recursive view require a recursive grant of that scope.
+                    if (($direct && !$is_recursive)
+                        || ($val['is_recursive'] && ($direct || in_array($val['id'], $ancestors)))) {
+                        $ok = true;
+                        break;
                     }
                 }
                 if (!$ok) {
@@ -469,7 +471,8 @@ class Session
     {
 
         if (
-            isset($_SESSION['glpiprofiles'][$ID])
+            $ID !== null
+            && isset($_SESSION['glpiprofiles'][$ID])
             && count($_SESSION['glpiprofiles'][$ID]['entities'])
         ) {
             $profile = new Profile();
@@ -522,74 +525,17 @@ class Session
 
         $_SESSION['glpiprofiles'] = [];
 
-        if (!$DB->tableExists('glpi_profiles_users')) {
-            //table does not exists in old GLPI versions
+        if (!$DB->getDoctrineConnection()->createSchemaManager()->tablesExist(['glpi_profiles_users'])) {
+            // Older schemas may not have authorization grants yet.
             return;
         }
 
-        $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_profiles.id',
-              'glpi_profiles.name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_profiles_users',
-           'INNER JOIN'      => [
-              'glpi_profiles'   => [
-                 'ON' => [
-                    'glpi_profiles_users'   => 'profiles_id',
-                    'glpi_profiles'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_profiles_users.users_id'   => $userID
-           ],
-           'ORDERBY'         => 'glpi_profiles.name'
-        ]);
-
-        if (count($iterator)) {
-            while ($data = $iterator->next()) {
-                $key = $data['id'];
-                $_SESSION['glpiprofiles'][$key]['name'] = $data['name'];
-                $entities_iterator = $DB->request([
-                   'SELECT'    => [
-                      'glpi_profiles_users.entities_id AS eID',
-                      'glpi_profiles_users.id AS kID',
-                      'glpi_profiles_users.is_recursive',
-                      'glpi_entities.*'
-                   ],
-                   'FROM'      => 'glpi_profiles_users',
-                   'LEFT JOIN' => [
-                      'glpi_entities'   => [
-                         'ON' => [
-                            'glpi_profiles_users'   => 'entities_id',
-                            'glpi_entities'         => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'glpi_profiles_users.profiles_id'   => $key,
-                      'glpi_profiles_users.users_id'      => $userID
-                   ],
-                   'ORDERBY'   => 'glpi_entities.completename'
-                ]);
-
-                while ($data = $entities_iterator->next()) {
-                    // Do not override existing entity if define as recursive
-                    if (
-                        !isset($_SESSION['glpiprofiles'][$key]['entities'][$data['eID']])
-                        || $data['is_recursive']
-                    ) {
-                        $_SESSION['glpiprofiles'][$key]['entities'][$data['eID']] = [
-                           'id'           => $data['eID'],
-                           'name'         => $data['name'],
-                           'is_recursive' => $data['is_recursive']
-                        ];
-                    }
-                }
-            }
-        }
+        $_SESSION['glpiprofiles'] = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$userID,
+            static fn (EntityManager $manager, int $user): array =>
+                (new ProfileUserRepository($manager))->sessionProfiles($user)
+        );
     }
 
 
@@ -604,30 +550,14 @@ class Session
 
         $_SESSION["glpigroups"] = [];
 
-        $iterator = $DB->request([
-           'SELECT'    => Group_User::getTable() . '.groups_id',
-           'FROM'      => Group_User::getTable(),
-           'LEFT JOIN' => [
-              Group::getTable() => [
-                 'ON' => [
-                    Group::getTable()       => 'id',
-                    Group_User::getTable()  => 'groups_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              Group_User::getTable() . '.users_id' => self::getLoginUserID()
-           ] + getEntitiesRestrictCriteria(
-               Group::getTable(),
-               'entities_id',
-               $_SESSION['glpiactiveentities'],
-               true
-           )
-        ]);
-
-        while ($data = $iterator->next()) {
-            $_SESSION["glpigroups"][] = $data["groups_id"];
-        }
+        // Explicit active entities stay authoritative even when the all-entities flag is stale.
+        $scope = getEntitiesRestrictCriteria(Group::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true);
+        $_SESSION['glpigroups'] = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)self::getLoginUserID(),
+            static fn (EntityManager $manager, int $user): array =>
+                (new GroupMembershipRepository($manager))->sessionGroupIds($user, $scope)
+        );
     }
 
 
@@ -672,21 +602,20 @@ class Session
         if (isset($CFG_GLPI["languages"][$trytoload][5])) {
             $_SESSION['glpipluralnumber'] = $CFG_GLPI["languages"][$trytoload][5];
         }
-        $TRANSLATE = new Laminas\I18n\Translator\Translator();
-        $TRANSLATE->setLocale($trytoload);
 
         if (class_exists('Locale')) {
             // Locale class may be missing if intl extension is not installed.
             // In this case, we may still want to be able to load translations (for instance for requirements checks).
-            \Locale::setDefault($trytoload);
+            Locale::setDefault($trytoload);
         } else {
             Toolbox::logWarning('Missing required intl PHP extension');
         }
 
         $cache = Config::getCache('cache_trans', 'core', false);
-        if ($cache !== false && !defined('TU_USER')) {
-            $TRANSLATE->setCache($cache);
-        }
+        $TRANSLATE = new Translator(
+            $trytoload,
+            $cache !== false && !defined('TU_USER') ? ($cache instanceof CacheItemPoolInterface ? new Psr16Cache($cache) : $cache) : null
+        );
 
         $TRANSLATE->addTranslationFile('gettext', GLPI_I18N_DIR . $newfile, 'glpi', $trytoload);
 
@@ -1709,6 +1638,19 @@ class Session
         return $_SESSION['glpiactive_entity'] ?? 0;
     }
 
+    /** Non-recursive scope: null allows all entities, [] allows none. */
+    public static function getActiveEntityScope(): ?array
+    {
+        // Profile changes empty the active grants before rebuilding them; the cached all flag may still refer to the old profile.
+        if (array_key_exists('glpiactiveentities', $_SESSION) && !count((array)$_SESSION['glpiactiveentities'])) {
+            return [];
+        }
+        if (!empty($_SESSION['glpishowallentities'])) {
+            return null;
+        }
+        return array_map('intval', (array)($_SESSION['glpiactiveentities'] ?? (isCommandLine() || self::isCron() ? [0] : [])));
+    }
+
     /**
      * Get recursive state of active entity selection.
      *
@@ -1737,20 +1679,72 @@ class Session
         $user = new User();
 
         // Try to load from token
-        if (!$user->getFromDBByToken($token, $token_type)) {
+        if ($token === '' || !$user->getFromDBByToken($token, $token_type)
+            || !self::accountIsAdmitted($user, date('Y-m-d H:i:s'))) {
             return false;
         }
 
         $auth = new Auth();
         $auth->auth_succeded = true;
         $auth->user = $user;
-        Session::init($auth);
-
-        if (!is_null($entities_id) && !is_null($is_recursive)) {
-            self::loadEntity($entities_id, $is_recursive);
+        // Initialization hooks may legitimately provision missing profile grants.
+        // Run the actual lifecycle, then publish only an accepted result. Restore
+        // reversible session/language context on refusal; plugin side effects
+        // outside that context are not a transaction we can undo.
+        $previous = [
+            'values' => $_SESSION ?? [], 'id' => session_id(), 'status' => session_status(),
+            'translation_defined' => array_key_exists('TRANSLATE', $GLOBALS),
+            'translation' => $GLOBALS['TRANSLATE'] ?? null,
+            'locale' => class_exists('Locale') ? Locale::getDefault() : null,
+        ];
+        $accepted = false;
+        try {
+            self::init($auth);
+            if (!$auth->auth_succeded || !self::getCurrentInterface()) {
+                return false;
+            }
+            if ($entities_id !== null && $is_recursive !== null
+                && !self::changeActiveEntities($entities_id, $is_recursive)) {
+                return false;
+            }
+            $accepted = true;
+            return $user;
+        } finally {
+            if (!$accepted) {
+                if (session_id() !== $previous['id'] || session_status() !== $previous['status']) {
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_abort();
+                    }
+                    session_id($previous['id']);
+                    // init() may have written a cleared old session while
+                    // regenerating its ID. Reopen even a previously closed
+                    // session so its original stored data can be restored.
+                    if ($previous['status'] === PHP_SESSION_ACTIVE || $previous['id'] !== '') {
+                        self::start();
+                    }
+                }
+                $_SESSION = $previous['values'];
+                if ($previous['status'] === PHP_SESSION_NONE && session_status() === PHP_SESSION_ACTIVE) {
+                    session_write_close();
+                }
+                if ($previous['translation_defined']) {
+                    $GLOBALS['TRANSLATE'] = $previous['translation'];
+                } else {
+                    unset($GLOBALS['TRANSLATE']);
+                }
+                if ($previous['locale'] !== null) {
+                    Locale::setDefault($previous['locale']);
+                }
+            }
         }
+    }
 
-        return $user;
+    /** The same strict account/date policy serves password and personal-token initialization. */
+    private static function accountIsAdmitted(User $user, string $now): bool
+    {
+        return !$user->fields['is_deleted'] && $user->fields['is_active']
+            && ($user->fields['begin_date'] === null || $user->fields['begin_date'] < $now)
+            && ($user->fields['end_date'] === null || $user->fields['end_date'] > $now);
     }
 
     /**

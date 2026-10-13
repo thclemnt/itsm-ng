@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
 use CommonDBConnexity;
 use Session;
 use Toolbox;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\LegacyInput;
 
 /**
  * Clonable objects
@@ -71,15 +73,32 @@ trait Clonable
                 continue;
             }
 
-            $override_input[$classname::getItemField($this->getType())] = $this->getID();
+            $item_field = $classname::getItemField($this->getType());
+            $override_input[$item_field] = $this->getID();
 
             // Force entity / recursivity based on cloned parent, with fallback on session values
             $override_input['entities_id'] = $this->isEntityAssign() ? $this->getEntityID() : Session::getActiveEntity();
             $override_input['is_recursive'] = $this->maybeRecursive() ? $this->isRecursive() : Session::getIsActiveEntityRecursive();
 
             $relation_items = $classname::getItemsAssociatedTo($this->getType(), $source->getID());
+            if (!$relation_items) {
+                continue;
+            }
+
             foreach ($relation_items as $relation_item) {
-                $relation_item->clone($override_input, $history);
+                $relation_override = $override_input;
+                // Abstract families such as Item_Devices return concrete models;
+                // their owning subject columns belong to each concrete entity.
+                $entity = EntityRegistry::tables()[$relation_item::getTable()] ?? null;
+                if ($item_field === 'items_id' && $entity !== null && is_a($entity, LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                    $reference = EntityRegistry::discriminatedReferences($relation_item::getTable())['items_id'] ?? null;
+                    $kind = isset($reference['fallback_column'])
+                        ? $relation_item->fields[$reference['discriminator']] : $this->getType();
+                    $relation_override = array_replace($relation_override, (new $entity())->normalizeInput(
+                        $entity::withReference($relation_override, $kind, (int)$this->getID())
+                    ));
+                }
+                $relation_item->clone($relation_override, $history);
             }
         }
     }

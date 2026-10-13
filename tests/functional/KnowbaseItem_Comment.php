@@ -34,6 +34,22 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\KnowbaseItem as ArticleRecord;
+use itsmng\Database\Entity\KnowbaseItemComment as CommentRecord;
+use itsmng\Database\Entity\User as UserRecord;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+use KnowbaseItem as ApplicationArticle;
+use KnowbaseItem_Comment as ApplicationComment;
+use KnowbaseItemTranslation as ArticleTranslation;
+use mock\DBmysql as CommentAdapterProbe;
+use tests\fixtures\ScalarReadProbe;
+use UnexpectedValueException;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/knowbaseitem_comment.class.php */
 
@@ -42,6 +58,231 @@ use DbTestCase;
  */
 class KnowbaseItem_Comment extends DbTestCase
 {
+    public function testPublicNullableLanguageWritesKeepLiteralTextDistinct(): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $article = getItemByTypeName(ApplicationArticle::getType(), '_knowbaseitem01');
+            $connection = $DB->getDoctrineConnection();
+            $repository = new KnowledgeBaseRepository(Orm::create($DB));
+            foreach ([null, 'NULL', 'null', '', 'fr_FR'] as $language) {
+                $comment = new ApplicationComment();
+                $id = $comment->add([
+                    'knowbaseitems_id' => $article->getID(), 'comment' => 'Nullable language producer', 'language' => $language,
+                ]);
+                $this->integer((int)$id)->isGreaterThan(0);
+                $this->boolean($comment->getFromDB($id))->isTrue();
+                $this->variable($comment->getField('language'))->isIdenticalTo($language);
+                $this->variable($connection->fetchOne('SELECT language FROM glpi_knowbaseitems_comments WHERE id=?', [$id]))->isIdenticalTo($language);
+                $this->array(array_column($repository->comments((int)$article->getID(), $language), 'id'))->contains((int)$id);
+                $this->boolean(in_array((int)$id, array_column($repository->comments((int)$article->getID(), null), 'id'), true))
+                    ->isIdenticalTo($language === null);
+                $updated = $language === null ? 'NULL' : null;
+                $this->boolean($comment->update(['id' => $id, 'language' => $updated]))->isTrue();
+                $this->variable($connection->fetchOne('SELECT language FROM glpi_knowbaseitems_comments WHERE id=?', [$id]))->isIdenticalTo($updated);
+                $this->array(array_column($repository->comments((int)$article->getID(), $updated), 'id'))->contains((int)$id);
+                $this->boolean(in_array((int)$id, array_column($repository->comments((int)$article->getID(), null), 'id'), true))
+                    ->isIdenticalTo($updated === null);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
+    public function testMaterializedCommentsKeepLanguagesAndLiveOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        $article = new ArticleRecord();
+        $article->name = 'Comment projection ' . $this->getUniqueString();
+        $article->is_faq = true;
+        $article->users = $owner->getReference(UserRecord::class, (int)$_SESSION['glpiID']);
+        $owner->persist($article);
+        $root = new CommentRecord();
+        $root->knowbaseitems = $article;
+        $root->comment = 'Original root';
+        $reply = new CommentRecord();
+        $reply->knowbaseitems = $article;
+        $reply->parent_comment = $root;
+        $reply->comment = 'Original reply';
+        $translated = new CommentRecord();
+        $translated->knowbaseitems = $article;
+        $translated->language = 'fr_FR';
+        $translated->comment = 'French comment';
+        $empty = new CommentRecord();
+        $empty->knowbaseitems = $article;
+        $empty->language = '';
+        $empty->comment = 'Empty language';
+        foreach ([$root, $reply, $translated, $empty] as $comment) {
+            $comment->users = $article->users;
+            $owner->persist($comment);
+        }
+        $owner->flush();
+        $tree = ApplicationComment::getCommentsForKbItem((string)$article->id, 'NULL');
+        $this->array(array_column($tree, 'id'))->isIdenticalTo([$root->id]);
+        $this->array(array_column($tree[0]['answers'], 'id'))->isIdenticalTo([$reply->id]);
+        $this->array(ApplicationComment::getCommentsForKbItem($article->id, null, 0))->isEmpty();
+        $this->array(array_column(ApplicationComment::getCommentsForKbItem($article->id, null, (string)$root->id), 'id'))
+            ->isIdenticalTo([$reply->id]);
+        $this->array(array_column(ApplicationComment::getCommentsForKbItem($article->id, ''), 'id'))
+            ->isIdenticalTo([$empty->id]);
+        $model = new ApplicationArticle();
+        $this->boolean($model->getFromDB($article->id))->isTrue();
+        $translation = new class () extends ArticleTranslation {
+            public static function getType()
+            {
+                return ArticleTranslation::getType();
+            }
+            public function canUpdateItem(): bool
+            {
+                return true;
+            }
+        };
+        $translation->fields = ['knowbaseitems_id' => (string)$article->id, 'language' => 'fr_FR'];
+        $tabs = new ApplicationComment();
+        $previousCount = $_SESSION['glpishow_count_on_tabs'];
+        try {
+            $_SESSION['glpishow_count_on_tabs'] = 1;
+            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(1) . " <sup class='tab_nb'>1</sup>");
+            $this->output(static fn () => ApplicationComment::showForItem($translation))->contains('French comment');
+            $connection->update('glpi_knowbaseitems_comments', ['comment' => 'Current root'], ['id' => $root->id]);
+            $connection->update('glpi_knowbaseitems_comments', ['language' => null], ['id' => $translated->id]);
+            $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(0));
+            $this->output(static fn () => ApplicationComment::showForItem($translation))->contains('No comments');
+            $fresh = ApplicationComment::getCommentsForKbItem($article->id, null);
+            $this->array(array_column($fresh, 'id'))->isIdenticalTo([$root->id, $translated->id]);
+            $this->string($fresh[0]['comment'])->isIdenticalTo('Current root');
+            $this->string($tree[0]['comment'])->isIdenticalTo('Original root');
+            $this->output(static fn () => ApplicationComment::showForItem($model))->contains('Current root');
+            $root->comment = 'Unflushed independent root';
+            Orm::read($DB, function (EntityManager $outer) use ($article, $root, $owner, $fresh, $tabs, $translation): void {
+                $owned = $outer->find(CommentRecord::class, $root->id);
+                $owned->comment = 'Unflushed enclosing root';
+                $this->array(ApplicationComment::getCommentsForKbItem($article->id, null))->isIdenticalTo($fresh);
+                $this->string($tabs->getTabNameForItem($translation))->isIdenticalTo(ApplicationComment::getTypeName(0));
+                $this->boolean($outer->contains($owned))->isTrue();
+                $this->string($owned->comment)->isIdenticalTo('Unflushed enclosing root');
+                $this->boolean($owner->contains($root))->isTrue();
+                $this->string($root->comment)->isIdenticalTo('Unflushed independent root');
+            });
+        } finally {
+            $_SESSION['glpishow_count_on_tabs'] = $previousCount;
+        }
+    }
+
+    public function testCustomCommentReadPinsRouteBeforeLanguageConversion(): void
+    {
+        global $DB;
+        $original = $DB;
+        try {
+            $owner = Orm::create($DB);
+            $article = new ArticleRecord();
+            $article->name = 'Custom comment ' . $this->getUniqueString();
+            $comment = new CommentRecord();
+            $comment->knowbaseitems = $article;
+            $comment->language = 'NULL';
+            $comment->comment = 'Stored custom comment';
+            $owner->persist($article);
+            $owner->persist($comment);
+            $owner->flush();
+            $comment->comment = 'Unflushed custom comment';
+            $connection = $DB->getDoctrineConnection();
+            $observer = new class () {
+                public array $trace = [];
+                public int $clears = 0;
+                public function onClear(): void
+                {
+                    ++$this->clears;
+                }
+            };
+            $selected = new class ($connection) extends ScalarReadProbe {
+                public EventManager $events;
+                public object $observer;
+                public function getEventManager(): EventManager
+                {
+                    $this->observer->trace[] = 'constructed';
+                    return $this->events;
+                }
+            };
+            $selected->observer = $observer;
+            $selected->events = new EventManager();
+            $selected->events->addEventListener(['onClear'], $observer);
+            $other = new ScalarReadProbe($connection);
+            $route = $selected;
+            $this->mockGenerator()->orphanize('__construct');
+            $adapter = new CommentAdapterProbe();
+            $this->calling($adapter)->getDoctrineConnection = static function () use (&$route) {
+                return $route;
+            };
+            $this->calling($adapter)->getProvider = $original->getProvider();
+            $DB = $adapter;
+            $language = new class ($this, $connection, $observer, $other, $route) {
+                public function __construct(
+                    private object $test,
+                    private Connection $connection,
+                    private object $observer,
+                    private Connection $other,
+                    private Connection &$route
+                ) {
+                }
+                public function __toString(): string
+                {
+                    $this->test->boolean($this->connection->isApplicationEntityManagerActive())->isFalse();
+                    $this->observer->trace[] = 'language';
+                    $this->route = $this->other;
+                    return 'NULL';
+                }
+            };
+            $rows = ApplicationComment::getCommentsForKbItem((string)$article->id, $language);
+            $this->array($observer->trace)->isIdenticalTo(['constructed', 'language']);
+            $this->array(array_column($rows, 'id'))->isIdenticalTo([$comment->id]);
+            $this->string($rows[0]['comment'])->isIdenticalTo('Stored custom comment');
+            $this->boolean($owner->contains($comment))->isTrue();
+            $this->string($comment->comment)->isIdenticalTo('Unflushed custom comment');
+            $this->array($other->queries)->isEmpty();
+            $this->array($selected->queries)->isNotEmpty();
+            $this->integer($observer->clears)->isIdenticalTo(0);
+            $this->string($connection->fetchOne('SELECT comment FROM glpi_knowbaseitems_comments WHERE id=?', [$comment->id]))
+                ->isIdenticalTo('Stored custom comment');
+        } finally {
+            $DB = $original;
+        }
+    }
+
+    public function testCommentCycleFailureLeavesNextReadUsable(): void
+    {
+        global $DB;
+        $owner = Orm::create($DB);
+        $article = new ArticleRecord();
+        $article->name = 'Comment cycle ' . $this->getUniqueString();
+        $root = new CommentRecord();
+        $root->knowbaseitems = $article;
+        $reply = new CommentRecord();
+        $reply->knowbaseitems = $article;
+        $reply->parent_comment = $root;
+        foreach ([$article, $root, $reply] as $record) {
+            $owner->persist($record);
+        }
+        $owner->flush();
+        $connection = $DB->getDoctrineConnection();
+        $connection->update('glpi_knowbaseitems_comments', ['parent_comment_id' => $reply->id], ['id' => $root->id]);
+        try {
+            $this->exception(static fn () => ApplicationComment::getCommentsForKbItem($article->id, null, $root->id))
+                ->isInstanceOf(UnexpectedValueException::class)
+                ->hasMessage('Cycle in knowledge-base comment ancestry.');
+            $this->boolean($connection->isApplicationEntityManagerActive())->isFalse();
+        } finally {
+            $connection->update('glpi_knowbaseitems_comments', ['parent_comment_id' => null], ['id' => $root->id]);
+        }
+        $tree = ApplicationComment::getCommentsForKbItem($article->id, null);
+        $this->array(array_column($tree, 'id'))->isIdenticalTo([$root->id]);
+        $this->array(array_column($tree[0]['answers'], 'id'))->isIdenticalTo([$reply->id]);
+    }
+
     public function testGetTypeName()
     {
         $expected = 'Comment';
@@ -85,7 +326,7 @@ class KnowbaseItem_Comment extends DbTestCase
      *
      * @return void
      */
-    private function addComments(\KnowbaseItem $kb, $lang = 'NULL')
+    private function addComments(\KnowbaseItem $kb, $lang = null)
     {
         $this->login();
         $kbcom = new \KnowbaseItem_Comment();

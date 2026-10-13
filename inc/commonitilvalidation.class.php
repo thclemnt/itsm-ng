@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILValidationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -192,22 +197,12 @@ abstract class CommonITILValidation extends CommonDBChild
     public static function canValidate($items_id)
     {
         global $DB;
-
-        $iterator = $DB->request([
-            'SELECT' => ['users_id_validate'],
-            'FROM' => static::getTable(),
-            'WHERE' => [
-                static::$items_id => $items_id,
-                'users_id_validate' => Session::getLoginUserID()
-            ],
-            'START' => 0,
-            'LIMIT' => 1
-        ]);
-
-        if (count($iterator) > 0) {
-            return true;
-        }
-        return false;
+        $database = $DB;
+        $request = EntityRegistry::tables()[static::getTable()];
+        $validator = self::workflowInteger(Session::getLoginUserID());
+        $subject = self::workflowInteger($items_id);
+        return Orm::read($database, static fn (EntityManager $manager): bool =>
+            (new ITILValidationRepository($manager, $request))->hasValidator($subject, $validator));
     }
 
 
@@ -646,17 +641,11 @@ abstract class CommonITILValidation extends CommonDBChild
     public static function getNumberToValidate($users_id)
     {
         global $DB;
-
-        $row = $DB->request([
-            'FROM' => static::getTable(),
-            'COUNT' => 'cpt',
-            'WHERE' => [
-                'status' => self::WAITING,
-                'users_id_validate' => $users_id
-            ]
-        ])->next();
-
-        return $row['cpt'];
+        $database = $DB;
+        $request = EntityRegistry::tables()[static::getTable()];
+        $validator = self::workflowInteger($users_id);
+        return Orm::read($database, static fn (EntityManager $manager): int =>
+            (new ITILValidationRepository($manager, $request))->waitingForValidator($validator));
     }
 
 
@@ -669,17 +658,12 @@ abstract class CommonITILValidation extends CommonDBChild
     public static function getTicketStatusNumber($items_id, $status)
     {
         global $DB;
-
-        $row = $DB->request([
-            'FROM' => static::getTable(),
-            'COUNT' => 'cpt',
-            'WHERE' => [
-                static::$items_id => $items_id,
-                'status' => $status
-            ]
-        ])->next();
-
-        return $row['cpt'];
+        $database = $DB;
+        $request = EntityRegistry::tables()[static::getTable()];
+        $subject = self::workflowInteger($items_id);
+        $status = self::workflowInteger($status);
+        return Orm::read($database, static fn (EntityManager $manager): int =>
+            (new ITILValidationRepository($manager, $request))->countForSubject($subject, $status));
     }
 
 
@@ -696,21 +680,12 @@ abstract class CommonITILValidation extends CommonDBChild
     public static function alreadyExists($items_id, $users_id)
     {
         global $DB;
-
-        $iterator = $DB->request([
-            'FROM' => static::getTable(),
-            'WHERE' => [
-                static::$items_id => $items_id,
-                'users_id_validate' => $users_id
-            ],
-            'START' => 0,
-            'LIMIT' => 1
-        ]);
-
-        if (count($iterator) > 0) {
-            return true;
-        }
-        return false;
+        $database = $DB;
+        $request = EntityRegistry::tables()[static::getTable()];
+        $validator = self::workflowInteger($users_id);
+        $subject = self::workflowInteger($items_id);
+        return Orm::read($database, static fn (EntityManager $manager): bool =>
+            (new ITILValidationRepository($manager, $request))->hasValidator($subject, $validator));
     }
 
 
@@ -1992,5 +1967,11 @@ JAVASCRIPT;
     public static function getAllValidationStatusArray()
     {
         return [self::NONE, self::WAITING, self::REFUSED, self::ACCEPTED];
+    }
+
+    /** Public structured criteria treat NULL and the literal null alike, but never zero. */
+    private static function workflowInteger(mixed $value): ?int
+    {
+        return $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
     }
 }

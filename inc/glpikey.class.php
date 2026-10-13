@@ -122,7 +122,7 @@ class GLPIKey
     public function get()
     {
         if (!file_exists($this->keyfile)) {
-            throw new \RuntimeException('You must create a security key, see itsmng:security:change_key command.');
+            throw new RuntimeException('You must create a security key, see itsmng:security:change_key command.');
         }
         //load key from existing config file
         $key = file_get_contents($this->keyfile);
@@ -148,19 +148,20 @@ class GLPIKey
     /**
      * Generate GLPI security key used for decryptable passwords
      * and update values in DB if necessary.
+     * @param bool $migrate Existing data requires migration; fresh installers pass false.
      * @return boolean
      */
-    public function generate()
+    public function generate(bool $migrate = true)
     {
         global $DB;
 
         // Fetch old key before generating the new one (but only if DB exists and there is something to migrate)
         $sodium_key = null;
         $old_key = false;
-        if ($DB instanceof DBmysql) {
+        if ($migrate && $DB instanceof DBAdapter) {
             try {
                 $sodium_key = $this->get();
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $sodium_key = null;
                 $old_key = $this->getLegacyKey();
             }
@@ -172,7 +173,7 @@ class GLPIKey
             return false;
         }
 
-        if ($DB instanceof DBmysql) {
+        if ($migrate && $DB instanceof DBAdapter) {
             return $this->migrateFieldsInDb($sodium_key, $old_key)
                && $this->migrateConfigsInDb($sodium_key, $old_key);
         }
@@ -338,7 +339,7 @@ class GLPIKey
         for ($i = 0; $i < strlen($string); $i++) {
             $char    = substr($string, $i, 1);
             $keychar = substr($key, ($i % strlen($key)) - 1, 1);
-            $char    = chr(ord($char) - ord($keychar));
+            $char    = chr((ord($char) - ord($keychar)) & 0xff);
             $result .= $char;
         }
 

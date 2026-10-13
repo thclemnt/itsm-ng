@@ -48,6 +48,7 @@ if (isset($_POST["add"])) {
         Html::back();
     }
     if ($_POST['softwarelicenses_id'] > 0) {
+        $isl->check(-1, CREATE, $_POST);
         if ($isl->add($_POST)) {
             Event::log(
                 $_POST['softwarelicenses_id'],

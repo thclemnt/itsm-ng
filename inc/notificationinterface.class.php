@@ -43,7 +43,8 @@ interface NotificationInterface
     /**
      * Send notifications
      *
-     * @return 0|1
+     * @return bool|int|null False or integer 0 refuses admission; true or integer
+     *                       1 accepts. NULL is compatible legacy void, not delivery.
     **/
     public function sendNotification();
 

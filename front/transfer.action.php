@@ -44,9 +44,11 @@ if (isset($_POST['transfer'])) {
         if (!Session::haveAccessToEntity($_POST['to_entity'])) {
             Html::displayRightError();
         }
-        $transfer->moveItems($_SESSION['glpitransfer_list'], $_POST['to_entity'], $_POST);
-        unset($_SESSION['glpitransfer_list']);
-        echo "<div class='b center'>" . __('Operation successful') . "<br>";
+        $success = $transfer->moveItems($_SESSION['glpitransfer_list'], $_POST['to_entity'], $_POST);
+        if ($success) {
+            unset($_SESSION['glpitransfer_list']);
+        }
+        echo "<div class='b center'>" . ($success ? __('Operation successful') : __('Transfer failed')) . "<br>";
         echo "<a href='central.php'>" . __('Back') . "</a></div>";
         Html::footer();
         exit();

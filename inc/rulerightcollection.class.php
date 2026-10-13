@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RuleRepository;
+use itsmng\Domain\Authentication\AuthenticationRuleEvaluation;
+use itsmng\Domain\Authentication\AuthenticationRuleMutations;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -52,6 +58,38 @@ class RuleRightCollection extends RuleCollection
     public $rules_entity        = [];
     /// Array containing results : only right
     public $rules_rights        = [];
+
+
+    private ?AuthenticationRuleMutations $authenticationMutations = null;
+
+    public function evaluateAuthentication(array $groups, array $context, array $parameters): AuthenticationRuleEvaluation
+    {
+        $previous = $this->authenticationMutations;
+        $mutations = new AuthenticationRuleMutations();
+        $this->authenticationMutations = $mutations;
+        try {
+            $output = $this->processAllRules($groups, $context, $parameters);
+            // These control values are produced by the matching engine, not
+            // copied account attributes. Preserve the established hook context.
+            $control = array_intersect_key($output, array_flip(['_no_rule_matches', '_rule_process', '_ruleid']));
+            return new AuthenticationRuleEvaluation($output, $mutations->outcome($control));
+        } finally {
+            $this->authenticationMutations = $previous;
+        }
+    }
+
+    protected function processRule(Rule $rule, &$input, &$output, &$params, &$options): void
+    {
+        if ($this->authenticationMutations === null) {
+            parent::processRule($rule, $input, $output, $params, $options);
+            return;
+        }
+        // Unknown rule implementations must declare their own producer before adoption.
+        if (get_class($rule) !== RuleRight::class) {
+            throw new LogicException('Authentication requires the owning RuleRight action producer.');
+        }
+        $rule->processAuthentication($input, $output, $params, $options, $this->authenticationMutations);
+    }
 
 
     public function getTitle()
@@ -186,31 +224,15 @@ class RuleRightCollection extends RuleCollection
         global $DB;
 
         $params = [];
-        $iterator = $DB->request([
-           'SELECT'          => 'value',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_rulerightparameters',
-           'LEFT JOIN'       => [
-              'glpi_rulecriterias' => [
-                 'ON' => [
-                    'glpi_rulerightparameters' => 'value',
-                    'glpi_rulecriterias'       => 'criteria'
-                 ]
-              ],
-              'glpi_rules'         => [
-                 'ON' => [
-                    'glpi_rulecriterias' => 'rules_id',
-                    'glpi_rules'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => ['glpi_rules.sub_type' => 'RuleRight']
-        ]);
+        $values = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new RuleRepository($manager))->ldapAttributeValues()
+        );
 
-        while ($param = $iterator->next()) {
+        foreach ($values as $value) {
             //Dn is alwsays retreived from ldap : don't need to ask for it !
-            if ($param["value"] != "dn") {
-                $params[] = Toolbox::strtolower($param["value"]);
+            if ($value != "dn") {
+                $params[] = Toolbox::strtolower($value);
             }
         }
         return $params;

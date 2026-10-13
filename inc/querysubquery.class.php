@@ -54,7 +54,7 @@ class QuerySubQuery extends AbstractQuery
 
         parent::__construct($alias);
         if (empty($crit)) {
-            throw new \RuntimeException('Cannot build an empty subquery');
+            throw new RuntimeException('Cannot build an empty subquery');
         }
 
         $this->dbiterator = new DBmysqlIterator($DB);

@@ -39,7 +39,9 @@ if (!defined('GLPI_ROOT')) {
 
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
+use Session;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
 
 /**
  * @since 9.5.0
@@ -243,7 +245,7 @@ class ErrorHandler
      *
      * @return void
      */
-    public function handleException(\Throwable $exception, bool $quiet = false)
+    public function handleException(Throwable $exception, bool $quiet = false)
     {
         $this->exit_code = 255;
 
@@ -365,7 +367,7 @@ class ErrorHandler
 
         if (
             (!$force
-            && (!isset($_SESSION['glpi_use_mode']) || $_SESSION['glpi_use_mode'] != \Session::DEBUG_MODE)) || isAPI()
+            && (!isset($_SESSION['glpi_use_mode']) || $_SESSION['glpi_use_mode'] != Session::DEBUG_MODE)) || isAPI()
         ) {
             return;
         }

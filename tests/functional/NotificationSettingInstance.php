@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Notification_NotificationTemplate;
 
 require_once __DIR__ . '/../NotificationSettingInstance.php';
 
@@ -73,6 +74,7 @@ class NotificationSettingInstance extends DbTestCase
 
         $CFG_GLPI['use_notifications'] = 1;
         $CFG_GLPI['notifications_mailing'] = 1;
+        Notification_NotificationTemplate::registerMode('xyz', 'Test notification mode', 'test');
         $CFG_GLPI['notifications_xyz'] = 1;
 
         \NotificationSetting::disableAll();

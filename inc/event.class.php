@@ -42,6 +42,9 @@ use Session;
 use Toolbox;
 use Infocom;
 use DBConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\EventRepository;
+use itsmng\Database\RowIterator;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -53,6 +56,24 @@ if (!defined('GLPI_ROOT')) {
 class Event extends CommonDBTM
 {
     public static $rightname = 'logs';
+
+    private bool $rawLogInput = false;
+
+    /** Event::log supplies raw values while public add() retains its legacy input contract. */
+    public function addToDB()
+    {
+        global $DB;
+        if (!$this->rawLogInput) {
+            return parent::addToDB();
+        }
+        $values = $this->fields;
+        if (isset($values['id']) && $this->isNewID($values['id'])) {
+            unset($values['id']);
+        }
+        $id = (new EventRepository(Orm::create($DB)))->append($values);
+        $this->getFromDB($id);
+        return $id;
+    }
 
 
 
@@ -84,7 +105,7 @@ class Event extends CommonDBTM
             $full_message = "[" . $this->fields['service'] . "] " .
                             $message_type .
                             $this->fields['level'] . ": " .
-                            Toolbox::stripslashes_deep($this->fields['message']) . "\n";
+                            $this->fields['message'] . "\n";
 
             Toolbox::logInFile("event", $full_message);
         }
@@ -105,16 +126,19 @@ class Event extends CommonDBTM
     **/
     public static function log($items_id, $type, $level, $service, $event)
     {
-        global $DB;
-
         $input = ['items_id' => intval($items_id),
-                       'type'     => $DB->escape($type),
+                       'type'     => $type,
                        'date'     => $_SESSION["glpi_currenttime"],
-                       'service'  => $DB->escape($service),
+                       'service'  => $service,
                        'level'    => intval($level),
-                       'message'  => $DB->escape($event)];
+                       'message'  => $event];
         $tmp = new self();
-        return $tmp->add($input);
+        $tmp->rawLogInput = true;
+        try {
+            return $tmp->add($input);
+        } finally {
+            $tmp->rawLogInput = false;
+        }
     }
 
 
@@ -129,15 +153,7 @@ class Event extends CommonDBTM
     {
         global $DB;
 
-        $secs = $day * DAY_TIMESTAMP;
-
-        $DB->delete(
-            'glpi_events',
-            [
-              new \QueryExpression("UNIX_TIMESTAMP(date) < UNIX_TIMESTAMP()-$secs")
-            ]
-        );
-        return $DB->affectedRows();
+        return (new EventRepository(Orm::create($DB)))->deleteOlderThan($day * DAY_TIMESTAMP);
     }
 
 
@@ -248,23 +264,14 @@ class Event extends CommonDBTM
         // Show events from $result in table form
         list($logItemtype, $logService) = self::logArray();
 
-        // define default sorting
-        $usersearch = "";
-        if (!empty($user)) {
-            $usersearch = $user . " ";
-        }
-
-        // Query Database
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_events',
-           'WHERE'  => ['message' => ['LIKE', $usersearch . '%']],
-           'ORDER'  => 'date DESC',
-           'LIMIT'  => (int)$_SESSION['glpilist_limit']
-        ]);
+        $iterator = new RowIterator((new EventRepository(Orm::create($DB)))->page(
+            0,
+            (int)$_SESSION['glpilist_limit'],
+            user: (string)$user
+        ));
 
         // Number of results
         $number = count($iterator);
-        ;
 
         // No Events in database
         if ($number < 1) {
@@ -355,16 +362,11 @@ class Event extends CommonDBTM
             $order = "DESC";
         }
 
-        // Query Database
-        $iterator = $DBread->request([
-           'FROM'   => 'glpi_events',
-           'ORDER'  => "$sort $order",
-           'START'  => (int)$start,
-           'LIMIT'  => (int)$_SESSION['glpilist_limit']
-        ]);
+        $repository = new EventRepository(Orm::create($DBread));
+        $iterator = new RowIterator($repository->page((int)$start, (int)$_SESSION['glpilist_limit'], $sort, $order));
 
-        // Number of results
-        $numrows = countElementsInTable("glpi_events");
+        // Count and rows use the same explicitly selected application connection.
+        $numrows = $repository->count();
         // Get results
         $number = count($iterator);
 

@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -252,89 +256,33 @@ JAVASCRIPT;
 
         global $DB;
 
-        $cat_table = KnowbaseItemCategory::getTable();
         $cat_fk  = KnowbaseItemCategory::getForeignKeyField();
 
-        $kbitem_visibility_crit = KnowbaseItem::getVisibilityCriteria(true);
-
-        $items_subquery = new QuerySubQuery(
-            array_merge_recursive(
-                [
-                  'SELECT' => ['COUNT DISTINCT' => KnowbaseItem::getTableField('id') . ' as cpt'],
-                  'FROM'   => KnowbaseItem::getTable(),
-                  'WHERE'  => [
-                     KnowbaseItem::getTableField($cat_fk) => new QueryExpression(
-                         DB::quoteName(KnowbaseItemCategory::getTableField('id'))
-                     ),
-                  ]
-                ],
-                $kbitem_visibility_crit
-            ),
-            'items_count'
-        );
-
-        $cat_iterator = $DB->request([
-           'SELECT' => [
-              KnowbaseItemCategory::getTableField('id'),
-              KnowbaseItemCategory::getTableField('name'),
-              KnowbaseItemCategory::getTableField($cat_fk),
-              $items_subquery,
-           ],
-           'FROM' => $cat_table,
-           'ORDER' => [
-              KnowbaseItemCategory::getTableField('level') . ' DESC',
-              KnowbaseItemCategory::getTableField('name'),
-           ]
-        ]);
-
         $inst = new KnowbaseItemCategory();
-        $categories = [];
-        foreach ($cat_iterator as $category) {
-            if (DropdownTranslation::canBeTranslated($inst)) {
-                $tname = DropdownTranslation::getTranslatedValue(
-                    $category['id'],
-                    $inst->getType()
-                );
-                if (!empty($tname)) {
-                    $category['name'] = $tname;
-                }
-            }
-            $categories[] = $category;
-        }
+        $language = DropdownTranslation::canBeTranslated($inst)
+            && Session::haveTranslations($inst->getType(), 'name') ? $_SESSION['glpilanguage'] : null;
+        $tree = (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->categoryTree(KnowledgeBaseAccess::current(), $language);
+        $categories = $tree['categories'];
 
-        // Remove categories that have no items and no children
-        // Requires category list to be sorted by level DESC
+        // Children precede parents, so retain visible ancestors in one pass.
+        $visibleBranches = [];
         foreach ($categories as $index => $category) {
-            $children = array_filter(
-                $categories,
-                function ($element) use ($category, $cat_fk) {
-                    return $category['id'] == $element[$cat_fk];
-                }
-            );
-
-            if (empty($children) && 0 == $category['items_count']) {
+            if ($category['items_count'] === 0 && !isset($visibleBranches[$category['id']])) {
                 unset($categories[$index]);
+                continue;
+            }
+            if ($category[$cat_fk] !== null) {
+                $visibleBranches[$category[$cat_fk]] = true;
             }
         }
 
         // Add root category (which is not a real category)
-        $root_items_count = $DB->request(
-            array_merge_recursive(
-                [
-                  'SELECT' => ['COUNT DISTINCT' => KnowbaseItem::getTableField('id') . ' as cpt'],
-                  'FROM'   => KnowbaseItem::getTable(),
-                  'WHERE'  => [
-                     KnowbaseItem::getTableField($cat_fk) => 0,
-                  ]
-                ],
-                $kbitem_visibility_crit
-            )
-        )->next();
         $categories[] = [
            'id'          => '0',
            'name'        => __('Root category'),
            $cat_fk       => '#',
-           'items_count' => $root_items_count['cpt'],
+           'items_count' => $tree['uncategorized'],
         ];
 
         // Tranform data into jstree format
@@ -342,11 +290,11 @@ JAVASCRIPT;
 
         foreach ($categories as $category) {
             $node = [
-               'id'     => $category['id'],
-               'parent' => $category[$cat_fk],
+               'id'     => (string)$category['id'],
+               'parent' => (string)($category[$cat_fk] ?? 0),
                'text'   => $category['name'],
                'a_attr' => [
-                  'data-id' => $category['id']
+                  'data-id' => (string)$category['id']
                ],
             ];
 

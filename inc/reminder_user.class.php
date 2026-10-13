@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -62,14 +66,9 @@ class Reminder_User extends CommonDBRelation
 
         $users = [];
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'reminders_id' => $reminders_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new RecordRepository($manager))->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id'));
+        foreach ($rows as $data) {
             $users[$data['users_id']][] = $data;
         }
         return $users;

@@ -34,11 +34,212 @@
 namespace tests\units;
 
 use DbTestCase;
+use Document_Item as DocumentLink;
+use Reminder;
+use Session;
+use RuntimeException;
+use Doctrine\Common\EventManager;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Event\OnClearEventArgs;
+use itsmng\Database\Entity\Reminder as ReminderRecord;
+use Document as LegacyDocument;
+use itsmng\Database\Entity\Document as DocumentRecord;
+use tests\fixtures\ScalarReadProbe;
+use mock\DBmysql as DocumentReadRoute;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use ItsmngUploadHandler;
+use ReflectionMethod;
+use itsmng\Database\Entity\DocumentType as DocumentTypeRecord;
+use itsmng\Database\Orm;
+
+require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 /* Test for inc/document.class.php */
 
 class Document extends DbTestCase
 {
+    public function testAttachmentAccessSeesCurrentGrantsWithoutClearingLiveOwners(): void
+    {
+        global $DB;
+        $this->login('itsm', 'itsm');
+        $document = $this->createItem(
+            LegacyDocument::class,
+            ['name' => $this->getUniqueString(), 'filename' => 'access.txt', 'users_id' => 2]
+        );
+        $this->login('post-only', 'postonly');
+        $viewer = Session::getLoginUserID();
+        $reminder = $this->createItem(
+            Reminder::class,
+            ['name' => $this->getUniqueString(), 'text' => 'Attachment reader', 'users_id' => $viewer]
+        );
+        $link = $this->createItem(
+            DocumentLink::class,
+            ['documents_id' => $document->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+        );
+        $this->boolean($document->canViewFile())->isTrue();
+        $connection = $DB->getDoctrineConnection();
+        $owner = Orm::create($DB);
+        try {
+            $dirty = $owner->find(DocumentRecord::class, $document->getID());
+            $dirty->name = 'Pending independent attachment';
+            Orm::read(
+                $DB,
+                function (EntityManager $outer) use ($document, $reminder, $link, $viewer): void {
+                    $pending = $outer->find(ReminderRecord::class, $reminder->getID());
+                    $pending->name = 'Pending enclosing reminder';
+                    $this->boolean($link->delete(['id' => $link->getID()]))->isTrue();
+                    $this->boolean($document->canViewFile())->isFalse();
+                    $this->createItem(
+                        DocumentLink::class,
+                        ['documents_id' => $document->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+                    );
+                    $this->boolean($document->canViewFile())->isTrue();
+                    $this->boolean($reminder->update(['id' => $reminder->getID(), 'users_id' => 2]))->isTrue();
+                    $this->boolean($document->canViewFile())->isFalse();
+                    $this->boolean($reminder->update(['id' => $reminder->getID(), 'users_id' => $viewer]))->isTrue();
+                    $this->boolean($document->canViewFile())->isTrue();
+                    $this->boolean($outer->contains($pending))->isTrue();
+                    $this->string($pending->name)->isIdenticalTo('Pending enclosing reminder');
+                }
+            );
+            $this->boolean($owner->contains($dirty))->isTrue();
+            $this->string($dirty->name)->isIdenticalTo('Pending independent attachment');
+            $this->string($connection->fetchOne('SELECT name FROM glpi_documents WHERE id = ?', [$document->getID()]))
+                ->isIdenticalTo($document->fields['name']);
+            $this->string($connection->fetchOne('SELECT name FROM glpi_reminders WHERE id = ?', [$reminder->getID()]))
+                ->isIdenticalTo($reminder->fields['name']);
+        } finally {
+            $owner->clear();
+        }
+    }
+
+    public function testAttachmentAccessKeepsCustomConstructorPreparationAndFailureRoute(): void
+    {
+        global $DB;
+        $this->login('itsm', 'itsm');
+        $source = $this->createItem(
+            LegacyDocument::class,
+            ['name' => $this->getUniqueString(), 'filename' => 'selected-access.txt', 'users_id' => 2]
+        );
+        $this->login('post-only', 'postonly');
+        $reminder = $this->createItem(
+            Reminder::class,
+            ['name' => $this->getUniqueString(), 'text' => 'Selected attachment', 'users_id' => Session::getLoginUserID()]
+        );
+        $this->createItem(
+            DocumentLink::class,
+            ['documents_id' => $source->getID(), 'items_id' => $reminder->getID(), 'itemtype' => Reminder::class]
+        );
+        $trace = new class () {
+            public array $events = [];
+            public ?RuntimeException $prepareFailure = null;
+            public ?RuntimeException $queryFailure = null;
+            public int $clears = 0;
+
+            public function onClear(OnClearEventArgs $event): void
+            {
+                ++$this->clears;
+            }
+        };
+        $document = new class () extends LegacyDocument {
+            public object $trace;
+            public bool $armed = false;
+
+            public static function getType()
+            {
+                return LegacyDocument::class;
+            }
+
+            public static function getTable($classname = null)
+            {
+                return LegacyDocument::getTable();
+            }
+
+            public function getID()
+            {
+                if ($this->armed) {
+                    $this->trace->events[] = 'id';
+                    if ($this->trace->prepareFailure !== null) {
+                        throw $this->trace->prepareFailure;
+                    }
+                }
+                return parent::getID();
+            }
+        };
+        $document->trace = $trace;
+        $this->boolean($document->getFromDB($source->getID()))->isTrue();
+        $document->armed = true;
+        $original = $DB;
+        $connection = $original->getDoctrineConnection();
+        $events = new EventManager();
+        $events->addEventListener([Events::onClear], $trace);
+        $probe = new class ($connection, $events, $original, $trace) extends ScalarReadProbe {
+            public function __construct(
+                Connection $connection,
+                private EventManager $events,
+                private object $original,
+                private object $trace
+            ) {
+                parent::__construct($connection);
+            }
+
+            public function getEventManager(): EventManager
+            {
+                $this->trace->events[] = 'constructed';
+                $GLOBALS['DB'] = $this->original;
+                return $this->events;
+            }
+
+            public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
+            {
+                $this->trace->events[] = 'query';
+                if ($this->trace->queryFailure !== null) {
+                    throw $this->trace->queryFailure;
+                }
+                return parent::executeQuery($sql, $params, $types, $qcp);
+            }
+        };
+        $this->mockGenerator()->orphanize('__construct');
+        $adapter = new DocumentReadRoute();
+        $selections = 0;
+        $this->calling($adapter)->getDoctrineConnection = static function () use ($probe, &$selections): Connection {
+            ++$selections;
+            return $probe;
+        };
+        $depth = $connection->getTransactionNestingLevel();
+        try {
+            $prepareFailure = new RuntimeException('Attachment ID preparation');
+            $trace->prepareFailure = $prepareFailure;
+            $DB = $adapter;
+            $this->exception(static fn () => $document->canViewFile())->isIdenticalTo($prepareFailure);
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id']);
+            $this->array($probe->queries)->isEmpty();
+            $trace->prepareFailure = null;
+            $trace->events = [];
+            $queryFailure = new RuntimeException('Selected attachment read');
+            $trace->queryFailure = $queryFailure;
+            $DB = $adapter;
+            $this->exception(static fn () => $document->canViewFile())->isIdenticalTo($queryFailure);
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id', 'query']);
+            $trace->queryFailure = null;
+            $trace->events = [];
+            $DB = $adapter;
+            $this->boolean($document->canViewFile())->isTrue();
+            $this->array($trace->events)->isIdenticalTo(['constructed', 'id', 'query']);
+            $this->array($probe->queries)->hasSize(1);
+            $this->string($probe->queries[0]['sql'])->contains('glpi_reminders');
+            $this->integer($selections)->isIdenticalTo(3);
+            $this->integer($trace->clears)->isIdenticalTo(0);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $original;
+        }
+    }
+
     public function canApplyOnProvider()
     {
         return [
@@ -772,11 +973,159 @@ class Document extends DbTestCase
 
         // launch Cron for closing tickets
         $mode = - \CronTask::MODE_EXTERNAL; // force
-        \CronTask::launch($mode, 5, 'cleanorphans');
+        global $DB;
+        $owner = Orm::create($DB);
+        try {
+            $pending = $owner->find(DocumentRecord::class, $did3);
+            $pending->name = 'Pending orphan observer';
+            Orm::read($DB, function (EntityManager $outer) use ($did3, $mode): void {
+                $live = $outer->find(DocumentRecord::class, $did3);
+                $live->name = 'Pending enclosing orphan observer';
+                \CronTask::launch($mode, 5, 'cleanorphans');
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing orphan observer');
+            });
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending orphan observer');
+        } finally {
+            $owner->clear();
+        }
 
         // check documents presence
         $this->boolean($doc->getFromDB($did1))->isFalse();
         $this->boolean($doc->getFromDB($did2))->isFalse();
         $this->boolean($doc->getFromDB($did3))->isTrue();
+    }
+
+    public function testContentLookupCompletesBeforePublicLoadAndRetainsOwners(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $connection = $DB->getDoctrineConnection();
+        $path = tempnam(sys_get_temp_dir(), 'itsm-content-');
+        $owner = null;
+        try {
+            file_put_contents($path, $this->getUniqueString());
+            $hash = sha1_file($path);
+            $document = $this->createItem(LegacyDocument::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => 0,
+            ]);
+            $connection->update('glpi_documents', ['sha1sum' => $hash], ['id' => $document->getID()]);
+            $this->boolean($document->getFromDB($document->getID()))->isTrue();
+            $owner = Orm::create($database);
+            $pending = $owner->find(DocumentRecord::class, $document->getID());
+            $pending->name = 'Pending content observer';
+            Orm::read($database, function (EntityManager $outer) use ($document, $path): void {
+                $live = $outer->find(DocumentRecord::class, $document->getID());
+                $live->name = 'Pending enclosing content observer';
+                $loaded = new LegacyDocument();
+                $this->boolean($loaded->getFromDBbyContent(0, $path))->isTrue();
+                $this->integer((int)$loaded->getID())->isIdenticalTo((int)$document->getID());
+                $this->string($loaded->fields['name'])->isIdenticalTo($document->fields['name']);
+                $this->boolean($outer->contains($live))->isTrue();
+                $this->string($live->name)->isIdenticalTo('Pending enclosing content observer');
+            });
+            $fresh = $this->getUniqueString();
+            $connection->update('glpi_documents', ['name' => $fresh], ['id' => $document->getID()]);
+            $probe = new ScalarReadProbe($connection);
+            $this->mockGenerator->orphanize('__construct');
+            $route = new DocumentReadRoute();
+            $this->calling($route)->getDoctrineConnection = $probe;
+            $DB = $route;
+            $loaded = new LegacyDocument();
+            $this->boolean($loaded->getFromDBbyContent('0', $path))->isTrue();
+            $this->string($loaded->fields['name'])->isIdenticalTo($fresh);
+            $this->array($probe->queries)->isNotEmpty();
+            $connection->update('glpi_documents', ['sha1sum' => null], ['id' => $document->getID()]);
+            $this->boolean($loaded->getFromDBbyContent(0, $path))->isFalse();
+            $this->boolean($owner->contains($pending))->isTrue();
+            $this->string($pending->name)->isIdenticalTo('Pending content observer');
+        } finally {
+            $DB = $database;
+            $owner?->clear();
+            if (is_string($path) && is_file($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    public function testUploadableExtensionPolicyFreshnessAndReadOwnership()
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        // Isolate this upload policy corpus; DbTestCase rolls the transaction back.
+        $connection->executeStatement(
+            'UPDATE glpi_documenttypes SET is_uploadable = :disabled',
+            ['disabled' => false],
+            ['disabled' => Types::BOOLEAN]
+        );
+        $writer = Orm::create($DB);
+        try {
+            $literal = new DocumentTypeRecord();
+            $literal->ext = 'sol-upload-ext';
+            $regex = new DocumentTypeRecord();
+            $regex->ext = '/sol-regex-[0-9]+/';
+            $nullable = new DocumentTypeRecord();
+            $disabled = new DocumentTypeRecord();
+            $disabled->ext = 'sol-disabled-ext';
+            $disabled->is_uploadable = false;
+            foreach ([$literal, $regex, $nullable, $disabled] as $record) {
+                $writer->persist($record);
+            }
+            $writer->flush();
+            $literal->ext = 'sol-pending-ext';
+            $this->string(LegacyDocument::isValidDoc('file.sol-upload-ext'))->isIdenticalTo('SOL-UPLOAD-EXT');
+            $this->string(LegacyDocument::isValidDoc('file.sol-regex-42'))->isIdenticalTo('SOL-REGEX-42');
+            $this->string(LegacyDocument::isValidDoc('file.sol-pending-ext'))->isIdenticalTo('');
+
+            // Exercise the actual private consumer without attempting an HTTP upload.
+            $policy = new ReflectionMethod(ItsmngUploadHandler::class, 'getValidExtPatterns');
+            $patterns = $policy->invoke(null);
+            $this->array($patterns)->hasSize(3)
+                ->contains('\\.sol\\-upload\\-ext$')
+                ->contains('(sol-regex-[0-9]+)')->contains('\\.$')
+                ->notContains('\\.sol\\-disabled\\-ext$');
+            $expression = '/(' . implode('|', $patterns) . ')$/';
+            $this->integer(preg_match($expression, 'report.sol-upload-ext'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.sol-regex-42'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.'))->isIdenticalTo(1);
+            $this->integer(preg_match($expression, 'report.sol-disabled-ext'))->isIdenticalTo(0);
+            $this->integer(preg_match($expression, 'report.sol-pending-ext'))->isIdenticalTo(0);
+            $this->boolean($writer->contains($literal))->isTrue();
+            $this->string($literal->ext)->isIdenticalTo('sol-pending-ext');
+
+            $connection->update('glpi_documenttypes', ['ext' => 'sol-fresh-ext'], ['id' => $literal->id]);
+            $this->string(LegacyDocument::isValidDoc('file.sol-fresh-ext'))->isIdenticalTo('SOL-FRESH-EXT');
+            $this->string(LegacyDocument::isValidDoc('file.sol-upload-ext'))->isIdenticalTo('');
+            $fresh = $policy->invoke(null);
+            $this->array($fresh)->contains('\\.sol\\-fresh\\-ext$')
+                ->notContains('\\.sol\\-upload\\-ext$');
+            $this->array($patterns)->contains('\\.sol\\-upload\\-ext$');
+
+            // A nested read must neither flush nor clear the caller's live unit of work.
+            Orm::read($DB, function (EntityManager $outer) use ($policy, $literal): void {
+                $pending = $outer->find(DocumentTypeRecord::class, $literal->id);
+                $pending->ext = 'sol-outer-pending-ext';
+                $this->string(LegacyDocument::isValidDoc('file.sol-fresh-ext'))->isIdenticalTo('SOL-FRESH-EXT');
+                $nested = $policy->invoke(null);
+                $this->array($nested)->contains('\\.sol\\-fresh\\-ext$')
+                    ->notContains('\\.sol\\-outer\\-pending\\-ext$');
+                $this->boolean($outer->contains($pending))->isTrue();
+                $this->string($pending->ext)->isIdenticalTo('sol-outer-pending-ext');
+            });
+
+            $connection->executeStatement(
+                'UPDATE glpi_documenttypes SET is_uploadable = :disabled',
+                ['disabled' => false],
+                ['disabled' => Types::BOOLEAN]
+            );
+            $this->array($policy->invoke(null))->isEmpty();
+            $this->boolean($writer->contains($literal))->isTrue();
+            $this->string($literal->ext)->isIdenticalTo('sol-pending-ext');
+        } finally {
+            $writer->clear();
+        }
     }
 }

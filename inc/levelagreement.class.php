@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -65,6 +68,12 @@ abstract class LevelAgreement extends CommonDBChild
      * @return array of strings
      */
     abstract public function getAddConfirmation();
+
+    protected static function serviceRepository(): ServiceLevelRepository
+    {
+        global $DB;
+        return new ServiceLevelRepository(Orm::create($DB), static::$prefix);
+    }
 
     /**
      * Get table fields
@@ -113,9 +122,14 @@ abstract class LevelAgreement extends CommonDBChild
     public function setTicketCalendar($calendars_id)
     {
 
-        if ($this->fields['calendars_id'] == -1) {
-            $this->fields['calendars_id'] = $calendars_id;
+        if ($this->usesTicketCalendar()) {
+            $this->fields['calendars_id'] = (int)$calendars_id > 0 ? (int)$calendars_id : null;
         }
+    }
+
+    public function usesTicketCalendar(): bool
+    {
+        return !empty($this->fields['use_ticket_calendar']);
     }
 
     public function post_getFromDB()
@@ -124,11 +138,14 @@ abstract class LevelAgreement extends CommonDBChild
         $slm = new SLM();
         if ($slm->getFromDB($this->fields['slms_id'])) {
             $this->fields['calendars_id'] = $slm->fields['calendars_id'];
+            $this->fields['use_ticket_calendar'] = $slm->usesTicketCalendar();
         }
     }
 
     public function post_getEmpty()
     {
+        $this->fields['calendars_id'] = null;
+        $this->fields['use_ticket_calendar'] = false;
         $this->fields['number_time'] = 4;
         $this->fields['definition_time'] = 'hour';
     }
@@ -236,7 +253,7 @@ abstract class LevelAgreement extends CommonDBChild
                       'id' => 'end_of_working_day',
                       'name' => 'end_of_working_day',
                       'value' => $this->fields['end_of_working_day'],
-                      $this->fields['calendars_id'] != 'day' ? 'disabled' : '' => true,
+                      $this->fields['definition_time'] != 'day' ? 'disabled' : '' => true,
                    ],
                    __('Comments') => [
                       'type' => 'textarea',
@@ -400,8 +417,8 @@ abstract class LevelAgreement extends CommonDBChild
                'name'      => $dateField,
                'value'     => $ticket->fields[$dateField],
                'maybeempty' => false,
-               ($tt->isMandatoryField($dateField) ? 'required' : '') => true,
-               ($canupdate ? null : 'disabled') => true,
+               ...($tt->isMandatoryField($dateField) ? ['required' => true] : []),
+               ...($canupdate ? [] : ['disabled' => true]),
             ]);
             echo $tt->getEndHiddenFieldValue($dateField, $ticket);
             $data     = $this->find(
@@ -542,9 +559,9 @@ abstract class LevelAgreement extends CommonDBChild
                        'definition_time' => $la->fields['definition_time']]
                 );
                 echo "</td>";
-                if (!$slm->fields['calendars_id']) {
+                if (!$slm->usesTicketCalendar() && !$slm->fields['calendars_id']) {
                     $link =  __('24/7');
-                } elseif ($slm->fields['calendars_id'] == -1) {
+                } elseif ($slm->usesTicketCalendar()) {
                     $link = __('Calendar of the ticket');
                 } elseif ($calendar->getFromDB($slm->fields['calendars_id'])) {
                     $link = $calendar->getLink();
@@ -572,20 +589,12 @@ abstract class LevelAgreement extends CommonDBChild
      */
     public function showRulesList()
     {
-        global $DB;
-
         $fk      = static::getFieldNames($this->fields['type'])[1];
         $rule    = new RuleTicket();
         $rand    = mt_rand();
         $canedit = self::canUpdate();
 
-        $rules_id_list = iterator_to_array($DB->request([
-           'SELECT'          => 'rules_id',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_ruleactions',
-           'WHERE'           => [
-              'field' => $fk,
-              'value' => $this->getID()]]));
+        $rules_id_list = static::serviceRepository()->ruleIds($fk, (int)$this->getID());
         $nb = count($rules_id_list);
 
         echo "<div class='spaced'>";
@@ -629,8 +638,8 @@ abstract class LevelAgreement extends CommonDBChild
                 )
             );
 
-            foreach ($rules_id_list as $data) {
-                $rule->getFromDB($data['rules_id']);
+            foreach ($rules_id_list as $ruleId) {
+                $rule->getFromDB($ruleId);
                 Session::addToNavigateListItems(get_class($this), $rule->fields["id"]);
                 echo "<tr class='tab_bg_1'>";
 
@@ -701,29 +710,8 @@ abstract class LevelAgreement extends CommonDBChild
      */
     public function getDataForTicket($tickets_id, $type)
     {
-        global $DB;
-
-        list($dateField, $field) = static::getFieldNames($type);
-
-        $iterator = $DB->request([
-           'SELECT'       => [static::getTable() . '.id'],
-           'FROM'         => static::getTable(),
-           'INNER JOIN'   => [
-              'glpi_tickets' => [
-                 'FKEY'   => [
-                    static::getTable()   => 'id',
-                    'glpi_tickets'       => $field
-                 ]
-              ]
-           ],
-           'WHERE'        => ['glpi_tickets.id' => $tickets_id],
-           'LIMIT'        => 1
-        ]);
-
-        if (count($iterator)) {
-            return $this->getFromIter($iterator);
-        }
-        return false;
+        $id = static::serviceRepository()->agreementForTicket((int)$tickets_id, (int)$type);
+        return $id !== null && $this->getFromDB($id);
     }
 
 
@@ -1082,8 +1070,6 @@ abstract class LevelAgreement extends CommonDBChild
      **/
     public function addLevelToDo(Ticket $ticket, $levels_id = 0)
     {
-        global $DB;
-
         $pre = static::$prefix;
 
         if (!$levels_id && isset($ticket->fields[$pre . 'levels_id_ttr'])) {
@@ -1092,15 +1078,7 @@ abstract class LevelAgreement extends CommonDBChild
 
         if ($levels_id) {
             $levelticket = new static::$levelticketclass();
-            $existing = $DB->request([
-                'SELECT' => 'id',
-                'FROM'   => $levelticket::getTable(),
-                'WHERE'  => [
-                    'tickets_id'        => $ticket->fields["id"],
-                    $pre . 'levels_id'  => $levels_id
-                ],
-                'LIMIT'  => 1
-            ]);
+            $existing = $levelticket->find(['tickets_id' => $ticket->fields['id'], $pre . 'levels_id' => $levels_id], [], 1);
             if (count($existing) > 0) {
                 return;
             }
@@ -1130,29 +1108,17 @@ abstract class LevelAgreement extends CommonDBChild
     **/
     public static function deleteLevelsToDo(Ticket $ticket)
     {
-        global $DB;
-
         $ticketfield = static::$prefix . "levels_id_ttr";
 
         if ($ticket->fields[$ticketfield] > 0) {
             $levelticket = new static::$levelticketclass();
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $levelticket::getTable(),
-               'WHERE'  => ['tickets_id' => $ticket->fields['id']]
-            ]);
-
-            while ($data = $iterator->next()) {
-                $levelticket->delete(['id' => $data['id']]);
-            }
+            $levelticket->deleteByCriteria(['tickets_id' => $ticket->fields['id']]);
         }
     }
 
 
     public function cleanDBonPurge()
     {
-        global $DB;
-
         // Clean levels
         $classname = get_called_class();
         $fk        = getForeignKeyFieldForItemType($classname);
@@ -1161,17 +1127,9 @@ abstract class LevelAgreement extends CommonDBChild
 
         // Update tickets : clean SLA/OLA
         list($dateField, $laField) = static::getFieldNames($this->fields['type']);
-        $iterator =  $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_tickets',
-           'WHERE'  => [$laField => $this->fields['id']]
-        ]);
-
-        if (count($iterator)) {
-            $ticket = new Ticket();
-            while ($data = $iterator->next()) {
-                $ticket->deleteLevelAgreement($classname, $data['id'], $this->fields['type']);
-            }
+        $ticket = new Ticket();
+        foreach ($ticket->findIds([$laField => $this->fields['id']]) as $id) {
+            $ticket->deleteLevelAgreement($classname, $id, $this->fields['type']);
         }
 
         Rule::cleanForItemAction($this);

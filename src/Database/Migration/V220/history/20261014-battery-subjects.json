@@ -1,0 +1,73 @@
+{
+    "provenance": {
+        "source_commit": "53cf6297473bc31400a0777ff905bd79f1e65698",
+        "purpose": "Frozen Battery stock-or-asset subject adoption; historical replay never inspects current entity metadata.",
+        "subject_policy_source": "inc/define.php itemdevicebattery_types; inc/item_devices.class.php stock and public relation callers"
+    },
+    "table": "glpi_items_devicebatteries",
+    "targets": {
+        "Computer": {
+            "producer_target": "computers",
+            "target": "glpi_computers",
+            "column": "computers_id",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_computers_id"
+        },
+        "Peripheral": {
+            "producer_target": "peripherals",
+            "target": "glpi_peripherals",
+            "column": "peripherals_id",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_peripherals_id"
+        },
+        "Phone": {
+            "producer_target": "phones",
+            "target": "glpi_phones",
+            "column": "phones_id",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_phones_id"
+        },
+        "Printer": {
+            "producer_target": "printers",
+            "target": "glpi_printers",
+            "column": "printers_id",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_printers_id"
+        }
+    },
+    "allows_empty_reference": true,
+    "minimum_selected_id": 1,
+    "canonical_stock_kind": null,
+    "legacy_stock_identity": 0,
+    "booleans": [
+        "is_deleted",
+        "is_dynamic",
+        "is_recursive"
+    ],
+    "references": {
+        "devicebatteries_id": {
+            "target": "glpi_devicebatteries",
+            "policy": "required",
+            "nullable": false,
+            "constraint": "fk_items_devicebatteries_devicebatteries_id"
+        },
+        "entities_id": {
+            "target": "glpi_entities",
+            "policy": "root",
+            "nullable": false,
+            "constraint": "fk_items_devicebatteries_entities_id"
+        },
+        "locations_id": {
+            "target": "glpi_locations",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_locations_id"
+        },
+        "states_id": {
+            "target": "glpi_states",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicebatteries_states_id"
+        }
+    }
+}

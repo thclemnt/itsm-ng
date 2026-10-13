@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Features\Clonable;
+use itsmng\Database\ComputerItemReadOperation;
+use itsmng\Domain\SoftwareAllocationSubjectLifecycle;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -41,7 +45,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Phone extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
+    use SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -329,19 +334,12 @@ class Phone extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'computers_id',
-           'FROM'   => 'glpi_computers_items',
-           'WHERE'  => [
-              'itemtype'  => $this->getType(),
-              'items_id'  => $this->fields['id']
-           ]
-        ]);
-        $tab = [];
-        while ($data = $iterator->next()) {
-            $tab['Computer'][$data['computers_id']] = $data['computers_id'];
+        $read = ComputerItemReadOperation::forDatabase($DB);
+        try {
+            return $read->linkedItems($this->getType(), (int)$this->getID());
+        } finally {
+            $read->close();
         }
-        return $tab;
     }
 
 

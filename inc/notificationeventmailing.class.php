@@ -32,6 +32,9 @@
  */
 
 use PHPMailer\PHPMailer\PHPMailer;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\EntityConfigurationRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -93,28 +96,21 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => ['id' => $entity]
-        ]);
-
-        $admins = [];
-
-        while ($row = $iterator->next()) {
-            if (NotificationMailing::isUserAddressValid($row['admin_email'])) {
-                $admins[] = [
-                   'language'  => $CFG_GLPI['language'],
-                   'email'     => $row['admin_email'],
-                   'name'      => $row['admin_email_name'] ?? ''
-                ];
-            }
+        $row = Orm::readPrepared(
+            $DB,
+            static fn (): ?int => $entity === null || $entity === 'NULL' || $entity === 'null'
+                ? null : (int)$entity,
+            static fn (EntityManager $manager, ?int $id): ?array =>
+                (new EntityConfigurationRepository($manager))->administratorContact($id)
+        );
+        if ($row !== null && NotificationMailing::isUserAddressValid($row['admin_email'])) {
+            return [[
+                'language' => $CFG_GLPI['language'],
+                'email' => $row['admin_email'],
+                'name' => $row['admin_email_name'] ?? '',
+            ]];
         }
-
-        if (count($admins)) {
-            return $admins;
-        } else {
-            return false;
-        }
+        return false;
     }
 
 

@@ -31,6 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\PlanningEvent;
+use Ramsey\Uuid\Uuid;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTaskRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -43,7 +50,7 @@ use Sabre\VObject\Component\VCalendar;
 /// TODO extends it from CommonDBChild
 abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItemInterface
 {
-    use Glpi\Features\PlanningEvent;
+    use PlanningEvent;
     use VobjectConverterTrait;
 
     // From CommonDBTM
@@ -198,6 +205,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if (
             ($item->getType() == $this->getItilObjectItemType())
@@ -216,7 +224,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                        'users_id'     => Session::getLoginUserID()
                     ];
                 }
-                $nb = countElementsInTable($this->getTable(), $restrict);
+                $nb = MappedReads::countMatching($DB, $this->getTable(), $restrict);
             }
             return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);
         }
@@ -472,7 +480,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         }
 
         if (!isset($input['uuid'])) {
-            $input['uuid'] = \Ramsey\Uuid\Uuid::uuid4();
+            $input['uuid'] = Uuid::uuid4();
         }
 
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
@@ -672,7 +680,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
     protected function computeFriendlyName()
     {
 
-        if (isset($this->fields['taskcategories_id'])) {
+        if (array_key_exists('taskcategories_id', $this->fields)) {
             if ($this->fields['taskcategories_id']) {
                 return Dropdown::getDropdownName(
                     'glpi_taskcategories',
@@ -771,7 +779,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
 
         $task_condition = '';
         if ($task->maybePrivate() && !Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
-            $task_condition = "AND (`NEWTABLE`.`is_private` = 0
+            $task_condition = "AND (`NEWTABLE`.`is_private` = '0'
                                  OR `NEWTABLE`.`users_id` = '" . Session::getLoginUserID() . "')";
         }
 
@@ -1072,122 +1080,33 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $begin    = $options['begin'];
         $end      = $options['end'];
 
-        $SELECT = [$item->getTable() . '.*'];
-
-        // Get items to print
-        if (isset($options['not_planned'])) {
-            //not planned case
-            // as we consider that people often create tasks after their execution
-            // begin date is task date minus duration
-            // and end date is task date
-            $bdate = "DATE_SUB(" . $DB->quoteName($item->getTable() . '.date') .
-               ", INTERVAL " . $DB->quoteName($item->getTable() . '.actiontime') . " SECOND)";
-            $SELECT[] = new QueryExpression($bdate . ' AS ' . $DB->quoteName('notp_date'));
-            $edate = $DB->quoteName($item->getTable() . '.date');
-            $SELECT[] = new QueryExpression($edate . ' AS ' . $DB->quoteName('notp_edate'));
-            $WHERE = [
-               $item->getTable() . '.end'     => null,
-               $item->getTable() . '.begin'   => null,
-               $item->getTable() . '.actiontime' => ['>', 0],
-               //begin is replaced with creation tim minus duration
-               new QueryExpression($edate . " >= '" . $begin . "'"),
-               new QueryExpression($bdate . " <= '" . $end . "'")
-            ];
-        } else {
-            //std case: get tasks for current view dates
-            $WHERE = [
-               $item->getTable() . '.end'     => ['>=', $begin],
-               $item->getTable() . '.begin'   => ['<=', $end]
-            ];
+        if ($whogroup === 'mine') {
+            $whogroup = $_SESSION['glpigroups'] ?? ($who > 0 ? array_column(Group_User::getUserGroups($who), 'id') : []);
         }
-        $ADDWHERE = [];
-
-        if ($whogroup === "mine") {
-            if (isset($_SESSION['glpigroups'])) {
-                $whogroup = $_SESSION['glpigroups'];
-            } elseif ($who > 0) {
-                $whogroup = array_column(Group_User::getUserGroups($who), 'id');
-            }
-        }
-
-        if ($who > 0) {
-            $ADDWHERE[$item->getTable() . '.users_id_tech'] = $who;
-        }
-
-        //This means we can pass 2 groups here, not sure this is expected. Not documented :/
-        if ($whogroup > 0) {
-            $ADDWHERE[$item->getTable() . '.groups_id_tech'] = $whogroup;
-        }
-
-        if (!count($ADDWHERE)) {
-            $ADDWHERE = [
-               $item->getTable() . '.users_id_tech' => new \QuerySubQuery([
-                  'SELECT'          => 'glpi_profiles_users.users_id',
-                  'DISTINCT'        => true,
-                  'FROM'            => 'glpi_profiles',
-                  'LEFT JOIN'       => [
-                     'glpi_profiles_users'   => [
-                        'ON' => [
-                           'glpi_profiles_users' => 'profiles_id',
-                           'glpi_profiles'       => 'id'
-                        ]
-                     ]
-                  ],
-                  'WHERE'           => [
-                     'glpi_profiles.interface'  => 'central'
-                  ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], 1)
-               ])
-            ];
-        }
-
-        if (count($ADDWHERE) > 0) {
-            $WHERE[] = ['OR' => $ADDWHERE];
-        }
-
-        if (!$options['display_done_events']) {
-            $WHERE[] = ['OR' => [
-               $item->getTable() . ".state"  => Planning::TODO,
-               [
-                  'AND' => [
-                     $item->getTable() . '.state'  => Planning::INFO,
-                     $item->getTable() . '.end'    => ['>', new \QueryExpression('NOW()')]
-                  ]
-               ]
-            ]];
-        }
-
-        if ($parentitem->maybeDeleted()) {
-            $WHERE[$parentitem->getTable() . '.is_deleted'] = 0;
-        }
-
-        if (!$options['display_done_events']) {
-            $WHERE[] = ['NOT' => [
-               $parentitem->getTable() . '.status' => array_merge(
-                   $parentitem->getSolvedStatusArray(),
-                   $parentitem->getClosedStatusArray()
-               )
-            ]];
-        }
-
-        $iterator = $DB->request([
-           'SELECT'       => $SELECT,
-           'FROM'         => $item->getTable(),
-           'INNER JOIN'   => [
-              $parentitem->getTable() => [
-                 'ON' => [
-                    $parentitem->getTable() => 'id',
-                    $item->getTable()       => $parentitem->getForeignKeyField()
-                 ]
-              ]
-           ],
-           'WHERE'        => $WHERE,
-           'ORDERBY'      => $item->getTable() . '.begin'
-        ]);
+        $groups = array_values(array_filter(array_map('intval', (array)$whogroup), static fn (int $id): bool => $id > 0));
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): array => [
+                $itemtype,
+                new DateTimeImmutable($begin),
+                new DateTimeImmutable($end),
+                isset($options['not_planned']),
+                (int)$who,
+                $groups,
+                getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], true),
+                (bool)$options['display_done_events'],
+                array_merge($parentitem->getSolvedStatusArray(), $parentitem->getClosedStatusArray()),
+            ],
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new ITILTaskRepository($manager))->planningTasks(...$arguments),
+        );
+        // Group arrays must produce a stable scalar event key.
+        $whogroup = implode(',', $groups);
 
         $interv = [];
 
-        if (count($iterator)) {
-            while ($data = $iterator->next()) {
+        if ($rows) {
+            foreach ($rows as $data) {
                 if (
                     $item->getFromDB($data["id"])
                     && $item->canViewItem()
@@ -1870,58 +1789,27 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
      *
      * @since 9.2
      *
-     * @return DBmysqlIterator
+     * @return array<array{id: int}>
      */
     public static function getTaskList($status, $showgrouptickets, $start = null, $limit = null)
     {
         global $DB;
 
-        $prep_req = ['SELECT' => self::getTable() . '.id', 'FROM' => self::getTable()];
-
-        $itemtype = str_replace('Task', '', self::getType());
-        $fk_table = getTableForItemType($itemtype);
-        $fk_field = Toolbox::strtolower(getPlural($itemtype)) . '_id';
-
-        $prep_req['INNER JOIN'] = [
-           $fk_table => [
-              'FKEY' => [
-                 self::getTable()  => $fk_field,
-                 $fk_table         => 'id'
-              ]
-           ]
-        ];
-
-        $prep_req['WHERE'] = [$fk_table . ".status" => $itemtype::getNotSolvedStatusArray()];
-        switch ($status) {
-            case "todo": // we display the task with the status `todo`
-                $prep_req['WHERE'][self::getTable() . '.state'] = Planning::TODO;
-                break;
-        }
-
-        if ($showgrouptickets) {
-            if (isset($_SESSION['glpigroups']) && count($_SESSION['glpigroups'])) {
-                $prep_req['WHERE'][self::getTable() . '.groups_id_tech'] = $_SESSION['glpigroups'];
-            } else {
-                // Return empty iterator result
-                $prep_req['WHERE'][] = 0;
-            }
-        } else {
-            $prep_req['WHERE'][self::getTable() . '.users_id_tech'] = $_SESSION['glpiID'];
-        }
-
-        $prep_req['WHERE'] += getEntitiesRestrictCriteria($fk_table);
-
-        $prep_req['ORDER'] = [self::getTable() . '.date_mod DESC'];
-
-        if ($start !== null) {
-            $prep_req['START'] = $start;
-        }
-        if ($limit !== null) {
-            $prep_req['LIMIT'] = $limit;
-        }
-
-        $req = $DB->request($prep_req);
-        return $req;
+        $itemtype = (new static())->getItilObjectItemType();
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => [static::getType(), $itemtype::getNotSolvedStatusArray()],
+            static fn (EntityManager $em, array $prepared): array => (new ITILTaskRepository($em))->taskList(
+                $prepared[0],
+                $prepared[1],
+                $status === 'todo',
+                (int)Session::getLoginUserID(),
+                $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
+                getEntitiesRestrictCriteria($itemtype::getTable()),
+                $start === null ? null : (int)$start,
+                $limit === null ? null : (int)$limit,
+            )
+        );
     }
 
 
@@ -1940,15 +1828,34 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
     {
         global $CFG_GLPI, $DB;
 
-        $iterator = self::getTaskList($status, $showgrouptickets);
+        $itemtype = get_called_class();
+        $projected = in_array($itemtype, [TicketTask::class, ProblemTask::class], true);
+        if ($projected) {
+            $parenttype = (new static())->getItilObjectItemType();
+            $page = Orm::readPrepared(
+                $DB,
+                static fn (): array => $parenttype::getNotSolvedStatusArray(),
+                static fn (EntityManager $em, array $statuses): array => (new ITILTaskRepository($em))->centralList(
+                    $itemtype,
+                    $statuses,
+                    $status === 'todo',
+                    (int)Session::getLoginUserID(),
+                    $showgrouptickets ? ($_SESSION['glpigroups'] ?? []) : null,
+                    getEntitiesRestrictCriteria($parenttype::getTable()),
+                    (int)$_SESSION['glpidisplay_count_on_home'],
+                )
+            );
+            $iterator = $page['rows'];
+        } else {
+            $iterator = self::getTaskList($status, $showgrouptickets);
+        }
 
-        $total_row_count = count($iterator);
+        $total_row_count = $projected ? $page['total'] : count($iterator);
         $displayed_row_count = (int)$_SESSION['glpidisplay_count_on_home'] > 0
            ? min((int)$_SESSION['glpidisplay_count_on_home'], $total_row_count)
            : $total_row_count;
 
         if ($displayed_row_count > 0) {
-            $itemtype = get_called_class();
             switch ($status) {
                 case "todo":
                     $options  = [
@@ -2008,11 +1915,21 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                __('Description'),
             ];
             $values = [];
-            $i = 0;
-            while ($i < $displayed_row_count && ($data = $iterator->next())) {
-                $job  = new $itemtype();
+            foreach (array_slice($iterator, 0, $displayed_row_count) as $data) {
                 $newValue = [];
-                if ($job->getFromDB($data['id'])) {
+                if ($projected) {
+                    $item_link = new $parenttype();
+                    $tab_name = $itemtype === TicketTask::class ? 'Ticket' : 'ProblemTask';
+                    $taskId = $data['id'];
+                    $taskContent = $data['content'];
+                    $parentId = $data['parent_id'];
+                    $parentName = $data['parent_name'];
+                    $priority = $data['parent_priority'];
+                } else {
+                    $job = new $itemtype();
+                    if (!$job->getFromDB($data['id'])) {
+                        continue;
+                    }
                     if ($DB->fieldExists($job->getTable(), 'tickets_id')) {
                         $item_link = new Ticket();
                         $item_link->getFromDB($job->fields['tickets_id']);
@@ -2022,25 +1939,30 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                         $item_link->getFromDB($job->fields['problems_id']);
                         $tab_name = "ProblemTask";
                     }
-
-                    $bgcolor = $_SESSION["glpipriority_" . $item_link->fields["priority"]];
-                    $name    = sprintf(__('%1$s: %2$s'), __('ID'), $job->fields["id"]);
-                    $newValue[] = "<div class='priority_block' style='border-color: $bgcolor'>
-                  <span style='background: $bgcolor'></span>&nbsp;$name</div>";
-                    $newValue[] = $item_link->fields['name'];
-
-                    $link = "<a href='" . $item_link->getFormURLWithID($item_link->fields["id"]);
-                    $link .= "&amp;forcetab=" . $tab_name . "$1";
-                    $link   .= "'>";
-                    $link    = sprintf(__('%1$s'), $link);
-                    $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode(
-                        (string) $job->fields['content'],
-                        ENT_QUOTES,
-                        "UTF-8"
-                    ));
-                    $newValue[] = sprintf(__('%1$s %2$s'), $link, Html::resume_text(Html::Clean($content), 50));
-                    $values[] = $newValue;
+                    $taskId = $job->fields['id'];
+                    $taskContent = $job->fields['content'];
+                    $parentId = $item_link->fields['id'];
+                    $parentName = $item_link->fields['name'];
+                    $priority = $item_link->fields['priority'];
                 }
+
+                $bgcolor = $_SESSION["glpipriority_" . $priority];
+                $name    = sprintf(__('%1$s: %2$s'), __('ID'), $taskId);
+                $newValue[] = "<div class='priority_block' style='border-color: $bgcolor'>
+                  <span style='background: $bgcolor'></span>&nbsp;$name</div>";
+                $newValue[] = $parentName;
+
+                $link = "<a href='" . $item_link->getFormURLWithID($parentId);
+                $link .= "&amp;forcetab=" . $tab_name . "$1";
+                $link   .= "'>";
+                $link    = sprintf(__('%1$s'), $link);
+                $content = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode(
+                    (string) $taskContent,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ));
+                $newValue[] = sprintf(__('%1$s %2$s'), $link, Html::resume_text(Html::Clean($content), 50));
+                $values[] = $newValue;
             }
             renderTwigTemplate('table.twig', [
                'fields' => $fields,
@@ -2133,7 +2055,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
      *
      * @param array $criteria
      *
-     * @return \Sabre\VObject\Component\VCalendar[]
+     * @return VCalendar[]
      */
     private static function getItemsAsVCalendars(array $criteria)
     {
@@ -2146,26 +2068,15 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
             return;
         }
 
-        $query = [
-           'SELECT'     => [$item->getTableField('*')],
-           'FROM'       => $item->getTable(),
-           'INNER JOIN' => [],
-           'WHERE'      => $criteria,
-        ];
-        if ($parent_item->maybeDeleted()) {
-            $query['INNER JOIN'][$parent_item->getTable()] = [
-               'ON' => [
-                  $parent_item->getTable() => 'id',
-                  $item->getTable()        => $parent_item->getForeignKeyField(),
-               ]
-            ];
-            $query['WHERE'][$parent_item->getTableField('is_deleted')] = 0;
-        }
-
-        $tasks_iterator = $DB->request($query);
+        $tasks = Orm::readPrepared(
+            $DB,
+            static fn (): string => static::getType(),
+            static fn (EntityManager $manager, string $type): array =>
+                (new ITILTaskRepository($manager))->calendarTasks($type, $criteria),
+        );
 
         $vcalendars = [];
-        foreach ($tasks_iterator as $task) {
+        foreach ($tasks as $task) {
             $item->getFromResultSet($task);
             $vcalendar = $item->getAsVCalendar();
             if (null !== $vcalendar) {
@@ -2211,12 +2122,12 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $vcalendar = $this->getVCalendarForItem($this, $target_component);
 
         $parent_fields = Html::entity_decode_deep($parent_item->fields);
-        $utc_tz = new \DateTimeZone('UTC');
+        $utc_tz = new DateTimeZone('UTC');
 
         $vcomp = $vcalendar->getBaseComponent();
         $vcomp->SUMMARY           = $parent_fields['name'];
-        $vcomp->DTSTAMP           = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
-        $vcomp->{'LAST-MODIFIED'} = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+        $vcomp->DTSTAMP           = (new DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
+        $vcomp->{'LAST-MODIFIED'} = (new DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
         $vcomp->URL               = $CFG_GLPI['url_base'] . $parent_item->getFormURLWithID($parent_id, false);
 
         return $vcalendar;

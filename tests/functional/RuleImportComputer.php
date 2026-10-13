@@ -59,7 +59,7 @@ class RuleImportComputer extends DbTestCase
            'entities_id' => 0,
         ]);
         $this->array($result)->hasKey('_ruleid');
-        $this->string($result['_ruleid'])->isIdenticalTo((string)$rules_id);
+        $this->integer($result['_ruleid'])->isIdenticalTo($rules_id);
         if (isset($result['_ignore_import'])) {
             $this->string($result['_ignore_import'])->isIdenticalTo('1');
         }

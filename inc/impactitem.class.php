@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ImpactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -55,28 +59,16 @@ class ImpactItem extends CommonDBTM
     ) {
         global $DB;
 
-        $it = $DB->request([
-           'SELECT' => [
-              'glpi_impactitems.id',
-           ],
-           'FROM' => self::getTable(),
-           'WHERE'  => [
-              'glpi_impactitems.itemtype' => get_class($item),
-              'glpi_impactitems.items_id' => $item->fields['id'],
-           ]
-        ]);
-
-        $res = $it->next();
+        $id = Orm::read($DB, static fn (EntityManager $manager): ?int =>
+            (new ImpactRepository($manager))->itemId(get_class($item), (int)$item->getID()));
         $impact_item = new self();
 
-        if ($res) {
-            $id = $res['id'];
-        } elseif (!$res && $create_if_missing) {
+        if ($id === null && $create_if_missing) {
             $id = $impact_item->add([
                'itemtype' => get_class($item),
                'items_id' => $item->fields['id']
             ]);
-        } else {
+        } elseif ($id === null) {
             return false;
         }
 

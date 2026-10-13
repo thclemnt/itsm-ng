@@ -1,5 +1,8 @@
 <?php
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\MailAuthenticationRepository;
+use itsmng\Database\Repository\UserRepository;
 use itsmng\MailServer;
 
 /**
@@ -241,7 +244,8 @@ class AuthMail extends CommonDBTM
      */
     public static function useAuthMail()
     {
-        return (countElementsInTable('glpi_authmails', ['is_active' => 1]) > 0);
+        global $DB;
+        return (new MailAuthenticationRepository(Orm::create($DB)))->activeCount() > 0;
     }
 
 
@@ -332,7 +336,10 @@ class AuthMail extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
         Rule::cleanForItemCriteria($this, 'MAIL_SERVER');
+        (new UserRepository(Orm::create($DB)))
+            ->reassignMailServer((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
     }
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)

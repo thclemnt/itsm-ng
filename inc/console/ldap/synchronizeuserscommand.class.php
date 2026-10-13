@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use AuthLDAP;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use User;
 use Glpi\Console\AbstractCommand;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
@@ -226,7 +227,7 @@ class SynchronizeUsersCommand extends AbstractCommand
             $informations->addRow([__('End date'), $end_date]);
             $informations->render();
 
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,
@@ -465,7 +466,7 @@ class SynchronizeUsersCommand extends AbstractCommand
         $begin_date = $input->getOption('begin-date');
         $end_date   = $input->getOption('end-date');
         if ($only_create === false && $only_update === false && ($begin_date !== null || $end_date !== null)) {
-            throw new \Symfony\Component\Console\Exception\InvalidArgumentException(
+            throw new InvalidArgumentException(
                 __('Options --begin-date and --end-date can only be used with --only-create-new or --only-update-existing option.')
             );
         }

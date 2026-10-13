@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use PHPMailer\PHPMailer\SMTP;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -156,7 +158,7 @@ class NotificationMailing implements NotificationInterface
         $previous_debug = $mailer->SMTPDebug;
         $previous_debug_output = $mailer->Debugoutput;
 
-        $mailer->SMTPDebug = \PHPMailer\PHPMailer\SMTP::DEBUG_CONNECTION;
+        $mailer->SMTPDebug = SMTP::DEBUG_CONNECTION;
         $mailer->Debugoutput = function ($message, $level) use (&$debug) {
             $message = trim((string) $message);
             if ($message !== '') {
@@ -169,7 +171,7 @@ class NotificationMailing implements NotificationInterface
 
         try {
             $success = $mailer->smtpConnect($mailer->SMTPOptions);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 

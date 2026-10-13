@@ -439,7 +439,7 @@ class Central extends CommonGLPI
                 );
             }
 
-            $myisam_tables = $DB->getMyIsamTables();
+            $myisam_tables = $DB->getProvider() === 'mysql' ? $DB->getMyIsamTables() : [];
             if (count($myisam_tables)) {
                 $warnings[] = sprintf(
                     __('%1$s tables not migrated to InnoDB engine.'),

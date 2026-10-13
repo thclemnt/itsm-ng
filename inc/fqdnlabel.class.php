@@ -158,8 +158,6 @@ abstract class FQDNLabel extends CommonDBChild
      **/
     public static function getIDsByLabelAndFQDNID($label, $fqdns_id, $wildcard_search = false)
     {
-        global $DB;
-
         $label = strtolower((string) $label);
         if ($wildcard_search) {
             $count = 0;
@@ -173,26 +171,14 @@ abstract class FQDNLabel extends CommonDBChild
         }
 
         $IDs = [];
-        foreach (
-            ['NetworkName'  => 'glpi_networknames',
-                       'NetworkAlias' => 'glpi_networkaliases'] as $class => $table
-        ) {
-            $criteria = [
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => ['name' => $relation]
-            ];
-
-            if (
-                is_array($fqdns_id) && count($fqdns_id) > 0
-                || is_int($fqdns_id) && $fqdns_id > 0
-            ) {
-                $criteria['WHERE']['fqdns_id'] = $fqdns_id;
+        foreach ([NetworkName::class, NetworkAlias::class] as $class) {
+            $criteria = ['name' => $relation];
+            if ((is_array($fqdns_id) && $fqdns_id) || (is_int($fqdns_id) && $fqdns_id > 0)) {
+                $criteria['fqdns_id'] = $fqdns_id;
             }
-
-            $iterator = $DB->request($criteria);
-            while ($element = $iterator->next()) {
-                $IDs[$class][] = $element['id'];
+            $ids = (new $class())->findIds($criteria);
+            if ($ids) {
+                $IDs[$class] = $ids;
             }
         }
         return $IDs;

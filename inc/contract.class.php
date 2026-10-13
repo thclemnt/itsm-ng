@@ -31,6 +31,17 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\Clonable;
+use itsmng\Database\Entity\Contract as ContractEntity;
+use itsmng\Database\Entity\ContractItem;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ContractRepository;
+use itsmng\Database\Repository\TransferBindingRepository;
+use itsmng\Domain\ContractAlertOutcome;
+use itsmng\Domain\ContractAlertPublisher;
+use itsmng\Domain\ContractSchedule;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +51,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class Contract extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -63,6 +74,23 @@ class Contract extends CommonDBTM
     }
 
 
+
+    private static function repository(): ContractRepository
+    {
+        global $DB;
+        return Orm::create($DB)->getRepository(ContractEntity::class);
+    }
+
+    /** Contract calendar labels use the same dates as selection and periodic scheduling. */
+    public static function formatDeadline(array $fields, bool $notice = false, bool $color = false, bool $automaticRenewal = false): string
+    {
+        $deadline = ContractSchedule::fromFields($fields)->deadline($notice, $automaticRenewal);
+        if ($deadline === null) {
+            return '';
+        }
+        $label = Html::convDate($deadline->format('Y-m-d'));
+        return $color && $deadline <= new DateTimeImmutable('today') ? "<span class='red'>" . $label . '</span>' : $label;
+    }
 
     public static function getTypeName($nb = 0)
     {
@@ -133,19 +161,10 @@ class Contract extends CommonDBTM
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $result = $DB->request(
-            [
-              'FROM'   => Contract_Item::getTable(),
-              'WHERE'  => [
-                 'items_id' => $oldid,
-                 'itemtype' => $itemtype,
-              ],
-            ]
-        );
-        foreach ($result as $data) {
+        $repository = TransferBindingRepository::contracts(Orm::create($DB));
+        foreach ($repository->links($itemtype, (int)$oldid) as $link) {
             $cd = new Contract_Item();
-            unset($data['id']);
-            $data['items_id'] = $newid;
+            $data = ContractItem::withReference(['contracts_id' => $link['parent_id']], $itemtype, (int)$newid);
             $data = self::checkTemplateEntity($data, $data['items_id'], $data['itemtype']);
             $data             = Toolbox::addslashes_deep($data);
 
@@ -246,13 +265,7 @@ class Contract extends CommonDBTM
                        'min' => 0,
                        'max' => 120,
                        'step' => 1,
-                       'after' => __('month') . !empty($this->fields["begin_date"] ? (' -> ' . Infocom::getWarrantyExpir(
-                           $this->fields["begin_date"],
-                           $this->fields["duration"],
-                           0,
-                           true,
-                           $this->fields['renewal'] == self::RENEWAL_TACIT
-                       )) : ''),
+                       'after' => __('month') . (!empty($this->fields['begin_date']) ? ' -> ' . self::formatDeadline($this->fields, false, true, $this->fields['renewal'] == self::RENEWAL_TACIT) : ''),
                        'value' => $this->fields['duration'],
                     ],
                     __('Notice') => [
@@ -261,13 +274,7 @@ class Contract extends CommonDBTM
                        'min' => 0,
                        'max' => 120,
                        'step' => 1,
-                       'after' => __('month') . !empty($this->fields["begin_date"] ? (' -> ' . Infocom::getWarrantyExpir(
-                           $this->fields["begin_date"],
-                           $this->fields["duration"],
-                           $this->fields["notice"],
-                           true,
-                           $this->fields['renewal'] == self::RENEWAL_TACIT
-                       )) : ''),
+                       'after' => __('month') . (!empty($this->fields['begin_date']) ? ' -> ' . self::formatDeadline($this->fields, true, true, $this->fields['renewal'] == self::RENEWAL_TACIT) : ''),
                        'value' => $this->fields['notice'],
                     ],
                     __('Account number') => [
@@ -1065,75 +1072,19 @@ class Contract extends CommonDBTM
      **/
     public static function showCentral()
     {
-        global $DB,$CFG_GLPI;
+        global $CFG_GLPI;
 
         if (!Contract::canView()) {
             return;
         }
 
-        // No recursive contract, not in local management
-        // contrats echus depuis moins de 30j
-        $table = self::getTable();
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())>-30'),
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())<0')
-           ] + getEntitiesRestrictCriteria($table)
-        ])->next();
-        $contract0 = $result['cpt'];
-
-        // contrats  echeance j-7
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())>0'),
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())<=7')
-           ] + getEntitiesRestrictCriteria($table)
-        ])->next();
-        $contract7 = $result['cpt'];
-
-        // contrats echeance j -30
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())>7'),
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL ' . $DB->quoteName("duration") . ' MONTH),CURDATE())<30')
-           ] + getEntitiesRestrictCriteria($table)
-        ])->next();
-        $contract30 = $result['cpt'];
-
-        // contrats avec pr??avis echeance j-7
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              'notice'       => ['<>', 0],
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL (' . $DB->quoteName("duration") . '-' . $DB->quoteName('notice') . ') MONTH),CURDATE())>0'),
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL (' . $DB->quoteName("duration") . '-' . $DB->quoteName('notice') . ') MONTH),CURDATE())<=7')
-           ] + getEntitiesRestrictCriteria($table)
-        ])->next();
-        $contractpre7 = $result['cpt'];
-
-        // contrats avec pr??avis echeance j -30
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $table,
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              'notice'       => ['<>', 0],
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL (' . $DB->quoteName("duration") . '-' . $DB->quoteName('notice') . ') MONTH),CURDATE())>7'),
-              new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName("begin_date") . ', INTERVAL (' . $DB->quoteName("duration") . '-' . $DB->quoteName('notice') . ') MONTH),CURDATE())<30')
-           ] + getEntitiesRestrictCriteria($table)
-        ])->next();
-        $contractpre30 = $result['cpt'];
+        // Dashboard counts use exact active ownership, preserving nonrecursive buckets.
+        $counts = self::repository()->deadlineCounts(getEntitiesRestrictCriteria(self::getTable()));
+        $contract0 = $counts['expired'];
+        $contract7 = $counts['ending7'];
+        $contract30 = $counts['ending30'];
+        $contractpre7 = $counts['notice7'];
+        $contractpre30 = $counts['notice30'];
 
         echo "<table class='tab_cadrehov' aria-label='Contracts Table'>";
         echo "<tr class='noHover'><th colspan='2'>";
@@ -1212,22 +1163,16 @@ class Contract extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'       => 'glpi_suppliers.id',
-           'FROM'         => 'glpi_suppliers',
-           'INNER JOIN'   => [
-              'glpi_contracts_suppliers' => [
-                 'ON' => [
-                    'glpi_contracts_suppliers' => 'suppliers_id',
-                    'glpi_suppliers'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['contracts_id' => $this->fields['id']]
-        ]);
-        $out    = "";
-        while ($data = $iterator->next()) {
-            $out .= Dropdown::getDropdownName("glpi_suppliers", $data['id']) . "<br>";
+        $out = '';
+        $names = Orm::read(
+            $DB,
+            fn (EntityManager $manager): array => $manager->getRepository(ContractEntity::class)->supplierNames(
+                (int)$this->getID(),
+                Session::haveTranslations('Supplier', 'name') ? ($_SESSION['glpilanguage'] ?? '') : null
+            )
+        );
+        foreach ($names as $name) {
+            $out .= (empty($name) ? '&nbsp;' : $name) . '<br>';
         }
         return $out;
     }
@@ -1257,138 +1202,22 @@ class Contract extends CommonDBTM
         $message       = [];
         $cron_status   = 0;
 
-        $contract_infos    = [
-           Alert::END    => [],
-           Alert::NOTICE => [],
-        ];
+        $contract_infos = [];
         $contract_messages = [];
 
+        $repository = self::repository();
+        $publisher = new ContractAlertPublisher($DB);
         foreach (Entity::getEntitiesToNotify('use_contracts_alert') as $entity => $value) {
             $before       = Entity::getUsedConfig('send_contracts_alert_before_delay', $entity);
 
-            $query_notice = [
-               'SELECT'    => [
-                  'glpi_contracts.*',
-               ],
-               'FROM'      => self::getTable(),
-               'LEFT JOIN' => [
-                  'glpi_alerts' => [
-                     'FKEY' => [
-                        'glpi_alerts'    => 'items_id',
-                        'glpi_contracts' => 'id',
-                        [
-                           'AND' => [
-                              'glpi_alerts.itemtype' => 'Contract',
-                              'glpi_alerts.type'     => Alert::NOTICE,
-                           ],
-                        ],
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  [
-                     'RAW' => [
-                        DBmysql::quoteName('glpi_contracts.alert') . ' & ' . pow(2, Alert::NOTICE) => ['>', 0]
-                     ]
-                  ],
-                  'glpi_alerts.date'           => null,
-                  'glpi_contracts.is_deleted'  => 0,
-                  [
-                     'NOT' => ['glpi_contracts.begin_date' => null],
-                  ],
-                  'glpi_contracts.duration'    => ['!=', 0],
-                  'glpi_contracts.notice'      => ['!=', 0],
-                  'glpi_contracts.entities_id' => $entity,
-                  [
-                     'RAW' => [
-                        'DATEDIFF(
-                         ADDDATE(
-                            ' . DBmysql::quoteName('glpi_contracts.begin_date') . ',
-                            INTERVAL ' . DBmysql::quoteName('glpi_contracts.duration') . ' MONTH
-                         ),
-                         CURDATE()
-                      )' => ['>', 0]
-                     ]
-                  ],
-                  [
-                     'RAW' => [
-                        'DATEDIFF(
-                         ADDDATE(
-                            ' . DBmysql::quoteName('glpi_contracts.begin_date') . ',
-                            INTERVAL (
-                               ' . DBmysql::quoteName('glpi_contracts.duration') . '
-                               - ' . DBmysql::quoteName('glpi_contracts.notice') . '
-                            ) MONTH
-                         ),
-                         CURDATE()
-                      )' => ['<', $before]
-                     ]
-                  ],
-               ],
-            ];
-
-            $query_end = [
-               'SELECT'    => [
-                  'glpi_contracts.*',
-               ],
-               'FROM'      => self::getTable(),
-               'LEFT JOIN' => [
-                  'glpi_alerts' => [
-                     'FKEY' => [
-                        'glpi_alerts'    => 'items_id',
-                        'glpi_contracts' => 'id',
-                        [
-                           'AND' => [
-                              'glpi_alerts.itemtype' => 'Contract',
-                              'glpi_alerts.type'     => Alert::END,
-                           ],
-                        ],
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  [
-                     'RAW' => [
-                        DBmysql::quoteName('glpi_contracts.alert') . ' & ' . pow(2, Alert::END) => ['>', 0]
-                     ]
-                  ],
-                  'glpi_alerts.date'           => null,
-                  'glpi_contracts.is_deleted'  => 0,
-                  [
-                     'NOT' => ['glpi_contracts.begin_date' => null],
-                  ],
-                  'glpi_contracts.duration'    => ['!=', 0],
-                  'glpi_contracts.entities_id' => $entity,
-                  [
-                     'RAW' => [
-                        'DATEDIFF(
-                         ADDDATE(
-                            ' . DBmysql::quoteName('glpi_contracts.begin_date') . ',
-                            INTERVAL ' . DBmysql::quoteName('glpi_contracts.duration') . ' MONTH
-                         ),
-                         CURDATE()
-                      )' => ['<', $before]
-                     ]
-                  ],
-               ],
-            ];
-
-            $querys = ['notice' => $query_notice,
-                            'end'    => $query_end];
-
-            foreach ($querys as $type => $query) {
-                $result = $DB->request($query);
-                foreach ($result as $data) {
+            foreach (['notice' => Alert::NOTICE, 'end' => Alert::END] as $type => $event) {
+                foreach ($repository->notificationCandidates((int)$entity, $event, (int)$before) as $data) {
                     $entity  = $data['entities_id'];
 
                     $message = sprintf(
                         __('%1$s: %2$s') . "<br>\n",
                         $data["name"],
-                        Infocom::getWarrantyExpir(
-                            $data["begin_date"],
-                            $data["duration"],
-                            $data["notice"]
-                        )
+                        self::formatDeadline($data, $type === 'notice')
                     );
                     $data['items']      = Contract_Item::getItemsForContract($data['id'], $entity);
                     $contract_infos[$type][$entity][$data['id']] = $data;
@@ -1409,86 +1238,29 @@ class Contract extends CommonDBTM
                 }
             }
 
-            // Get contrats with periodicity alerts
-            $valPow = pow(2, Alert::PERIODICITY);
-            $query_periodicity = ['FROM' => 'glpi_contracts',
-                'WHERE' => ['alert' => ['&', $valPow],
-                    'entities_id' => $entity,
-                    'is_deleted' => 0
-                ]
-            ];
-
-            // Foreach ones :
-            foreach ($DB->request($query_periodicity) as $data) {
-                $entity = $data['entities_id'];
-
-                // For contracts with begin date and periodicity
-                if (!empty($data['begin_date']) && $data['periodicity']) {
-                    $todo = ['periodicity' => Alert::PERIODICITY];
-                    if ($data['alert'] & pow(2, Alert::NOTICE)) {
-                        $todo['periodicitynotice'] = Alert::NOTICE;
-                    }
-
-                    // For the todo...
-                    foreach ($todo as $type => $event) {
-                        /**
-                         * Previous alert
-                         */
-                        // Get previous alerts from DB
-                        $previous_alert = [
-                           $type => Alert::getAlertDate(__CLASS__, $data['id'], $event),
-                        ];
-                        // If alert never occurs...
-                        if (empty($previous_alert[$type])) {
-                            // We define it a long time ago [in a galaxy far, far away... ;-)]
-                            $previous_alert[$type] = date('Y-m-d', 0);
+            foreach ($repository->periodicContracts((int)$entity) as $data) {
+                $schedule = ContractSchedule::fromFields($data);
+                $todo = ['periodicity' => Alert::PERIODICITY];
+                if ($data['alert'] & (1 << Alert::NOTICE)) {
+                    $todo['periodicitynotice'] = Alert::NOTICE;
+                }
+                foreach ($todo as $type => $event) {
+                    $previous = $data[$event === Alert::NOTICE ? 'last_notice' : 'last_period'];
+                    $deadline = $schedule->duePeriod((int)$before, $previous, $event === Alert::NOTICE);
+                    if ($deadline !== null) {
+                        $data['alert_date'] = $deadline->format('Y-m-d');
+                        $contract_infos[$type][$entity][$data['id']] = $data;
+                        if (!isset($contract_messages[$type][$entity])) {
+                            $contract_messages[$type][$entity] = ($type === 'periodicitynotice'
+                                ? __('Contract entered in notice time for period')
+                                : __('Contract period ended')) . '<br>';
                         }
-
-                        /**
-                         * Next alert
-                         */
-                        // Computation of first alert : Contract [begin date + initial duration] - Config [alert xxx days before]
-                        $initial_duration = $data['duration'] != 0 ? $data['duration'] : $data['periodicity'];
-                        $next_alert = [
-                           $type => date('Y-m-d', strtotime($data['begin_date'] . " +" . $initial_duration . " month -" . ($before) . " day")),
-                        ];
-                        // If a notice is defined
-                        if ($event == Alert::NOTICE) {
-                            // Will decrease of the Contract notice duration
-                            $next_alert[$type] = date('Y-m-d', strtotime($next_alert[$type] . " -" . ($data['notice']) . " month"));
-                        }
-
-                        // Computation of contract renewal
-                        while ($next_alert[$type] < $previous_alert[$type]) {
-                            // Increasing of Contract periodicity...
-                            $next_alert[$type] = date('Y-m-d', strtotime($next_alert[$type] . " +" . ($data['periodicity']) . " month"));
-                        }
-
-                        // If this date is passed : clean alerts and send again
-                        if ($next_alert[$type] <= date('Y-m-d')) {
-                            $alert = new Alert();
-                            $alert->clear(__CLASS__, $data['id'], $event);
-                            // Computation of the real date => add Config [alert xxx days before]
-                            $real_alert_date = date('Y-m-d', strtotime($next_alert[$type] . " +" . ($before) . " day"));
-                            $message = sprintf(__('%1$s: %2$s') . "<br>\n", $data["name"], Html::convDate($real_alert_date));
-                            $data['alert_date'] = $real_alert_date;
-                            $contract_infos[$type][$entity][$data['id']] = $data;
-
-                            switch ($type) {
-                                case 'periodicitynotice':
-                                    $contract_messages[$type][$entity] = __('Contract entered in notice time for period') . "<br>";
-                                    break;
-
-                                case 'periodicity':
-                                    $contract_messages[$type][$entity] = __('Contract period ended') . "<br>";
-                                    break;
-                            }
-                            $contract_messages[$type][$entity] .= $message;
-                        }
+                        $contract_messages[$type][$entity] .= sprintf(__('%1$s: %2$s') . "<br>\n", $data['name'], Html::convDate($data['alert_date']));
                     }
                 }
             }
         }
+
         foreach (
             ['notice'            => Alert::NOTICE,
                     'end'               => Alert::END,
@@ -1497,14 +1269,11 @@ class Contract extends CommonDBTM
         ) {
             if (isset($contract_infos[$event]) && count($contract_infos[$event])) {
                 foreach ($contract_infos[$event] as $entity => $contracts) {
-                    if (
-                        NotificationEvent::raiseEvent(
-                            $event,
-                            new self(),
-                            ['entities_id' => $entity,
-                                                            'items'       => $contracts]
-                        )
-                    ) {
+                    $outcome = $publisher->publish($event, $type, (int)$entity, $contracts, in_array($event, ['periodicity', 'periodicitynotice'], true));
+                    if ($outcome === ContractAlertOutcome::Skipped) {
+                        continue;
+                    }
+                    if ($outcome === ContractAlertOutcome::Published) {
                         $message     = $contract_messages[$event][$entity];
                         $cron_status = 1;
                         $entityname  = Dropdown::getDropdownName("glpi_entities", $entity);
@@ -1519,17 +1288,6 @@ class Contract extends CommonDBTM
                             ));
                         }
 
-                        $alert = new Alert();
-                        $input = [
-                           'itemtype' => __CLASS__,
-                           'type'     => $type,
-                        ];
-                        foreach ($contracts as $id => $contract) {
-                            $input["items_id"] = $id;
-
-                            $alert->add($input);
-                            unset($alert->fields['id']);
-                        }
                     } else {
                         $entityname = Dropdown::getDropdownName('glpi_entities', $entity);
                         //TRANS: %1$s is entity name, %2$s is the message
@@ -1570,8 +1328,6 @@ class Contract extends CommonDBTM
     **/
     public static function dropdown($options = [])
     {
-        global $DB;
-
         //$name,$entity_restrict=-1,$alreadyused=array(),$nochecklimit=false
         $p = [
            'name'           => 'contracts_id',
@@ -1604,73 +1360,7 @@ class Contract extends CommonDBTM
             }
         }
 
-        $WHERE = [];
-        if ($p['entity'] >= 0) {
-            $WHERE = $WHERE + getEntitiesRestrictCriteria('glpi_contracts', 'entities_id', $p['entity'], true);
-        }
-        if (count($p['used'])) {
-            $WHERE['NOT'] = ['glpi_contracts.id' => $p['used']];
-        }
-        if (!$p['expired']) {
-            $WHERE[] = ['OR' => [
-               'glpi_contracts.renewal' => 1,
-               new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_contracts.begin_date') . ', INTERVAL ' . $DB->quoteName('glpi_contracts.duration') . ' MONTH), CURDATE()) > 0'),
-               'glpi_contracts.begin_date'   => null,
-            ]];
-        }
-
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_contracts.*',
-           'FROM'      => 'glpi_contracts',
-           'LEFT JOIN' => [
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_contracts'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => array_merge([
-              'glpi_contracts.is_deleted'   => 0,
-              'glpi_contracts.is_template'  => 0
-           ], $WHERE),
-           'ORDERBY'   => [
-              'glpi_entities.completename',
-              'glpi_contracts.name ASC',
-              'glpi_contracts.begin_date DESC'
-           ]
-        ]);
-
-        $group  = '';
-        $prev   = -1;
-        $values = [];
-        while ($data = $iterator->next()) {
-            if (
-                $p['nochecklimit']
-                || ($data["max_links_allowed"] == 0)
-                || ($data["max_links_allowed"] > countElementsInTable(
-                    'glpi_contracts_items',
-                    ['contracts_id' => $data['id']]
-                ))
-            ) {
-                if ($data["entities_id"] != $prev) {
-                    $group = Dropdown::getDropdownName("glpi_entities", $data["entities_id"]);
-                    $prev = $data["entities_id"];
-                }
-
-                $name = $data["name"];
-                if (
-                    $_SESSION["glpiis_ids_visible"]
-                    || empty($data["name"])
-                ) {
-                    $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
-                }
-
-                $tmp = sprintf(__('%1$s - %2$s'), $name, $data["num"]);
-                $tmp = sprintf(__('%1$s - %2$s'), $tmp, Html::convDateTime($data["begin_date"]));
-                $values[$group][$data['id']] = $tmp;
-            }
-        }
+        $values = self::connectionChoices($p['entity'], $p['expired'], $p['used'], $p['nochecklimit']);
         return Dropdown::showFromArray(
             $p['name'],
             $values,
@@ -1679,6 +1369,35 @@ class Contract extends CommonDBTM
                                              'display'             => $p['display'],
                                              'display_emptychoice' => true]
         );
+    }
+
+
+    /** Authorized connection candidates share expiry, maximum-binding and entity policy. */
+    public static function connectionChoices($entity, bool $expired = false, array $used = [], bool $ignoreLimit = false, bool $detailed = true): array
+    {
+        if (!self::canView()) {
+            return [];
+        }
+        $scope = getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $entity, true);
+        $sessionScope = Session::getActiveEntityScope();
+        if ($sessionScope !== null) {
+            $scope = ['AND' => [$scope, getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $sessionScope, true)]];
+        }
+        $values = $detailed ? [] : [0 => Dropdown::EMPTY_VALUE];
+        $language = !$detailed && Session::haveTranslations('Contract', 'name') ? ($_SESSION['glpilanguage'] ?? '') : null;
+        foreach (self::repository()->availableForConnection($scope, $expired, $used, $ignoreLimit, language: $language) as $data) {
+            $group = Dropdown::getDropdownName('glpi_entities', $data['entities_id']);
+            $name = !empty($data['translatedName']) ? $data['translatedName'] : $data['name'];
+            if (!empty($_SESSION['glpiis_ids_visible']) || empty($name)) {
+                $name = sprintf(__('%1$s (%2$s)'), $name, $data['id']);
+            }
+            if ($detailed) {
+                $name = sprintf(__('%1$s - %2$s'), $name, $data['num']);
+                $name = sprintf(__('%1$s - %2$s'), $name, Html::convDateTime($data['begin_date']));
+            }
+            $values[$group][$data['id']] = $name;
+        }
+        return $values;
     }
 
 

@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\Clonable;
+use itsmng\Database\MySQLManagedConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\PostgresConnection;
+use itsmng\Database\Repository\CalendarRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -40,7 +48,10 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Calendar extends CommonDropdown
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
+
+    /** Holiday values live only for one calculation; later calls see edits. */
+    private ?array $calculationHolidays = null;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -275,50 +286,23 @@ class Calendar extends CommonDropdown
     {
         global $DB;
 
-        // Use a static cache to improve performances when multiple elements requires a computation
-        // on same calendars/dates.
-        static $result_cache = [];
-        $cache_key = $this->fields['id'] . '-' . date('Y-m-d', strtotime($date));
-        if (array_key_exists($cache_key, $result_cache)) {
-            return $result_cache[$cache_key];
+        $day = new DateTimeImmutable(date('Y-m-d', strtotime($date)));
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        if ($this->calculationHolidays !== null
+            && ($connection instanceof MySQLManagedConnection || $connection instanceof PostgresConnection)) {
+            $calendar = (int)$this->fields['id'];
+            $key = spl_object_id($connection) . ':' . $calendar;
+            $schedule = $this->calculationHolidays[$key] ??= Orm::withReadConnection(
+                $connection,
+                static fn (EntityManager $manager) => (new CalendarRepository($manager))->holidaySchedule($calendar)
+            );
+            return $schedule->isHoliday($day);
         }
-
-        $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => 'glpi_calendars_holidays',
-           'INNER JOIN'   => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_calendars_holidays.calendars_id' => $this->fields['id'],
-              'OR'                                   => [
-                 [
-                    'AND' => [
-                       'glpi_holidays.end_date'            => ['>=', $date],
-                       'glpi_holidays.begin_date'          => ['<=', $date]
-                    ]
-                 ],
-                 [
-                    'AND' => [
-                       'glpi_holidays.is_perpetual'  => 1,
-                       new \QueryExpression("MONTH(" . $DB->quoteName('end_date') . ")*100 + DAY(" . $DB->quoteName('end_date') . ") >= " . date('nd', strtotime($date))),
-                       new \QueryExpression("MONTH(" . $DB->quoteName('begin_date') . ")*100 + DAY(" . $DB->quoteName('begin_date') . ") <= " . date('nd', strtotime($date)))
-                    ]
-                 ]
-              ]
-           ]
-        ])->next();
-
-        $is_holiday = (int)$result['cpt'] > 0;
-
-        $result_cache[$cache_key] = $is_holiday;
-
-        return $is_holiday;
+        return Orm::withReadConnection($connection, fn (?EntityManager $manager): bool =>
+            (new CalendarRepository($manager ?? Orm::forConnection($connection)))
+                ->isHoliday((int)$this->fields['id'], $day));
     }
 
 
@@ -332,6 +316,11 @@ class Calendar extends CommonDropdown
      * @return integer timestamp of delay
      */
     public function getActiveTimeBetween($start, $end, $work_in_days = false)
+    {
+        return $this->withHolidayCalculation(fn () => $this->calculateActiveTimeBetween($start, $end, $work_in_days));
+    }
+
+    private function calculateActiveTimeBetween($start, $end, $work_in_days)
     {
 
         if (!isset($this->fields['id'])) {
@@ -469,6 +458,24 @@ class Calendar extends CommonDropdown
      * @return boolean|string end date
     **/
     public function computeEndDate($start, $delay, $additional_delay = 0, $work_in_days = false, $end_of_working_day = false)
+    {
+        return $this->withHolidayCalculation(fn () => $this->calculateEndDate($start, $delay, $additional_delay, $work_in_days, $end_of_working_day));
+    }
+
+    private function withHolidayCalculation(callable $calculate)
+    {
+        if ($this->calculationHolidays !== null) {
+            return $calculate();
+        }
+        $this->calculationHolidays = [];
+        try {
+            return $calculate();
+        } finally {
+            $this->calculationHolidays = null;
+        }
+    }
+
+    private function calculateEndDate($start, $delay, $additional_delay, $work_in_days, $end_of_working_day)
     {
 
         if (!isset($this->fields['id'])) {

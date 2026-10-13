@@ -72,9 +72,9 @@ if [[ $# -gt 0 ]]; then
     echo -e "\e[1;30;43m/!\ Invalid \"$KEY\" test suite \e[0m"
   done
 
-  # Ensure install test is executed if something else than "lint" is executed
+  # Ensure installation precedes every selected application test suite
   # This is mandatory as database is initialized by this test suite
-  if [[ !${#TESTS_TO_RUN[@]} -eq 0 && "${TESTS_TO_RUN[@]}" != "lint" && ! "${TESTS_TO_RUN[@]}" =~ "install" ]]; then
+  if [[ !${#TESTS_TO_RUN[@]} -eq 0 && ! "${TESTS_TO_RUN[@]}" =~ "install" ]]; then
     TESTS_TO_RUN=("install" "${TESTS_TO_RUN[@]}")
   fi
 elif [[ "$ALL" = true ]]; then
@@ -117,8 +117,8 @@ if [[ ! -x "$(command -v docker)" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$(command -v docker-compose)" ]] && ! docker compose version >/dev/null 2>&1; then
-  echo "This script requires either \"docker-compose\" or \"docker compose\" to be available"
+if ! docker compose version >/dev/null 2>&1; then
+  echo "This script requires the Docker Compose v2 plugin"
   exit 1
 fi
 
@@ -130,30 +130,88 @@ fi
 # Define variables (some may be defined in .env file)
 APPLICATION_ROOT=$(readlink -f "$WORKING_DIR/..")
 [[ ! -z "$APP_CONTAINER_HOME" ]] || APP_CONTAINER_HOME=$(mktemp -d -t glpi-tests-home-XXXXXXXXXX)
-[[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11
+[[ ! -z "$TEST_DB_TYPE" ]] || TEST_DB_TYPE=mysql
+case "$TEST_DB_TYPE" in
+  mysql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=mariadb:10.11 ;;
+  pgsql) [[ ! -z "$DB_IMAGE" ]] || DB_IMAGE=postgres:18 ;;
+  *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
+esac
 [[ ! -z "$PHP_IMAGE" ]] || PHP_IMAGE=itsm-tests-app:local
-COMPOSE_CMD="$APPLICATION_ROOT/.github/actions/docker-compose.sh"
+if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
+  TEST_DB_NAME="${TEST_DB_NAME:-itsm_port_e2e}"
+  PLAYWRIGHT_VAR_DIR=/home/itsm/e2e-var
+  mkdir -p "$APP_CONTAINER_HOME/e2e-var"/{_cache/cache_db,_cache/cache_trans,_cron,_dumps,_graphs,_locales,_lock,_log,_pictures,_plugins,_rss,_sessions,_tmp,_uploads}
+  export TEST_DB_NAME PLAYWRIGHT_VAR_DIR
+fi
 
-# Backup configuration files
+# Restore only this invocation's backup, including after partial setup failure.
 BACKUP_DIR=$(mktemp -d -t glpi-tests-backup-XXXXXXXXXX)
-find "$APPLICATION_ROOT/tests/config" -mindepth 1 ! -iname ".gitignore" -exec mv {} $BACKUP_DIR \;
+BACKUP_COMPLETE=false
+CONTAINERS_STARTED=false
+cleanup() {
+  local result=$? cleanup_status=0 path
+  trap - EXIT
+  trap '' INT TERM
+  set +e
+  if [[ "$BACKUP_COMPLETE" == true ]]; then
+    # Preserve the established cleanup of generated, non-hidden config files.
+    rm -f -- "$APPLICATION_ROOT/tests/config/"* || cleanup_status=1
+  fi
+  for path in "$BACKUP_DIR/"* "$BACKUP_DIR/".[!.]* "$BACKUP_DIR/"..?*; do
+    [[ -e "$path" || -L "$path" ]] || continue
+    # Never nest a saved directory inside a conflicting generated directory.
+    mv -fT -- "$path" "$APPLICATION_ROOT/tests/config/${path##*/}" || cleanup_status=1
+  done
+  rmdir -- "$BACKUP_DIR" || cleanup_status=1
+  if [[ "$CONTAINERS_STARTED" == true ]]; then
+    "$APPLICATION_ROOT/.github/actions/teardown_containers-cleanup.sh" || cleanup_status=1
+  fi
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    echo "Test harness cleanup failed; any unrestored configuration remains in $BACKUP_DIR" >&2
+    [[ "$result" -ne 0 ]] || result=1
+  fi
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+for path in "$APPLICATION_ROOT/tests/config/"* "$APPLICATION_ROOT/tests/config/".[!.]* "$APPLICATION_ROOT/tests/config/"..?*; do
+  [[ -e "$path" || -L "$path" ]] || continue
+  [[ "${path##*/}" =~ ^\.[gG][iI][tT][iI][gG][nN][oO][rR][eE]$ ]] && continue
+  mv -- "$path" "$BACKUP_DIR/"
+done
+BACKUP_COMPLETE=true
+
+# Start mail and directory services only for their selected suites.
+COMPOSE_PROFILES=""
+for suite in "${TESTS_TO_RUN[@]}"; do
+  case "$suite" in
+    ldap|imap) COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}$suite" ;;
+  esac
+done
+export COMPOSE_PROFILES
 
 # Export variables to env (required for compose) and start containers
 export COMPOSE_FILE="$APPLICATION_ROOT/.github/actions/docker-compose-app.yml"
-[[ "${TESTS_TO_RUN[@]}" == "lint" ]] || export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
+export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-services.yml"
+if [[ "$TEST_DB_TYPE" == pgsql ]]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-postgres.yml"
+fi
 if [[ " ${TESTS_TO_RUN[*]} " == *" e2e "* ]]; then
   export COMPOSE_FILE="$COMPOSE_FILE:$APPLICATION_ROOT/.github/actions/docker-compose-e2e.yml"
 fi
 export APPLICATION_ROOT
 export APP_CONTAINER_HOME
+export TEST_DB_TYPE
 export DB_IMAGE
 export PHP_IMAGE
 cd $WORKING_DIR # Ensure compose will look for .env in current directory
-$APPLICATION_ROOT/.github/actions/init_containers-start.sh
+CONTAINERS_STARTED=true
+"$APPLICATION_ROOT/.github/actions/init_containers-start.sh"
 $APPLICATION_ROOT/.github/actions/init_show-versions.sh
 
 # Install dependencies if required
-[[ -z "$BUILD" ]] || "$COMPOSE_CMD" exec -T app .github/actions/init_install-dependencies.sh
+[[ -z "$BUILD" ]] || docker compose exec -T app .github/actions/init_install-dependencies.sh
 
 # Run tests
 for TEST_SUITE in "${TESTS_TO_RUN[@]}";
@@ -162,39 +220,38 @@ do
   LAST_EXIT_CODE=0
   case $TEST_SUITE in
     "install")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_install.sh \
+         docker compose exec -T app .github/actions/test_install.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "update")
-         $APPLICATION_ROOT/.github/actions/init_initialize-old-dbs.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_update-from-older-version.sh \
+         docker compose exec -T app .github/actions/test_update-from-older-version.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "units")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-units.sh \
+         docker compose exec -T app .github/actions/test_tests-units.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "functional")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-functional.sh \
+         docker compose exec -T app .github/actions/test_tests-functional.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "e2e")
-         "$COMPOSE_CMD" exec -T app bash .github/actions/test_tests-e2e-prepare.sh \
-      && "$COMPOSE_CMD" exec -T e2e bash .github/actions/test_tests-e2e.sh \
+         docker compose exec -T app bash .github/actions/test_tests-e2e-prepare.sh \
+      && docker compose exec -T e2e bash .github/actions/test_tests-e2e.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "ldap")
          $APPLICATION_ROOT/.github/actions/init_initialize-ldap-fixtures.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_tests-ldap.sh \
+      && docker compose exec -T app .github/actions/test_tests-ldap.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "imap")
          $APPLICATION_ROOT/.github/actions/init_initialize-imap-fixtures.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_tests-imap.sh \
+      && docker compose exec -T app .github/actions/test_tests-imap.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "web")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-web.sh \
+         docker compose exec -T app .github/actions/test_tests-web.sh \
       || LAST_EXIT_CODE=$?
       ;;
   esac
@@ -206,12 +263,5 @@ do
     echo -e "\e[1;30;42m Tests \"$TEST_SUITE\" passed \e[0m\n"
   fi
 done
-
-# Restore configuration files
-rm -f $APPLICATION_ROOT/tests/config/*
-find "$BACKUP_DIR" -mindepth 1 -exec mv -f {} $APPLICATION_ROOT/tests/config \;
-
-# Stop containers
-$APPLICATION_ROOT/.github/actions/teardown_containers-cleanup.sh
 
 exit $LAST_EXIT_CODE

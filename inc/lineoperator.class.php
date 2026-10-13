@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Entity\LineOperator as LineOperatorRecord;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\LineOperatorRepository;
+
 /**
  * @since 9.2
  */
@@ -104,23 +108,48 @@ class LineOperator extends CommonDropdown
             $input['mnc'] = 0;
         }
 
-        //check for mcc/mnc unicity
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'mcc' => $input['mcc'],
-              'mnc' => $input['mnc']
-           ]
-        ])->next();
+        $database = $DB;
+        $table = self::getTable();
+        $input = $this->normalizeCodes($input);
+        if ($input === false) {
+            return false;
+        }
 
-        if ($result['cpt'] > 0) {
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        if ((new LineOperatorRepository($connection, $table))->codePairExists($input['mcc'], $input['mnc'])) {
             Session::addMessageAfterRedirect(
                 __('Mobile country code and network code combination must be unique!'),
                 ERROR,
                 true
             );
             return false;
+        }
+
+        return $input;
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        return $this->normalizeCodes(parent::prepareInputForUpdate($input));
+    }
+
+    private function normalizeCodes(array $input): array|false
+    {
+        foreach (['mcc', 'mnc'] as $field) {
+            if (!array_key_exists($field, $input)) {
+                continue;
+            }
+            $code = LineOperatorRecord::normalizeCode($input[$field]);
+            if ($code === false) {
+                Session::addMessageAfterRedirect(
+                    sprintf(__('Invalid integer value for %s.'), $field),
+                    true,
+                    ERROR
+                );
+                return false;
+            }
+            $input[$field] = $code;
         }
 
         return $input;

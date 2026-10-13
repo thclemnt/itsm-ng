@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$ira = new \Item_Rack();
+$ira = new Item_Rack();
 $rack = new Rack();
 
 if (isset($_POST['update'])) {

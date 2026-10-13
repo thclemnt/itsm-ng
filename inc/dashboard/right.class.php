@@ -33,11 +33,14 @@
 
 namespace Glpi\Dashboard;
 
+use CommonDBChild;
+use QueryParam;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-class Right extends \CommonDBChild
+class Right extends CommonDBChild
 {
     public static $itemtype = "Glpi\\Dashboard\\Dashboard";
     public static $items_id = 'dashboards_dashboards_id';
@@ -92,9 +95,9 @@ class Right extends \CommonDBChild
         $query_rights = $DB->buildInsert(
             self::getTable(),
             [
-              'dashboards_dashboards_id' => new \QueryParam(),
-              'itemtype' => new \QueryParam(),
-              'items_id' => new \QueryParam(),
+              'dashboards_dashboards_id' => new QueryParam(),
+              'itemtype' => new QueryParam(),
+              'items_id' => new QueryParam(),
             ]
         );
         $stmt = $DB->prepare($query_rights);

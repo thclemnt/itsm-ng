@@ -31,6 +31,14 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILStatisticsRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\StatisticsClassificationRepository;
+use itsmng\Database\Repository\TicketAssetStatisticsRepository;
+use itsmng\Reporting\Criteria;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -69,8 +77,6 @@ class Stat extends CommonGLPI
     **/
     public static function getItems($itemtype, $date1, $date2, $type, $parent = 0)
     {
-        global $DB;
-
         if (!$item = getItemForItemtype($itemtype)) {
             return;
         }
@@ -99,94 +105,27 @@ class Stat extends CommonGLPI
 
             case 'group_tree':
             case 'groups_tree_assign':
-                // Get all groups
-                $is_field = ($type == 'group_tree') ? 'is_requester' : 'is_assign';
-                $iterator = $DB->request([
-                   'SELECT' => ['id', 'name'],
-                   'FROM'   => 'glpi_groups',
-                   'WHERE'  => [
-                      'OR'  => [
-                         'id'        => $parent,
-                         'groups_id' => $parent
-                      ],
-                      $is_field   => 1
-                   ] + getEntitiesRestrictCriteria("glpi_groups", '', '', true),
-                   'ORDER'  => 'completename'
-                ]);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['name']
-                    ];
-                }
+                $table = 'glpi_groups';
+                $role = $type === 'group_tree' ? 'is_requester' : 'is_assign';
+                $val = self::classificationOptions($table, 'name', [
+                    ['OR' => ['id' => $parent, 'groups_id' => $parent]],
+                    [$role => true],
+                    getEntitiesRestrictCriteria($table, '', '', true),
+                ], 'completename', true);
                 break;
 
-            case "itilcategories_tree":
-            case "itilcategories_id":
-                $is_tree = $type == 'itilcategories_tree';
-                // Get all ticket categories for tree merge management
-                $criteria = [
-                   'SELECT'    => [
-                      'glpi_itilcategories.id',
-                      'glpi_itilcategories.' . ($is_tree ? 'name' : 'completename') . ' AS category'
-                   ],
-                   'DISTINCT'  => true,
-                   'FROM'      => 'glpi_itilcategories',
-                   'WHERE'     => getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true),
-                   'ORDERBY'   => 'completename'
-                ];
-
-                if ($is_tree) {
-                    $criteria['WHERE']['OR'] = [
-                       'id'                 => $parent,
-                       'itilcategories_id'  => $parent
-                    ];
-                }
-
-                $iterator = $DB->request($criteria);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['category']
-                    ];
-                }
-                break;
-
+            case 'itilcategories_tree':
+            case 'itilcategories_id':
             case 'locations_tree':
             case 'locations_id':
-                $is_tree = $type == 'locations_tree';
-                // Get all locations for tree merge management
-                $criteria = [
-                   'SELECT'    => [
-                      'glpi_locations.id',
-                      'glpi_locations.' . ($is_tree ? 'name' : 'completename') . ' AS location'
-                   ],
-                   'DISTINCT'  => true,
-                   'FROM'      => 'glpi_locations',
-                   'WHERE'     => getEntitiesRestrictCriteria('glpi_locations', '', '', true),
-                   'ORDERBY'   => 'completename'
-                ];
-
-                if ($is_tree) {
-                    $criteria['WHERE']['OR'] = [
-                       'id'           => $parent,
-                       'locations_id' => $parent
-                    ];
+                $category = str_starts_with($type, 'itilcategories');
+                $table = $category ? 'glpi_itilcategories' : 'glpi_locations';
+                $isTree = str_ends_with($type, '_tree');
+                $criteria = [getEntitiesRestrictCriteria($table, '', '', true)];
+                if ($isTree) {
+                    $criteria[] = ['OR' => ['id' => $parent, ($category ? 'itilcategories_id' : 'locations_id') => $parent]];
                 }
-
-                $iterator = $DB->request($criteria);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['location']
-                    ];
-                }
+                $val = self::classificationOptions($table, $isTree ? 'name' : 'completename', $criteria, 'completename', true);
                 break;
 
             case "type":
@@ -235,63 +174,34 @@ class Stat extends CommonGLPI
                 $val = $item->getUsedUserTitleOrTypeBetween($date1, $date2, false);
                 break;
 
-                // DEVICE CASE
             default:
-                if (
-                    ($item = getItemForItemtype($type))
-                    && ($item instanceof CommonDevice)
-                ) {
-                    $device_table = $item->getTable();
-
-                    //select devices IDs (table row)
-                    $iterator = $DB->request([
-                       'SELECT' => [
-                          'id',
-                          'designation'
-                       ],
-                       'FROM'   => $device_table,
-                       'ORDER'  => 'designation'
-                    ]);
-
-                    while ($line = $iterator->next()) {
-                        $val[] = [
-                           'id'     => $line['id'],
-                           'link'   => $line['designation']
-                        ];
-                    }
+                $classification = getItemForItemtype($type);
+                if (!$classification) {
+                    return [];
+                }
+                if ($classification instanceof CommonDevice) {
+                    $val = self::classificationOptions($classification->getTable(), 'designation', [], 'designation', false);
                 } else {
-                    // Dropdown case for computers
-                    $field = "name";
-                    $table = getTableForItemType($type);
-                    if (
-                        ($item = getItemForItemtype($type))
-                        && ($item instanceof CommonTreeDropdown)
-                    ) {
-                        $field = "completename";
-                    }
-
-                    $criteria = [
-                       'FROM'   => $table,
-                       'ORDER'  => $field
-                    ];
-
-                    if ($item->isEntityAssign()) {
-                        $criteria['ORDER'] = ['entities_id', $field];
-                        $criteria['WHERE'] = getEntitiesRestrictCriteria($table);
-                    }
-
-                    $iterator = $DB->request($criteria);
-
-                    $val    = [];
-                    while ($line = $iterator->next()) {
-                        $val[] = [
-                           'id'     => $line['id'],
-                           'link'   => $line[$field]
-                        ];
-                    }
+                    $field = $classification instanceof CommonTreeDropdown ? 'completename' : 'name';
+                    $table = $classification->getTable();
+                    $scoped = $classification->isEntityAssign();
+                    $val = self::classificationOptions($table, $field, $scoped ? getEntitiesRestrictCriteria($table) : [], $scoped ? ['entities_id', $field] : $field, $scoped);
                 }
         }
         return $val;
+    }
+
+
+    private static function classificationOptions(string $table, string $label, array $criteria, array|string $order, bool $scoped): array
+    {
+        global $DB;
+
+        if ($scoped && Criteria::entities() === []) {
+            return [];
+        }
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new StatisticsClassificationRepository($manager))
+                ->options($table, $label, $criteria, $order));
     }
 
 
@@ -915,616 +825,24 @@ class Stat extends CommonGLPI
         $value2 = "",
         array $add_criteria = []
     ) {
-        $DB = \DBConnection::getReadConnection();
-
-        if (!$item = getItemForItemtype($itemtype)) {
+        $item = getItemForItemtype($itemtype);
+        if (!$item instanceof CommonITILObject) {
             return;
         }
-        $table          = $item->getTable();
-        $fkfield        = $item->getForeignKeyField();
-
-        if (!($userlinkclass = getItemForItemtype($item->userlinkclass))) {
-            return;
-        }
-        $userlinktable  = $userlinkclass->getTable();
-        if (!$grouplinkclass = getItemForItemtype($item->grouplinkclass)) {
-            return;
-        }
-        $grouplinktable = $grouplinkclass->getTable();
-
-        if (!($supplierlinkclass = getItemForItemtype($item->supplierlinkclass))) {
-            return;
-        }
-        $supplierlinktable = $supplierlinkclass->getTable();
-
-        $tasktable      = getTableForItemType($item->getType() . 'Task');
-
-        $closed_status  = $item->getClosedStatusArray();
-        $solved_status  = array_merge($closed_status, $item->getSolvedStatusArray());
-
-        $criteria = [];
-        $WHERE = [];
-        if ($item->maybeDeleted()) {
-            $WHERE["$table.is_deleted"] = 0;
-        }
-        $WHERE += getEntitiesRestrictCriteria($table);
-        $LEFTJOIN          = [];
-        $INNERJOIN         = [];
-        $LEFTJOINUSER      = [
-           $userlinktable => [
-              'ON' => [
-                 $userlinktable => $fkfield,
-                 $table         => 'id'
-              ]
-           ]
-        ];
-        $LEFTJOINGROUP    = [
-           $grouplinktable => [
-              'ON' => [
-                 $grouplinktable   => $fkfield,
-                 $table            => 'id'
-              ]
-           ]
-        ];
-        $LEFTJOINSUPPLIER = [
-           $supplierlinktable => [
-              'ON' => [
-                 $supplierlinktable   => $fkfield,
-                 $table               => 'id'
-              ]
-           ]
-        ];
-
-        switch ($param) {
-            case "technicien":
-                $LEFTJOIN = $LEFTJOINUSER;
-                $WHERE["$userlinktable.users_id"] = $value;
-                $WHERE["$userlinktable.type"] = CommonITILActor::ASSIGN;
-                break;
-
-            case "technicien_followup":
-                $WHERE["$tasktable.users_id"] = $value;
-                $LEFTJOIN = [
-                   $tasktable => [
-                      'ON' => [
-                         $tasktable  => $fkfield,
-                         $table      => 'id'
-                      ]
-                   ]
-                ];
-                break;
-
-            case "user":
-                $LEFTJOIN = $LEFTJOINUSER;
-                $WHERE["$userlinktable.users_id"] = $value;
-                $WHERE["$userlinktable.type"] = CommonITILActor::REQUESTER;
-                break;
-
-            case "usertitles_id":
-                $LEFTJOIN  = $LEFTJOINUSER;
-                $LEFTJOIN['glpi_users'] = [
-                   'ON' => [
-                      $userlinktable => 'users_id',
-                      'glpi_users'   => 'id'
-                   ]
-                ];
-                $WHERE["glpi_users.usertitles_id"] = $value;
-                $WHERE["$userlinktable.type"] = CommonITILActor::REQUESTER;
-                break;
-
-            case "usercategories_id":
-                $LEFTJOIN  = $LEFTJOINUSER;
-                $LEFTJOIN['glpi_users'] = [
-                   'ON' => [
-                      $userlinktable => 'users_id',
-                      'glpi_users'   => 'id'
-                   ]
-                ];
-                $WHERE["glpi_users.usercategories_id"] = $value;
-                $WHERE["$userlinktable.type"] = CommonITILActor::REQUESTER;
-                break;
-
-            case "itilcategories_tree":
-                if ($value == $value2) {
-                    $categories = [$value];
-                } else {
-                    $categories = getSonsOf("glpi_itilcategories", $value);
-                }
-                $WHERE["$table.itilcategories_id"] = $categories;
-                break;
-
-            case 'locations_tree':
-                if ($value == $value2) {
-                    $locations = [$value];
-                } else {
-                    $locations = getSonsOf('glpi_locations', $value);
-                }
-                $WHERE["$table.locations_id"] = $locations;
-                break;
-
-            case 'group_tree':
-            case 'groups_tree_assign':
-                $grptype = (($param == 'group_tree') ? CommonITILActor::REQUESTER
-                                                     : CommonITILActor::ASSIGN);
-                if ($value == $value2) {
-                    $groups = [$value];
-                } else {
-                    $groups = getSonsOf("glpi_groups", $value);
-                }
-
-                $LEFTJOIN  = $LEFTJOINGROUP;
-                $WHERE["$grouplinktable.groups_id"] = $groups;
-                $WHERE["$grouplinktable.type"] = $grptype;
-                break;
-
-            case "group":
-                $LEFTJOIN = $LEFTJOINGROUP;
-                $WHERE["$grouplinktable.groups_id"] = $value;
-                $WHERE["$grouplinktable.type"] = CommonITILActor::REQUESTER;
-                break;
-
-            case "groups_id_assign":
-                $LEFTJOIN = $LEFTJOINGROUP;
-                $WHERE["$grouplinktable.groups_id"] = $value;
-                $WHERE["$grouplinktable.type"] = CommonITILActor::ASSIGN;
-                break;
-
-            case "suppliers_id_assign":
-                $LEFTJOIN = $LEFTJOINSUPPLIER;
-                $WHERE["$supplierlinktable.suppliers_id"] = $value;
-                $WHERE["$supplierlinktable.type"] = CommonITILActor::ASSIGN;
-                break;
-
-            case "requesttypes_id":
-            case "urgency":
-            case "impact":
-            case "priority":
-            case "users_id_recipient":
-            case "type":
-            case "itilcategories_id":
-            case 'locations_id':
-                $WHERE["$table.$param"] = $value;
-                break;
-
-            case "solutiontypes_id":
-                $LEFTJOIN = [
-                   'glpi_itilsolutions' => [
-                      'ON' => [
-                         'glpi_itilsolutions'   => 'items_id',
-                         'glpi_tickets'               => 'id', [
-                            'AND' => [
-                               'glpi_itilsolutions.itemtype' => 'Ticket'
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
-                $WHERE["glpi_itilsolutions.$param"] = $value;
-                break;
-
-            case "device":
-                $devtable = getTableForItemType('Computer_' . $value2);
-                $fkname   = getForeignKeyFieldForTable(getTableForItemType($value2));
-                //select computers IDs that are using this device;
-                $linkdetable = $table;
-                if ($itemtype == 'Ticket') {
-                    $linkedtable = 'glpi_items_tickets';
-                    $LEFTJOIN = [
-                       'glpi_items_tickets' => [
-                          'ON' => [
-                             'glpi_items_tickets' => 'tickets_id',
-                             'glpi_tickets'       => 'id', [
-                                'AND' => [
-                                   "$linkdetable.itemtype" => 'Computer'
-                                ]
-                             ]
-                          ]
-                       ]
-                    ];
-                }
-                $INNERJOIN = [
-                   'glpi_computers'  => [
-                      'ON' => [
-                         'glpi_computers'  => 'id',
-                         $linkedtable      => 'items_id'
-                      ]
-                   ],
-                   $devtable         => [
-                      'ON' => [
-                         'glpi_computers'  => 'id',
-                         $devtable         => 'computers_id', [
-                            'AND' => [
-                               "$devtable.$fkname" => $value
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
-
-                $WHERE["glpi_computers.is_template"] = 0;
-                break;
-
-            case "comp_champ":
-                $ftable   = getTableForItemType($value2);
-                $champ    = getForeignKeyFieldForTable($ftable);
-                $linkdetable = $table;
-                if ($itemtype == 'Ticket') {
-                    $linkedtable = 'glpi_items_tickets';
-                    $LEFTJOIN = [
-                       'glpi_items_tickets' => [
-                          'ON' => [
-                             'glpi_items_tickets' => 'tickets_id',
-                             'glpi_tickets'       => 'id', [
-                                'AND' => [
-                                   "$linkedtable.itemtype" => 'Computer'
-                                ]
-                             ]
-                          ]
-                       ]
-                    ];
-                }
-                $INNERJOIN = [
-                   'glpi_computers' => [
-                      'ON' => [
-                         'glpi_computers'  => 'id',
-                         $linkedtable      => 'items_id'
-                      ]
-                   ]
-                ];
-
-                $WHERE["glpi_computers.is_template"] = 0;
-                if (substr($champ, 0, strlen('operatingsystem')) === 'operatingsystem') {
-                    $INNERJOIN['glpi_items_operatingsystems'] = [
-                       'ON' => [
-                          'glpi_computers'              => 'id',
-                          'glpi_items_operatingsystems' => 'items_id', [
-                             'AND' => [
-                                "glpi_items_operatingsystems.itemtype" => 'Computer'
-                             ]
-                          ]
-                       ]
-                    ];
-                    $WHERE["glpi_items_operatingsystems.$champ"] = $value;
-                } else {
-                    $WHERE["glpi_computers.$champ"] = $value;
-                }
-                break;
-        }
-
-        switch ($type) {
-            case "inter_total":
-                $WHERE[] = getDateCriteria("$table.date", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.date") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT' => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.date"
-                ];
-                break;
-
-            case "inter_solved":
-                $WHERE["$table.status"] = $solved_status;
-                $WHERE[] = ['NOT' => ["$table.solvedate" => null]];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_solved_late":
-                $WHERE["$table.status"] = $solved_status;
-                $WHERE[] = [
-                   'NOT' => [
-                      "$table.solvedate"         => null,
-                      "$table.time_to_resolve"   => null
-                   ]
-                ];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-                $WHERE[] = new QueryExpression("$table.solvedate > $table.time_to_resolve");
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_closed":
-                $WHERE["$table.status"] = $closed_status;
-                $WHERE[] = ['NOT' => ["$table.closedate" => null]];
-                $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
-                ];
-                break;
-
-            case "inter_solved_with_actiontime":
-                $WHERE["$table.status"] = $solved_status;
-                $WHERE["$table.actiontime"] = ['>', 0];
-                $WHERE[] = ['NOT' => ["$table.solvedate" => null]];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_avgsolvedtime":
-                $WHERE["$table.status"] = $solved_status;
-                $WHERE[] = ['NOT' => ["$table.solvedate" => null]];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'AVG' => "solve_delay_stat AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_avgclosedtime":
-                $WHERE["$table.status"] = $closed_status;
-                $WHERE[] = ['NOT' => ["$table.closedate" => null]];
-                $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'AVG'  => "close_delay_stat AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
-                ];
-                break;
-
-            case "inter_avgactiontime":
-                if ($param == "technicien_followup") {
-                    $actiontime_table = $tasktable;
-                } else {
-                    $actiontime_table = $table;
-                }
-                $WHERE["$actiontime_table.actiontime"] = ['>', 0];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'AVG'  => "$actiontime_table.actiontime AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_avgtakeaccount":
-                $WHERE["$table.status"] = $solved_status;
-                $WHERE[] = ['NOT' => ["$table.solvedate" => null]];
-                $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'AVG'  => "$table.takeintoaccount_delay_stat AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
-                ];
-                break;
-
-            case "inter_opensatisfaction":
-                $WHERE["$table.status"] = $closed_status;
-                $WHERE[] = ['NOT' => ["$table.closedate" => null]];
-                $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $INNERJOIN['glpi_ticketsatisfactions'] = [
-                   'ON' => [
-                      'glpi_ticketsatisfactions' => 'tickets_id',
-                      $table                     => 'id'
-                   ]
-                ];
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
-                ];
-                break;
-
-            case "inter_answersatisfaction":
-                $WHERE["$table.status"] = $closed_status;
-                $WHERE[] = [
-                   ['NOT' => ["$table.closedate" => null]],
-                   ['NOT' => ["glpi_ticketsatisfactions.date_answered"  => null]],
-                ];
-
-                $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $INNERJOIN['glpi_ticketsatisfactions'] = [
-                   'ON' => [
-                      'glpi_ticketsatisfactions' => 'tickets_id',
-                      $table                     => 'id'
-                   ]
-                ];
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'COUNT DISTINCT'  => "$table.id AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
-                ];
-                break;
-
-            case "inter_avgsatisfaction":
-                $WHERE["$table.status"] = $closed_status;
-                $WHERE[] = [
-                   'NOT' => [
-                      "$table.closedate" => null,
-                      "glpi_ticketsatisfactions.date_answered" => null
-                   ]
-                ];
-                $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
-
-                $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
-                );
-
-                $INNERJOIN['glpi_ticketsatisfactions'] = [
-                   'ON' => [
-                      'glpi_ticketsatisfactions' => 'tickets_id',
-                      $table                     => 'id'
-                   ]
-                ];
-
-                $criteria = [
-                   'SELECT'    => [
-                      $date_unix,
-                      'AVG'  => "glpi_ticketsatisfactions.satisfaction AS total_visites"
-                   ],
-                   'FROM'      => $table,
-                   'WHERE'     => $WHERE,
-                   'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
-                ];
-                break;
-        }
-
-        if (count($LEFTJOIN)) {
-            $criteria['LEFT JOIN'] = $LEFTJOIN;
-        }
-
-        if (count($INNERJOIN)) {
-            $criteria['INNER JOIN'] = $INNERJOIN;
-        }
-
-        $entrees = [];
-        if (!count($criteria)) {
-            return [];
-        }
-
-        if (count($add_criteria)) {
-            $criteria = array_merge_recursive($criteria, $add_criteria);
-        }
-
-        $iterator = $DB->request($criteria);
-        while ($row = $iterator->next()) {
-            $date             = $row['date_unix'];
-            //$visites = round($row['total_visites']);
-            $entrees["$date"] = $row['total_visites'];
-        }
-
-        $end_time   = strtotime(date("Y-m", strtotime((string) $end)) . "-01");
-        $begin_time = strtotime(date("Y-m", strtotime((string) $begin)) . "-01");
-
-        $current = $begin_time;
-
-        while ($current <= $end_time) {
-            $curentry = date("Y-m", $current);
-            if (!isset($entrees["$curentry"])) {
-                $entrees["$curentry"] = 0;
-            }
-            $month   = date("m", $current);
-            $year    = date("Y", $current);
-            $current = mktime(0, 0, 0, intval($month) + 1, 1, intval($year));
-        }
-        ksort($entrees);
-
-        return $entrees;
+        return Orm::read(DBConnection::getReadConnection(), static fn (EntityManager $manager): array =>
+            (new ITILStatisticsRepository($manager))->monthly(
+                $itemtype,
+                $type,
+                (string)$begin,
+                (string)$end,
+                (string)$param,
+                $value,
+                $value2,
+                Criteria::entities(),
+                array_merge($item->getClosedStatusArray(), $item->getSolvedStatusArray()),
+                $item->getClosedStatusArray(),
+                $add_criteria
+            ));
     }
 
     /**
@@ -1539,9 +857,7 @@ class Stat extends CommonGLPI
 
         $view_entities = Session::isMultiEntitiesMode();
 
-        if ($view_entities) {
-            $entities = getAllDataFromTable('glpi_entities');
-        }
+        $entities = [];
 
         $output_type = Search::HTML_OUTPUT;
         if (isset($_GET["display_type"])) {
@@ -1550,42 +866,17 @@ class Stat extends CommonGLPI
         if (empty($date2)) {
             $date2 = date("Y-m-d");
         }
-        $date2 .= " 23:59:59";
 
-        // 1 an par defaut
+        // One year by default, with date-only bounds including the complete end day.
         if (empty($date1)) {
             $date1 = date("Y-m-d", mktime(0, 0, 0, date("m"), date("d"), date("Y") - 1));
         }
-        $date1 .= " 00:00:00";
-
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_items_tickets.itemtype',
-              'glpi_items_tickets.items_id',
-              'COUNT'  => '* AS NB'
-           ],
-           'FROM'   => 'glpi_tickets',
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    'glpi_tickets'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'  => [
-              'date'                        => ['<=', $date2],
-              'glpi_tickets.date'           => ['>=', $date1],
-              'glpi_items_tickets.itemtype' => ['<>', ''],
-              'glpi_items_tickets.items_id' => ['>', 0]
-           ] + getEntitiesRestrictCriteria('glpi_tickets'),
-           'GROUP'  => [
-              'glpi_items_tickets.itemtype',
-              'glpi_items_tickets.items_id'
-           ],
-           'ORDER'  => 'NB DESC'
-        ]);
-        $numrows = count($iterator);
+        $start = isset($_GET['export_all']) ? 0 : max(0, (int)$start);
+        $limit = isset($_GET['export_all']) ? null : max(0, (int)$_SESSION['glpilist_limit']);
+        $page = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new TicketAssetStatisticsRepository($manager))
+                ->page($date1, $date2, Criteria::entities(), $start, $limit));
+        $numrows = $page['total'];
 
         if ($numrows > 0) {
             if ($output_type == Search::HTML_OUTPUT) {
@@ -1600,11 +891,7 @@ class Stat extends CommonGLPI
                 echo "<div class='center'>";
             }
 
-            $end_display = $start + $_SESSION['glpilist_limit'];
-            if (isset($_GET['export_all'])) {
-                $end_display = $numrows;
-            }
-            echo Search::showHeader($output_type, $end_display - $start + 1, 2, 1);
+            echo Search::showHeader($output_type, count($page['rows']) + 1, $view_entities ? 3 : 2, 1);
             $header_num = 1;
             echo Search::showNewLine($output_type);
             echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', Session::getPluralNumber()), $header_num);
@@ -1614,15 +901,9 @@ class Stat extends CommonGLPI
             echo Search::showHeaderItem($output_type, __('Number of tickets'), $header_num);
             echo Search::showEndLine($output_type);
 
-            $i = $start;
-            if (isset($_GET['export_all'])) {
-                $start = 0;
-            }
-
-            for ($i = $start; ($i < $numrows) && ($i < $end_display); $i++) {
+            foreach ($page['rows'] as $index => $data) {
+                $i = $start + $index;
                 $item_num = 1;
-                // Get data and increment loop variables
-                $data = $iterator->next();
                 if (!($item = getItemForItemtype($data["itemtype"]))) {
                     continue;
                 }
@@ -1642,7 +923,12 @@ class Stat extends CommonGLPI
                     );
                     if ($view_entities) {
                         $ent = $item->getEntityID();
-                        $ent = $entities[$ent]['completename'];
+                        if (!array_key_exists($ent, $entities)) {
+                            $entity = Orm::read($DB, static fn (EntityManager $manager): ?array =>
+                                (new RecordRepository($manager))->find('glpi_entities', 'id', (int)$ent));
+                            $entities[$ent] = $entity['completename'] ?? '';
+                        }
+                        $ent = $entities[$ent];
                         echo Search::showItem(
                             $output_type,
                             $ent,

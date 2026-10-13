@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\FinancialRepository;
+use itsmng\Reporting\Criteria;
+
 include('../inc/includes.php');
 
 Session::checkRight("reports", READ);
@@ -113,65 +117,69 @@ function display_infocoms_report($itemtype, $begin, $end)
         return false;
     }
 
-    $criteria = [
-       'SELECT'       => 'glpi_infocoms.*',
-       'FROM'         => 'glpi_infocoms',
-       'INNER JOIN'   => [
-          $itemtable  => [
-             'ON'  => [
-                $itemtable        => 'id',
-                'glpi_infocoms'   => 'items_id', [
-                   'AND' => [
-                      'glpi_infocoms.itemtype' => $itemtype
-                   ]
-                ]
-             ]
-          ]
-       ],
-       'WHERE'        => []
-    ];
+    $mapped = FinancialRepository::supports($itemtype);
+    if ($mapped) {
+        $em = Orm::create($DB);
+        try {
+            $iterator = (new FinancialRepository($em))->rows(
+                $itemtype,
+                (string)$begin,
+                (string)$end,
+                Criteria::entities(),
+                false
+            );
+        } finally {
+            $em->clear();
+        }
+    } else {
+        $criteria = [
+           'SELECT'       => 'glpi_infocoms.*',
+           'FROM'         => 'glpi_infocoms',
+           'INNER JOIN'   => [
+              $itemtable  => [
+                 'ON'  => [
+                    $itemtable        => 'id',
+                    'glpi_infocoms'   => 'items_id', [
+                       'AND' => [
+                          'glpi_infocoms.itemtype' => $itemtype
+                       ]
+                    ]
+                 ]
+              ]
+           ],
+           'WHERE'        => []
+        ];
 
-    switch ($itemtype) {
-        case 'SoftwareLicense':
-            $criteria['INNER JOIN']['glpi_softwares'] = [
-               'ON'  => [
-                  'glpi_softwarelicenses' => 'softwares_id',
-                  'glpi_softwares'        => 'id'
-               ]
-            ];
-            $criteria['WHERE'] =  getEntitiesRestrictCriteria("glpi_softwarelicenses");
-            break;
-        default:
-            if (is_a($itemtype, CommonDBChild::class, true)) {
-                $childitemtype = $itemtype::$itemtype; // acces to child via $itemtype static
-                $criteria['INNER JOIN'][$childitemtype::getTable()] = [
+        switch ($itemtype) {
+            case 'SoftwareLicense':
+                $criteria['INNER JOIN']['glpi_softwares'] = [
                    'ON'  => [
-                      $itemtype::getTable() => $itemtype::$items_id,
-                      $childitemtype::getTable() => 'id'
+                      'glpi_softwarelicenses' => 'softwares_id',
+                      'glpi_softwares'        => 'id'
                    ]
                 ];
-                $criteria['WHERE'] =  getEntitiesRestrictCriteria($itemtable);
-            }
-            break;
-    }
+                $criteria['WHERE'] =  getEntitiesRestrictCriteria("glpi_softwarelicenses");
+                break;
+            default:
+                if (is_a($itemtype, CommonDBChild::class, true)) {
+                    $childitemtype = $itemtype::$itemtype; // acces to child via $itemtype static
+                    $criteria['INNER JOIN'][$childitemtype::getTable()] = [
+                       'ON'  => [
+                          $itemtype::getTable() => $itemtype::$items_id,
+                          $childitemtype::getTable() => 'id'
+                       ]
+                    ];
+                    $criteria['WHERE'] =  getEntitiesRestrictCriteria($childitemtype::getTable());
+                }
+                break;
+        }
 
-    if (!empty($begin)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['>=', $begin],
-              'glpi_infocoms.use_date'   => ['>=', $begin]
-           ]
-        ];
+        $dates = Criteria::financialDates((string)$begin, (string)$end);
+        if ($dates) {
+            $criteria['WHERE'][] = $dates;
+        }
+        $iterator = iterator_to_array($DB->request($criteria));
     }
-    if (!empty($end)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['<=', $end],
-              'glpi_infocoms.use_date'   => ['<=', $end]
-           ]
-        ];
-    }
-    $iterator = $DB->request($criteria);
 
     if (
         count($iterator)
@@ -185,14 +193,18 @@ function display_infocoms_report($itemtype, $begin, $end)
         $valeurnettegraph   = [];
         $valeurgraph        = [];
 
-        while ($line = $iterator->next()) {
+        foreach ($iterator as $line) {
             if ($itemtype == 'SoftwareLicense') {
-                $item->getFromDB($line["items_id"]);
-
-                if ($item->fields["serial"] == "global") {
-                    if ($item->fields["number"] > 0) {
-                        $line["value"] *= $item->fields["number"];
-                    }
+                if ($mapped) {
+                    $serial = $line['license_serial'];
+                    $number = $line['license_number'];
+                } else {
+                    $item->getFromDB($line["items_id"]);
+                    $serial = $item->fields['serial'];
+                    $number = $item->fields['number'];
+                }
+                if ($serial == "global" && $number > 0) {
+                    $line["value"] *= $number;
                 }
             }
             if ($line["value"] > 0) {

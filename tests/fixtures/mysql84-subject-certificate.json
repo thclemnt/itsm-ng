@@ -1,0 +1,30 @@
+{
+    "server_version": "8.4.11",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "table": "glpi_certificates_items",
+    "columns": [
+        {
+            "COLUMN_NAME": "items_id",
+            "DATA_TYPE": "bigint",
+            "EXTRA": "STORED GENERATED",
+            "GENERATION_EXPRESSION": "(case when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Computer\\') then `computers_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'NetworkEquipment\\') then `networkequipments_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Peripheral\\') then `peripherals_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Phone\\') then `phones_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Printer\\') then `printers_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'SoftwareLicense\\') then `softwarelicenses_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'User\\') then `users_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Domain\\') then `domains_id` when (cast(`itemtype` as char charset binary) = _utf8mb3\\'Appliance\\') then `appliances_id` else NULL end)",
+            "CHARACTER_SET_NAME": null,
+            "COLLATION_NAME": null
+        },
+        {
+            "COLUMN_NAME": "itemtype",
+            "DATA_TYPE": "varchar",
+            "EXTRA": "",
+            "GENERATION_EXPRESSION": "",
+            "CHARACTER_SET_NAME": "utf8mb3",
+            "COLLATION_NAME": "utf8mb3_unicode_ci"
+        }
+    ],
+    "checks": [
+        {
+            "CONSTRAINT_NAME": "glpi_certificates_items_typed_item_kind",
+            "CHECK_CLAUSE": "(((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Computer\\') and (`computers_id` is not null) and (`computers_id` >= 1) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'NetworkEquipment\\') and (`networkequipments_id` is not null) and (`networkequipments_id` >= 1) and (`computers_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Peripheral\\') and (`peripherals_id` is not null) and (`peripherals_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Phone\\') and (`phones_id` is not null) and (`phones_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Printer\\') and (`printers_id` is not null) and (`printers_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'SoftwareLicense\\') and (`softwarelicenses_id` is not null) and (`softwarelicenses_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`users_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'User\\') and (`users_id` is not null) and (`users_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`domains_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Domain\\') and (`domains_id` is not null) and (`domains_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`appliances_id` is null)) or ((`itemtype` is not null) and (cast(`itemtype` as char charset binary) = _utf8mb3\\'Appliance\\') and (`appliances_id` is not null) and (`appliances_id` >= 1) and (`computers_id` is null) and (`networkequipments_id` is null) and (`peripherals_id` is null) and (`phones_id` is null) and (`printers_id` is null) and (`softwarelicenses_id` is null) and (`users_id` is null) and (`domains_id` is null)))",
+            "ENFORCED": "YES"
+        }
+    ]
+}

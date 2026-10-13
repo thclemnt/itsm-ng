@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Repository\ContentRepository;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\Entity\Notepad as NotepadRecord;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -102,8 +108,38 @@ class Notepad extends CommonDBChild
     public function prepareInputForUpdate($input)
     {
 
-        $input['users_id_lastupdater'] = Session::getLoginUserID();
+        if (array_key_exists('content', $input)) {
+            $input['users_id_lastupdater'] = Session::getLoginUserID();
+        }
         return $input;
+    }
+
+    /** A moved note keeps its own UPDATENOTE authority on both parent types. */
+    public function checkAttachedItemChangesAllowed(array $input, array $fields)
+    {
+        try {
+            $stored = ConnexityInput::normalize($this, $this->fields);
+            $candidate = array_replace($stored, ConnexityInput::normalize($this, $input));
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+        if ($stored[static::$itemtype] === $candidate[static::$itemtype]
+            && $stored[static::$items_id] === $candidate[static::$items_id]) {
+            return true;
+        }
+        foreach ([$stored[static::$itemtype], $candidate[static::$itemtype]] as $kind) {
+            // Native opaque storage can preserve NULL/blank without pretending it is a model.
+            if (!is_string($kind) || $kind === '' || !($parent = getItemForItemtype($kind))
+                || !Session::haveRight($parent::$rightname, UPDATENOTE)) {
+                Session::addMessageAfterRedirect(
+                    __('Cannot update item: not enough right on the parent(s) item(s)'),
+                    true,
+                    INFO
+                );
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -118,21 +154,16 @@ class Notepad extends CommonDBChild
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $iterator = (new self())->find(['items_id' => $oldid, 'itemtype' => $itemtype]);
+        foreach ($iterator as $data) {
             $cd               = new self();
             unset($data['id']);
-            $data['items_id'] = $newid;
+            $data = NotepadRecord::withReference(
+                $data,
+                $data['itemtype'],
+                (int)$newid
+            );
             $data             = Toolbox::addslashes_deep($data);
             $cd->add($data);
         }
@@ -186,32 +217,15 @@ class Notepad extends CommonDBChild
     {
         global $DB;
 
-        $data = [];
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_notepads.*',
-              'glpi_users.picture'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_users'   => [
-                 'ON' => [
-                    self::getTable()  => 'users_id_lastupdater',
-                    'glpi_users'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'itemtype'  => $item->getType(),
-              'items_id'  => $item->getID()
-           ],
-           'ORDERBY'   => 'date_mod DESC'
-        ]);
-
-        while ($note = $iterator->next()) {
-            $data[] = $note;
-        }
-        return $data;
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (string $kind, int $id): array => [$kind, $id])(
+                $item->getType(),
+                (int)$item->getID()
+            ),
+            static fn (EntityManager $manager, array $parent): array =>
+                (new ContentRepository($manager))->notes($parent[0], $parent[1])
+        );
     }
 
 

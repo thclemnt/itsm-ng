@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$pdup = new \Pdu_Plug();
+$pdup = new Pdu_Plug();
 $pdu = new PDU();
 
 if (isset($_POST['update'])) {

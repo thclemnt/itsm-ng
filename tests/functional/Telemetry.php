@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Telemetry as LegacyTelemetry;
 
 /* Test for inc/telemetry.class.php NOT requiring the Web server*/
 
@@ -146,12 +147,19 @@ class Telemetry extends DbTestCase
            'version'   => $dbinfos['Server Version'],
            'size'      => '',
            'log_size'  => '',
-           'sql_mode'  => $dbinfos['Server SQL Mode']
+           'sql_mode'  => $dbinfos['Server SQL Mode'] ?? ''
         ];
         $infos = \Telemetry::grabDbInfos();
         $this->string($infos['size'])->isNotEmpty();
         $expected['size'] = $infos['size'];
         $this->array($infos)->isIdenticalTo($expected);
+        $this->boolean(is_numeric($infos['size']))->isTrue();
+        $this->float((float)$infos['size'])->isGreaterThan(0.0);
+
+        $redacted = LegacyTelemetry::grabDbInfos(true);
+        $this->string($redacted['version'])->isIdenticalTo('REDACTED');
+        $this->string($redacted['engine'])->isIdenticalTo($infos['engine']);
+        $this->string($redacted['sql_mode'])->isIdenticalTo($infos['sql_mode']);
     }
 
     public function testGrabPhpInfos()

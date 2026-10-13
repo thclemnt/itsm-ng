@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LinkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -77,15 +81,16 @@ class Link_Itemtype extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_links_itemtypes',
-           'WHERE'  => ['links_id' => $links_id],
-           'ORDER'  => 'itemtype'
-        ]);
+        $iterator = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$links_id,
+            static fn (EntityManager $manager, int $link): array =>
+                (new LinkRepository($manager))->itemtypes($link)
+        );
         $types  = [];
         $used   = [];
         $numrows = count($iterator);
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $types[$data['id']]      = $data;
             $used[$data['itemtype']] = $data['itemtype'];
         }
@@ -165,15 +170,18 @@ class Link_Itemtype extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if (!$withtemplate) {
             $nb = 0;
             switch ($item->getType()) {
                 case 'Link':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = countElementsInTable(
-                            $this->getTable(),
-                            ['links_id' => $item->getID()]
+                        $nb = Orm::readPrepared(
+                            $DB,
+                            static fn (): int => (int)$item->getID(),
+                            static fn (EntityManager $manager, int $link): int =>
+                                (new LinkRepository($manager))->countItemtypes($link)
                         );
                     }
                     return self::createTabEntry(_n(
@@ -209,11 +217,6 @@ class Link_Itemtype extends CommonDBChild
     {
         global $DB;
 
-        $DB->delete(
-            self::getTable(),
-            [
-              'itemtype'  => ['LIKE', "%Plugin$itemtype%"]
-            ]
-        );
+        (new LinkRepository(Orm::create($DB)))->deletePluginItemtypes((string)$itemtype);
     }
 }

@@ -35,11 +35,16 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
+use Glpi\Features\PlanningEvent;
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VJournal;
 use Sabre\VObject\Component\VTodo;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\SharedContentRepository;
+use itsmng\Database\SharedContentAccess;
 
 /**
  * Reminder Class
@@ -48,7 +53,7 @@ class Reminder extends CommonDBVisible implements
     CalDAVCompatibleItemInterface,
     ExtraVisibilityCriteria
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         post_getEmpty as trait_post_getEmpty;
     }
     use VobjectConverterTrait;
@@ -96,7 +101,7 @@ class Reminder extends CommonDBVisible implements
     {
 
         // Is my reminder or is in visibility
-        return ($this->fields['users_id'] == Session::getLoginUserID()
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
                 || (Session::haveRight(self::$rightname, READ)
                     && $this->haveVisibilityAccess()));
     }
@@ -105,14 +110,14 @@ class Reminder extends CommonDBVisible implements
     public function canCreateItem()
     {
         // Is my reminder
-        return ($this->fields['users_id'] == Session::getLoginUserID());
+        return (int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID();
     }
 
 
     public function canUpdateItem()
     {
 
-        return ($this->fields['users_id'] == Session::getLoginUserID()
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
                 || (Session::haveRight(self::$rightname, UPDATE)
                     && $this->haveVisibilityAccess()));
     }
@@ -126,7 +131,7 @@ class Reminder extends CommonDBVisible implements
     public function canPurgeItem()
     {
 
-        return ($this->fields['users_id'] == Session::getLoginUserID()
+        return (((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID())
                 || (Session::haveRight(self::$rightname, PURGE)
                     && $this->haveVisibilityAccess()));
     }
@@ -216,7 +221,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = trim(str_replace(
@@ -241,7 +246,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = preg_replace('/.*WHERE /', '', $sql);
@@ -262,7 +267,7 @@ class Reminder extends CommonDBVisible implements
     {
         if (!Session::haveRight(self::$rightname, READ)) {
             return [
-               'WHERE' => ['glpi_reminders.users_id' => Session::getLoginUserID()],
+               'WHERE' => ['glpi_reminders.users_id' => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1)],
             ];
         }
 
@@ -279,8 +284,8 @@ class Reminder extends CommonDBVisible implements
 
         if (Session::getLoginUserID()) {
             $where['OR'] = [
-                  'glpi_reminders.users_id'        => Session::getLoginUserID(),
-                  'glpi_reminders_users.users_id'  => Session::getLoginUserID(),
+                  'glpi_reminders.users_id'        => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1),
+                  'glpi_reminders_users.users_id'  => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1),
             ];
         } else {
             $where = [
@@ -300,7 +305,7 @@ class Reminder extends CommonDBVisible implements
                ]
             ];
 
-            $or = ['glpi_groups_reminders.entities_id' => ['<', 0]];
+            $or = ['glpi_groups_reminders.entities_id' => null];
             $restrict = getEntitiesRestrictCriteria('glpi_groups_reminders', '', '', true);
             if (count($restrict)) {
                 $or = $or + $restrict;
@@ -326,7 +331,7 @@ class Reminder extends CommonDBVisible implements
                ]
             ];
 
-            $or = ['glpi_profiles_reminders.entities_id' => ['<', 0]];
+            $or = ['glpi_profiles_reminders.entities_id' => null];
             $restrict = getEntitiesRestrictCriteria('glpi_profiles_reminders', '', '', true);
             if (count($restrict)) {
                 $or = $or + $restrict;
@@ -800,94 +805,22 @@ class Reminder extends CommonDBVisible implements
     {
         global $DB, $CFG_GLPI;
 
-        $users_id = Session::getLoginUserID();
-        $today    = date('Y-m-d');
-        $now      = date('Y-m-d H:i:s');
-
-        $visibility_criteria = [
-           [
-              'OR' => [
-                 ['glpi_reminders.begin_view_date' => null],
-                 ['glpi_reminders.begin_view_date' => ['<', $now]]
-              ]
-           ], [
-              'OR' => [
-                 ['glpi_reminders.end_view_date'   => null],
-                 ['glpi_reminders.end_view_date'   => ['>', $now]]
-              ]
-           ]
-        ];
-
-        if ($personal) {
-            /// Personal notes only for central view
-            if (Session::getCurrentInterface() == 'helpdesk') {
-                return false;
-            }
-
-            $criteria = [
-               'SELECT' => ['glpi_reminders.*'],
-               'FROM'   => 'glpi_reminders',
-               'WHERE'  => array_merge([
-                  'glpi_reminders.users_id'  => $users_id,
-                  [
-                     'OR'        => [
-                        'end'          => ['>=', $today],
-                        'is_planned'   => 0
-                     ]
-                  ]
-               ], $visibility_criteria),
-               'ORDER'  => 'glpi_reminders.name'
-            ];
-
-            $titre = "<a href='" . $CFG_GLPI["root_doc"] . "/front/reminder.php'>" .
-                       _n('Personal reminder', 'Personal reminders', Session::getPluralNumber()) . "</a>";
-        } else {
-            // Show public reminders / not mines : need to have access to public reminders
-            if (!self::canView()) {
-                return false;
-            }
-
-            $criteria = array_merge_recursive(
-                [
-                  'SELECT'          => ['glpi_reminders.*'],
-                  'DISTINCT'        => true,
-                  'FROM'            => 'glpi_reminders',
-                  'WHERE'           => $visibility_criteria,
-                  'ORDERBY'         => 'name'
-                ],
-                self::getVisibilityCriteria()
-            );
-
-            // Only personal on central so do not keep it
-            if (Session::getCurrentInterface() == 'central') {
-                $criteria['WHERE']['glpi_reminders.users_id'] = ['<>', $users_id];
-            }
-
-            if (Session::getCurrentInterface() != 'helpdesk') {
-                $titre = "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/reminder.php\">" .
-                           _n('Public reminder', 'Public reminders', Session::getPluralNumber()) . "</a>";
-            } else {
-                $titre = _n('Public reminder', 'Public reminders', Session::getPluralNumber());
-            }
+        $central = Session::getCurrentInterface() != 'helpdesk';
+        if (($personal && !$central) || (!$personal && !self::canView())) {
+            return false;
         }
-
-        if (ReminderTranslation::isReminderTranslationActive()) {
-            $criteria['LEFT JOIN']['glpi_remindertranslations'] = [
-               'ON'  => [
-                  'glpi_reminders'             => 'id',
-                  'glpi_remindertranslations'  => 'reminders_id', [
-                  'AND'                            => [
-                     'glpi_remindertranslations.language' => $_SESSION['glpilanguage']
-                     ]
-                  ]
-               ]
-            ];
-            $criteria['SELECT'][] = "glpi_remindertranslations.name AS transname";
-            $criteria['SELECT'][] = "glpi_remindertranslations.text AS transtext";
-        }
-
-        $iterator = $DB->request($criteria);
-        $nb = count($iterator);
+        $label = $personal ? _n('Personal reminder', 'Personal reminders', Session::getPluralNumber()) : _n('Public reminder', 'Public reminders', Session::getPluralNumber());
+        $titre = $central ? "<a href='" . $CFG_GLPI['root_doc'] . '/front/reminder.php' . "'>" . $label . '</a>' : $label;
+        $access = SharedContentAccess::current(Session::haveRight(self::$rightname, READ));
+        $rows = (new SharedContentRepository(Orm::create($DB)))->listing(
+            'reminder',
+            $access,
+            $personal,
+            Session::getCurrentInterface() == 'central',
+            new DateTimeImmutable(),
+            ReminderTranslation::isReminderTranslationActive() ? $_SESSION['glpilanguage'] : null
+        );
+        $nb = count($rows);
 
         echo "<br><table class='tab_cadrehov' aria-label='Reminders'>";
         echo "<tr class='noHover'><th><div class='relative'><span>$titre</span>";
@@ -907,7 +840,7 @@ class Reminder extends CommonDBVisible implements
         if ($nb) {
             $rand = mt_rand();
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 echo "<tr class='tab_bg_2'><td>";
                 $name = $data['name'];
 
@@ -966,57 +899,43 @@ class Reminder extends CommonDBVisible implements
 
     public static function getGroupItemsAsVCalendars($groups_id)
     {
-
-        return self::getItemsAsVCalendars(
-            [
-              'DISTINCT'  => true,
-              'FROM'      => self::getTable(),
-              'LEFT JOIN' => [
-                 Group_Reminder::getTable() => [
-                    'ON' => [
-                       Group_Reminder::getTable() => 'reminders_id',
-                       self::getTable()           => 'id',
-                    ],
-                 ]
-              ],
-              'WHERE'     => [
-                 Group_Reminder::getTableField('groups_id') => $groups_id,
-              ],
-            ]
+        global $DB;
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$groups_id,
+            static fn (EntityManager $manager, int $owner): array =>
+                (new SharedContentRepository($manager))->calendarReminders(group: $owner)
         );
+        return self::getItemsAsVCalendars($rows);
     }
 
     public static function getUserItemsAsVCalendars($users_id)
     {
-
-        return self::getItemsAsVCalendars(
-            [
-              'FROM'  => self::getTable(),
-              'WHERE' => [
-                 self::getTableField('users_id') => $users_id,
-              ],
-            ]
+        global $DB;
+        $rows = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$users_id,
+            static fn (EntityManager $manager, int $owner): array =>
+                (new SharedContentRepository($manager))->calendarReminders(user: $owner)
         );
+        return self::getItemsAsVCalendars($rows);
     }
 
     /**
      * Returns items as VCalendar objects.
      *
-     * @param array $query
+     * @param array $rows
      *
-     * @return \Sabre\VObject\Component\VCalendar[]
+     * @return VCalendar[]
      */
-    private static function getItemsAsVCalendars(array $query)
+    private static function getItemsAsVCalendars(array $rows)
     {
 
-        global $DB;
-
-        $reminder_iterator = $DB->request($query);
-
         $vcalendars = [];
-        foreach ($reminder_iterator as $reminder) {
+        foreach ($rows as $reminder) {
             $item = new self();
             $item->getFromResultSet($reminder);
+            $item->post_getFromDB();
             $vcalendar = $item->getAsVCalendar();
             if (null !== $vcalendar) {
                 $vcalendars[] = $vcalendar;
@@ -1064,7 +983,7 @@ class Reminder extends CommonDBVisible implements
 
         if ($vcomp instanceof VTodo && !array_key_exists('state', $input)) {
             // Force default state to TODO or reminder will be considered as VEVENT
-            $input['state'] = \Planning::TODO;
+            $input['state'] = Planning::TODO;
         }
 
         return $input;
@@ -1089,26 +1008,9 @@ class Reminder extends CommonDBVisible implements
         $reminder = new self();
         $count = 0;
 
-        // Find expired reminders
-        $iterator = $DB->request([
-            'SELECT' => 'id',
-            'FROM'   => self::getTable(),
-            'WHERE'  => [
-                'OR' => [
-                    // Reminders with expired end_view_date
-                    [
-                        'end_view_date' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int)$max_age . ' DAY)')],
-                        'end_view_date' => ['!=', null]
-                    ],
-                    // Planned reminders with expired planning date and no visibility end date
-                    [
-                        'is_planned' => 1,
-                        'end' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int)$max_age . ' DAY)')],
-                        'end_view_date' => null
-                    ]
-                ]
-            ]
-        ]);
+        $before = (new DateTimeImmutable())->modify('-' . (int)$max_age . ' days');
+        $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new SharedContentRepository($manager))->expiredReminders($before));
 
         foreach ($iterator as $data) {
             if ($reminder->delete($data)) {

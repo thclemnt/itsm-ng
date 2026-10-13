@@ -1,0 +1,10 @@
+# Native PostgreSQL settings for the existing test harness.
+services:
+  db:
+    environment:
+      POSTGRES_DB: "${TEST_DB_NAME:-glpi}"
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: test
+    command: ["postgres", "-c", "max_locks_per_transaction=512"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root", "-d", "${TEST_DB_NAME:-glpi}"]

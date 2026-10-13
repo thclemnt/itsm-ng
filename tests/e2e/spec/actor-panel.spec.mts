@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { expect, type Locator, type Page } from '@playwright/test';
 import {
   getActorPanel,
   login,
@@ -7,6 +8,7 @@ import {
   submitForm,
   waitForTicketIdByName,
   waitForActorValueSelect,
+  test,
 } from '../helpers.mjs';
 
 async function openObserverPanel(page: Page): Promise<Locator> {
@@ -95,8 +97,8 @@ test.beforeEach(async ({ page }) => {
   await login(page);
 });
 
-test('shows the pending badge and submits pending observer changes with manual email values', async ({ page, request }) => {
-  const seed = await seedTicket(request);
+test('shows the pending badge and submits pending observer changes with manual email values', async ({ page, request, ticketFixtures }) => {
+  const seed = await seedTicket(request, ticketFixtures);
   const alternativeEmail = `observer-${Date.now()}@example.com`;
 
   await openTicket(page, seed);
@@ -146,8 +148,8 @@ test('shows the pending badge and submits pending observer changes with manual e
   await expect(reloadedObserver).toContainText(alternativeEmail);
 });
 
-test('does not submit a pending observer that was removed before saving', async ({ page, request }) => {
-  const seed = await seedTicket(request);
+test('does not submit a pending observer that was removed before saving', async ({ page, request, ticketFixtures }) => {
+  const seed = await seedTicket(request, ticketFixtures);
   const alternativeEmail = `removed-${Date.now()}@example.com`;
 
   await openTicket(page, seed);
@@ -174,8 +176,9 @@ test('does not submit a pending observer that was removed before saving', async 
   await expect((await openObserverPanel(page)).locator('[data-actor-entry]')).toHaveCount(0);
 });
 
-test('submits multiple pending observers in a single save', async ({ page, request }) => {
-  const ticketName = `Batch observer ticket ${Date.now()}`;
+test('submits multiple pending observers in a single save', async ({ page, request, ticketFixtures }) => {
+  const ticketName = `Batch observer ticket ${randomUUID()}`;
+  ticketFixtures.ownTicket(ticketName);
   const ticketContent = `Batch observer content ${Date.now()}`;
 
   await page.goto('/front/ticket.form.php');
@@ -202,6 +205,7 @@ test('submits multiple pending observers in a single save', async ({ page, reque
   await submitForm(page, 'add', ticketForm);
 
   const createdTicketId = await waitForTicketIdByName(request, ticketName);
+  ticketFixtures.ownTicket(ticketName, createdTicketId);
   await page.goto(`/front/ticket.form.php?id=${createdTicketId}`);
 
   const persistedObserverPanel = await openObserverPanel(page);

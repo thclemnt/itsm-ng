@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ImpactRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -48,8 +51,6 @@ class ImpactRelation extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        global $DB;
-
         // Check that mandatory values are set
         $required = [
            "itemtype_source",
@@ -70,16 +71,7 @@ class ImpactRelation extends CommonDBRelation
         }
 
         // Check for duplicate
-        $it = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype_source'   => $input['itemtype_source'],
-              'items_id_source'   => $input['items_id_source'],
-              'itemtype_impacted' => $input['itemtype_impacted'],
-              'items_id_impacted' => $input['items_id_impacted']
-           ]
-        ]);
-        if (count($it)) {
+        if (self::getIDFromInput($input) !== false) {
             return false;
         }
 
@@ -112,21 +104,11 @@ class ImpactRelation extends CommonDBRelation
     {
         global $DB;
 
-        // Check that the link exist
-        $it = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype_source'   => $input['itemtype_source'],
-              'items_id_source'   => $input['items_id_source'],
-              'itemtype_impacted' => $input['itemtype_impacted'],
-              'items_id_impacted' => $input['items_id_impacted']
-           ]
-        ]);
-
-        if (count($it)) {
-            return $it->next()['id'];
-        }
-
-        return false;
+        return (new ImpactRepository(Orm::create($DB)))->relationId([
+            'itemtype_source' => $input['itemtype_source'],
+            'items_id_source' => $input['items_id_source'],
+            'itemtype_impacted' => $input['itemtype_impacted'],
+            'items_id_impacted' => $input['items_id_impacted'],
+        ]) ?? false;
     }
 }

@@ -36,5 +36,6 @@
 /tests/web/error.log
 megalinter-reports/
 composer.lock
+!/composer.lock
 package-lock.json
 .php-cs-fixer.cache

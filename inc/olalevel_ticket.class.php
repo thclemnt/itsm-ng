@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 /**
  * @since 9.2
  */
@@ -42,6 +45,12 @@ if (!defined('GLPI_ROOT')) {
 /// Class OLALevel
 class OlaLevel_Ticket extends CommonDBTM
 {
+    private static function serviceRepository(): ServiceLevelRepository
+    {
+        global $DB;
+        return new ServiceLevelRepository(Orm::create($DB), 'ola');
+    }
+
     public static function getTypeName($nb = 0)
     {
         return __('OLA level for Ticket');
@@ -60,36 +69,8 @@ class OlaLevel_Ticket extends CommonDBTM
     **/
     public function getFromDBForTicket($ID, $olaType)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT'       => [static::getTable() . '.id'],
-           'FROM'         => static::getTable(),
-           'LEFT JOIN'   => [
-              'glpi_olalevels'  => [
-                 'FKEY'   => [
-                    static::getTable()   => 'olalevels_id',
-                    'glpi_olalevels'     => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'FKEY'   => [
-                    'glpi_olalevels'     => 'olas_id',
-                    'glpi_olas'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              static::getTable() . '.tickets_id'  => $ID,
-              'glpi_olas.type'                    => $olaType
-           ],
-           'LIMIT'        => 1
-        ]);
-        if (count($iterator) == 1) {
-            $row = $iterator->next();
-            return $this->getFromDB($row['id']);
-        }
-        return false;
+        $rows = self::serviceRepository()->scheduled((int)$ID, (int)$olaType, limit: 1);
+        return $rows ? $this->getFromDB($rows[0]['id']) : false;
     }
 
 
@@ -105,33 +86,8 @@ class OlaLevel_Ticket extends CommonDBTM
     **/
     public function deleteForTicket($tickets_id, $olaType)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_olalevels_tickets.id',
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.tickets_id' => $tickets_id,
-              'glpi_olas.type'                    => $olaType
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $this->delete(['id' => $data['id']]);
+        foreach (self::serviceRepository()->scheduled((int)$tickets_id, (int)$olaType) as $row) {
+            $this->delete(['id' => $row['id']]);
         }
     }
 
@@ -163,42 +119,12 @@ class OlaLevel_Ticket extends CommonDBTM
     **/
     public static function cronOlaTicket(CronTask $task)
     {
-        global $DB;
-
-        $tot = 0;
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_olalevels_tickets.*',
-              'glpi_olas.type AS type'
-           ],
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.date' => ['<', new \QueryExpression('NOW()')]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tot++;
-            self::doLevelForTicket($data, $data['type']);
+        $rows = self::serviceRepository()->scheduled(before: new DateTimeImmutable());
+        foreach ($rows as $row) {
+            self::doLevelForTicket($row, $row['type']);
         }
-
-        $task->setVolume($tot);
-        return ($tot > 0 ? 1 : 0);
+        $task->setVolume(count($rows));
+        return $rows ? 1 : 0;
     }
 
 
@@ -323,39 +249,18 @@ class OlaLevel_Ticket extends CommonDBTM
     public static function replayForTicket($tickets_id, $olaType)
     {
         global $DB;
-
-        $criteria = [
-           'SELECT'    => 'glpi_olalevels_tickets.*',
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.date'       => ['<', new \QueryExpression('NOW()')],
-              'glpi_olalevels_tickets.tickets_id' => $tickets_id,
-              'glpi_olas.type'                    => $olaType
-           ]
-        ];
-
-        $number = 0;
+        $manager = Orm::create($DB);
+        $repository = new ServiceLevelRepository($manager, 'ola');
         do {
-            $iterator = $DB->request($criteria);
-            $number = count($iterator);
-            if ($number == 1) {
-                $data = $iterator->next();
-                self::doLevelForTicket($data, $olaType);
+            try {
+                $rows = $repository->scheduled((int)$tickets_id, (int)$olaType, new DateTimeImmutable(), 2);
+            } finally {
+                // The next selection follows legacy queue and ticket mutations.
+                $manager->clear();
             }
-        } while ($number == 1);
+            if (count($rows) === 1) {
+                self::doLevelForTicket($rows[0], $olaType);
+            }
+        } while (count($rows) === 1);
     }
 }

@@ -1,5 +1,10 @@
 <?php
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ApplianceAssetRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -90,12 +95,60 @@ class Appliance_Item_Relation extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
+    }
+
+    public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
+    {
+        $selection = EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $conditions = [];
+        if ($itemtype === static::$itemtype_1) {
+            $conditions[] = [static::$items_id_1 => $items_id];
+        }
+        if ($selection !== null) {
+            $conditions[] = [$selection['column'] => $items_id];
+        }
+        return $conditions ? ['SELECT' => 'id', 'FROM' => static::getTable(), 'WHERE' => ['OR' => $conditions]] : null;
+    }
+
+    public static function getItemsAssociationRequest($itemtype, $items_id)
+    {
+        global $DB;
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->relationRelationships($itemtype, (int)$items_id)
+        );
+    }
+
+    public static function getOppositeByTypeAndID($itemtype, $items_id, &$relations_id = null)
+    {
+        $rows = static::getItemsAssociationRequest($itemtype, $items_id);
+        if (count($rows) !== 1) {
+            return false;
+        }
+        $row = $rows->next();
+        $role = $row['is_1'] ? 2 : 1;
+        $opposite = getItemForItemtype($row['itemtype_' . $role]);
+        if (!$opposite || !$opposite->getFromDB($row['items_id_' . $role])) {
+            return false;
+        }
+        if ($relations_id !== null) {
+            $relations_id = $row['id'];
+        }
+        return $opposite;
+    }
+
+    private static function subjectCriteria(CommonDBTM $item): array
+    {
+        $criteria = $item->maybeTemplate() ? ['is_template' => false] : [];
+        if ($item->isEntityAssign()) {
+            $criteria += getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+        }
+        return $criteria;
     }
 
     /**
@@ -105,7 +158,7 @@ class Appliance_Item_Relation extends CommonDBRelation
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
         $error_detected = [];
 
@@ -124,7 +177,7 @@ class Appliance_Item_Relation extends CommonDBRelation
         }
         if (
             ($this->isNewItem() && (!isset($input[self::$items_id_1]) || empty($input[self::$items_id_1])))
-            || (isset($input[self::$items_id_1]) && empty($input[self::$items_id_1]))
+            || (array_key_exists(self::$items_id_1, $input) && empty($input[self::$items_id_1]))
         ) {
             $error_detected[] = __('An appliance item is required');
         }
@@ -145,6 +198,7 @@ class Appliance_Item_Relation extends CommonDBRelation
 
     /**
      * count number of appliance's items relations for a give item
+     * Access to the containing appliance belongs to the actual view caller.
      *
      * @param CommonDBTM $item the give item
      * @param array $extra_types_where additional criteria to pass to the count function
@@ -153,18 +207,38 @@ class Appliance_Item_Relation extends CommonDBRelation
      */
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
+        global $DB;
+        $repository = new ApplianceAssetRepository(Orm::create($DB));
         $types = self::getTypes();
-        $clause = [];
-        if (count($types)) {
-            $clause = ['itemtype' => $types];
-        } else {
-            $clause = [new \QueryExpression('true = false')];
+        $count = 0;
+        foreach ($repository->relationKinds((int)$item->getID(), $extra_types_where) as $row) {
+            if (!in_array($row['itemtype'], $types, true)) {
+                continue;
+            }
+            $subject = getItemForItemtype($row['itemtype']);
+            $count += $repository->relationCount((int)$item->getID(), $row['itemtype'], self::subjectCriteria($subject));
         }
-        $extra_types_where = array_merge(
-            $extra_types_where,
-            $clause
+        return $count;
+    }
+
+    public static function getTypeItems($items_id, $itemtype)
+    {
+        global $DB;
+        $subject = getItemForItemtype($itemtype);
+        $rows = [];
+        if ($subject && $subject->canView()) {
+            $rows = (new ApplianceAssetRepository(Orm::create($DB)))
+                ->relations((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
+        }
+        return new RowIterator($rows);
+    }
+
+    public static function getDistinctTypes($items_id, $extra_where = [])
+    {
+        global $DB;
+        return new RowIterator(
+            (new ApplianceAssetRepository(Orm::create($DB)))->relationKinds((int)$items_id, $extra_where)
         );
-        return parent::countForMainItem($item, $extra_types_where);
     }
 
 
@@ -177,17 +251,16 @@ class Appliance_Item_Relation extends CommonDBRelation
      */
     public static function getForApplianceItem(int $appliances_items_id = 0)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              Appliance_Item::getForeignKeyField() => $appliances_items_id
-           ]
-        ]);
+        $rows = [];
+        foreach (self::getTypes() as $kind) {
+            foreach (self::getTypeItems($appliances_items_id, $kind) as $row) {
+                $rows[$row['linkid']] = ['id' => $row['linkid'], 'itemtype' => $kind, 'items_id' => $row['id']];
+            }
+        }
+        ksort($rows);
 
         $relations = [];
-        while ($row = $iterator->next()) {
+        foreach ($rows as $row) {
             $itemtype = $row['itemtype'];
             $item = new $itemtype();
             $item->getFromDB($row['items_id']);
@@ -223,12 +296,14 @@ class Appliance_Item_Relation extends CommonDBRelation
             $relations_str .= "<li>$link $del</li>";
         }
 
-        return "<ul>$relations_str</ul>
-         <span class='pointer add_relation' data-appliances-items-id='{$appliances_items_id}'>
+        $add = '';
+        if ($canedit) {
+            $add = "<span class='pointer add_relation' data-appliances-items-id='{$appliances_items_id}'>
             <i class='fa fa-plus' title='" . __('New relation') . "'></i>
             <span class='sr-only'>" . __('New relation') . "</span>
-         </span>
-      </td>";
+         </span>";
+        }
+        return "<ul>$relations_str</ul>$add";
     }
 
 
@@ -268,7 +343,8 @@ class Appliance_Item_Relation extends CommonDBRelation
 
             $js = <<<JAVASCRIPT
          $(function() {
-            $(document).on('click', '.add_relation', function() {
+            $(document).off('.itsmApplianceRelations');
+            $(document).on('click.itsmApplianceRelations', '.add_relation', function() {
                var appliances_items_id = $(this).data('appliances-items-id');
 
                $('#add_relation_dialog input[name=appliances_items_id]').val(appliances_items_id);
@@ -282,7 +358,7 @@ class Appliance_Item_Relation extends CommonDBRelation
                });
             });
 
-            $(document).on('click', '.delete_relation', function() {
+            $(document).on('click.itsmApplianceRelations', '.delete_relation', function() {
                var relations_id = $(this).data('relations-id');
 
                $.post('{$form_url}', {

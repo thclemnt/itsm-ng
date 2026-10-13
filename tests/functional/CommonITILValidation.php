@@ -33,12 +33,74 @@
 
 namespace tests\units;
 
+use CommonITILValidation as LegacyValidation;
 use DbTestCase;
 
 /* Test for inc/commonitilvalidation.class.php */
 
 class CommonITILValidation extends DbTestCase
 {
+    public function validationWorkflowProvider(): array
+    {
+        return [['Ticket', 'TicketValidation', 'tickets_id'], ['Change', 'ChangeValidation', 'changes_id']];
+    }
+
+    /** @dataProvider validationWorkflowProvider */
+    public function testWorkflowPredicatesRetainAnswersAndFreshAssignments(string $parentType, string $validationType, string $foreignKey): void
+    {
+        global $DB;
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $validator = (int)getItemByTypeName('User', 'tech', true);
+            $waitingBefore = (int)$validationType::getNumberToValidate($validator);
+            $parent = $this->createItem($parentType, ['name' => $this->getUniqueString(), 'content' => 'Approval predicates']);
+            $requests = [];
+            foreach (range(1, 2) as $index) {
+                $requests[] = $this->createItem($validationType, [$foreignKey => $parent->getID(), 'users_id_validate' => $validator]);
+            }
+            $this->integer((int)$validationType::getNumberToValidate($validator))->isIdenticalTo($waitingBefore + 2);
+            $this->integer((int)$validationType::getTicketStatusNumber($parent->getID(), LegacyValidation::WAITING))->isIdenticalTo(2);
+            $this->boolean($validationType::alreadyExists($parent->getID(), $validator))->isTrue();
+            $this->boolean($validationType::alreadyExists(PHP_INT_MAX, $validator))->isFalse();
+            $connection = $DB->getDoctrineConnection();
+            $connection->update($validationType::getTable(), ['status' => LegacyValidation::ACCEPTED], ['id' => $requests[0]->getID()]);
+            $this->integer((int)$validationType::getNumberToValidate($validator))->isIdenticalTo($waitingBefore + 1);
+            $this->integer((int)$validationType::getTicketStatusNumber($parent->getID(), LegacyValidation::ACCEPTED))->isIdenticalTo(1);
+            $connection->update($validationType::getTable(), ['status' => 0], ['id' => $requests[0]->getID()]);
+            $this->integer((int)$validationType::getTicketStatusNumber($parent->getID(), 0))->isIdenticalTo(1);
+            foreach ([null, 'nUlL'] as $empty) {
+                $this->integer((int)$validationType::getTicketStatusNumber($parent->getID(), $empty))->isIdenticalTo(0);
+                $this->integer((int)$validationType::getTicketStatusNumber($empty, 0))->isIdenticalTo(0);
+                $this->boolean($validationType::alreadyExists($empty, $validator))->isFalse();
+            }
+            $connection->update($validationType::getTable(), ['status' => LegacyValidation::ACCEPTED], ['id' => $requests[0]->getID()]);
+            $connection->update($parentType::getTable(), ['is_deleted' => 1], ['id' => $parent->getID()]);
+            $_SESSION['glpiactiveentities'] = [];
+            $_SESSION['glpiID'] = $validator;
+            // Callers apply their own rights. These predicates do not filter answered/deleted/scoped-out requests.
+            $this->integer((int)$validationType::getNumberToValidate($validator))->isIdenticalTo($waitingBefore + 1);
+            $this->boolean($validationType::canValidate($parent->getID()))->isTrue();
+            $connection->delete($validationType::getTable(), ['id' => $requests[1]->getID()]);
+            $this->integer((int)$validationType::getNumberToValidate($validator))->isIdenticalTo($waitingBefore);
+            $this->boolean($validationType::alreadyExists($parent->getID(), $validator))->isTrue();
+            $this->boolean($validationType::canValidate($parent->getID()))->isTrue();
+            $nullBefore = (int)$validationType::getNumberToValidate(null);
+            $connection->update($validationType::getTable(), ['users_id_validate' => null, 'status' => LegacyValidation::WAITING], ['id' => $requests[0]->getID()]);
+            $this->integer((int)$validationType::getNumberToValidate(null))->isIdenticalTo($nullBefore + 1);
+            $this->boolean($validationType::alreadyExists($parent->getID(), null))->isTrue();
+            $this->boolean($validationType::alreadyExists($parent->getID(), 'NULL'))->isTrue();
+            $this->integer((int)$validationType::getNumberToValidate('nUlL'))->isIdenticalTo($nullBefore + 1);
+            $this->boolean($validationType::alreadyExists($parent->getID(), 0))->isFalse();
+            $this->boolean($validationType::canValidate($parent->getID()))->isFalse();
+            $connection->delete($validationType::getTable(), ['id' => $requests[0]->getID()]);
+            $this->boolean($validationType::alreadyExists($parent->getID(), null))->isFalse();
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testGroupApproval()
     {
         $this->login();
@@ -57,11 +119,13 @@ class CommonITILValidation extends DbTestCase
            'name'   => 'approval'
         ]);
         $this->integer($uid3)->isGreaterThan(0);
+        $profileId = getItemByTypeName('Profile', 'Admin', true);
+        $this->integer($profileId)->isGreaterThan(0);
         $profile = new \Profile_User();
         $this->integer(
             (int)$profile->add([
               'users_id'     => $uid3,
-              'profiles_id'  => getItemByTypeName('Profile', 'admin', true),
+              'profiles_id'  => $profileId,
               'entities_id'  => 0
          ])
         )->isGreaterThan(0);

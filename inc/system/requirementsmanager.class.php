@@ -33,13 +33,14 @@
 
 namespace Glpi\System;
 
+use DBAdapter;
+use DBpgsql;
 use Glpi\System\Requirement\DirectoryWriteAccess;
 use Glpi\System\Requirement\Extension;
 use Glpi\System\Requirement\ExtensionClass;
 use Glpi\System\Requirement\ExtensionFunction;
 use Glpi\System\Requirement\LogsWriteAccess;
 use Glpi\System\Requirement\MemoryLimit;
-use Glpi\System\Requirement\MysqliMysqlnd;
 use Glpi\System\Requirement\PhpVersion;
 use Glpi\System\Requirement\ProtectedWebAccess;
 use Glpi\System\Requirement\SeLinux;
@@ -63,17 +64,21 @@ class RequirementsManager
      *
      * @return RequirementsList
      */
-    public function getCoreRequirementList(?\DBmysql $db = null): RequirementsList
+    public function getCoreRequirementList(?DBAdapter $db = null): RequirementsList
     {
         $requirements = [];
 
-        $requirements[] = new PhpVersion(ITSM_VERSION);
+        $requirements[] = new PhpVersion(ITSM_MIN_PHP);
 
         $requirements[] = new SessionsConfiguration();
 
         $requirements[] = new MemoryLimit(64 * 1024 * 1024);
 
-        $requirements[] = new MysqliMysqlnd();
+        if ($db instanceof DBpgsql) {
+            $requirements[] = new Extension('pdo_pgsql');
+        } elseif ($db !== null || !extension_loaded('pdo_pgsql')) {
+            $requirements[] = new Extension('pdo_mysql');
+        }
         $requirements[] = new Extension('ctype');
         $requirements[] = new Extension('fileinfo');
         $requirements[] = new Extension('json');
@@ -91,7 +96,7 @@ class RequirementsManager
         $requirements[] = new Extension('exif', true); // for security reasons (images checks)
         $requirements[] = new Extension('sodium', true); // to enhance performances on encrypt/decrypt (fallback to polyfill)
 
-        if ($db instanceof \DBmysql) {
+        if ($db instanceof DBAdapter) {
             $requirements[] = new DbEngine($db);
             $requirements[] = new DbTimezones($db);
         }

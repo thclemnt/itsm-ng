@@ -38,9 +38,12 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
+use Sabre\DAV\Auth\Plugin as AuthPlugin;
 use Sabre\DAV\Browser\Plugin;
 use Sabre\HTTP\RequestInterface;
 use Sabre\HTTP\ResponseInterface;
+use Session;
+use User;
 
 /**
  * Browser plugin for CalDAV server.
@@ -67,7 +70,7 @@ class Browser extends Plugin
      */
     private function canDisplayDebugInterface()
     {
-        /** @var $authPlugin \Sabre\DAV\Auth\Plugin */
+        /** @var $authPlugin AuthPlugin */
         $authPlugin = $this->server->getPlugin('auth');
         if (!$authPlugin) {
             return false;
@@ -75,6 +78,6 @@ class Browser extends Plugin
 
         $user = $this->getPrincipalItemFromUri($authPlugin->getCurrentPrincipal());
 
-        return $user instanceof \User && \Session::DEBUG_MODE == $user->fields['use_mode'];
+        return $user instanceof User && Session::DEBUG_MODE == $user->fields['use_mode'];
     }
 }

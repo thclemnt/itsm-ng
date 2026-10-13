@@ -33,6 +33,8 @@
 
 include('../inc/includes.php');
 
+Session::checkRight(SpecialStatus::$rightname, READ);
+
 if (isset($_GET["status"])) {
     SpecialStatus::deleteStatus($_GET["id"]);
 }

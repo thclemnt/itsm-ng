@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CartridgeRepository;
+use itsmng\Database\Repository\PrinterCompatibilityRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -142,12 +147,13 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_cartridges',
-           'WHERE'  => ['cartridgeitems_id' => $id]
-        ])->next();
-        return $result['cpt'];
+        return Orm::readPrepared(
+            $DB,
+            static fn (): ?int => $id === null || (is_string($id) && strtolower($id) === 'null')
+                ? null : (int)$id,
+            static fn (EntityManager $em, ?int $model): int =>
+                (new CartridgeRepository($em))->countForModel($model)
+        );
     }
 
 
@@ -163,21 +169,8 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        if (
-            ($cartridgeitems_id > 0)
-            && ($printermodels_id > 0)
-        ) {
-            $params = [
-               'cartridgeitems_id' => $cartridgeitems_id,
-               'printermodels_id'  => $printermodels_id
-            ];
-            $result = $DB->insert('glpi_cartridgeitems_printermodels', $params);
-
-            if ($result && ($DB->affectedRows() > 0)) {
-                return true;
-            }
-        }
-        return false;
+        return (new PrinterCompatibilityRepository(Orm::create($DB)))
+            ->add((int)$cartridgeitems_id, (int)$printermodels_id);
     }
 
 
@@ -463,40 +456,11 @@ class CartridgeItem extends CommonDBTM
             $alert   = new Alert();
 
             foreach (Entity::getEntitiesToNotify('cartridges_alert_repeat') as $entity => $repeat) {
-                // if you change this query, please don't forget to also change in showDebug()
-                $result = $DB->request(
-                    [
-                      'SELECT'    => [
-                         'glpi_cartridgeitems.id AS cartID',
-                         'glpi_cartridgeitems.entities_id AS entity',
-                         'glpi_cartridgeitems.ref AS ref',
-                         'glpi_cartridgeitems.name AS name',
-                         'glpi_cartridgeitems.alarm_threshold AS threshold',
-                         'glpi_alerts.id AS alertID',
-                         'glpi_alerts.date',
-                      ],
-                      'FROM'      => self::getTable(),
-                      'LEFT JOIN' => [
-                         'glpi_alerts' => [
-                            'FKEY' => [
-                               'glpi_alerts'         => 'items_id',
-                               'glpi_cartridgeitems' => 'id',
-                               [
-                                  'AND' => ['glpi_alerts.itemtype' => 'CartridgeItem'],
-                               ],
-                            ]
-                         ]
-                      ],
-                      'WHERE'     => [
-                         'glpi_cartridgeitems.is_deleted'      => 0,
-                         'glpi_cartridgeitems.alarm_threshold' => ['>=', 0],
-                         'glpi_cartridgeitems.entities_id'     => $entity,
-                         'OR'                                  => [
-                            ['glpi_alerts.date' => null],
-                            ['glpi_alerts.date' => ['<', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL ' . $repeat . ' second')]],
-                         ],
-                      ],
-                    ]
+                $result = Orm::readPrepared(
+                    $DB,
+                    static fn (): array => [(int)$entity, (int)$repeat],
+                    static fn (EntityManager $em, array $scope): array =>
+                        (new CartridgeRepository($em))->alarmCandidates($scope[0], $scope[1])
                 );
 
                 $message = "";
@@ -581,50 +545,17 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'       => [
-              'COUNT'  => '* AS cpt',
-              'glpi_locations.completename AS location',
-              'glpi_cartridgeitems.ref AS ref',
-              'glpi_cartridgeitems.name AS name',
-              'glpi_cartridgeitems.id AS tID'
-           ],
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_cartridgeitems_printermodels' => [
-                 'ON' => [
-                    'glpi_cartridgeitems_printermodels' => 'cartridgeitems_id',
-                    'glpi_cartridgeitems'               => 'id'
-                 ]
-              ],
-              'glpi_cartridges'                   => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'id',
-                    'glpi_cartridges'       => 'cartridgeitems_id', [
-                       'AND' => [
-                          'glpi_cartridges.date_use' => null
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_locations'                    => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'locations_id',
-                    'glpi_locations'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_cartridgeitems_printermodels.printermodels_id'  => $printer->fields['printermodels_id']
-           ] + getEntitiesRestrictCriteria('glpi_cartridgeitems', '', $printer->fields['entities_id'], true),
-           'GROUPBY'      => 'tID',
-           'ORDERBY'      => ['name', 'ref']
-        ]);
-
+        $em = Orm::create($DB);
+        try {
+            $rows = (new CartridgeRepository($em))->availableForPrinter(
+                (int)$printer->fields['printermodels_id'],
+                getEntitiesRestrictCriteria(self::getTable(), '', $printer->fields['entities_id'], true)
+            );
+        } finally {
+            $em->clear();
+        }
         $results = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $text = sprintf(__('%1$s - %2$s'), $data["name"], $data["ref"]);
             $text = sprintf(__('%1$s (%2$s)'), $text, $data["cpt"]);
             $text = sprintf(__('%1$s - %2$s'), $text, $data["location"]);

@@ -1,16 +1,20 @@
-#!/bin/bash -e
+#!/bin/bash
+set -euo pipefail
 
 LOG_FILE="./tests/files/_log/install.log"
-mkdir -p $(dirname "$LOG_FILE")
+mkdir -p "$(dirname "$LOG_FILE")"
 
 # Execute install
+case "${TEST_DB_TYPE:-mysql}" in
+  mysql) database_options=(--db-type=mysql --db-port=3306) ;;
+  pgsql) database_options=(--db-type=pgsql --db-port=5432 --db-password=test) ;;
+  *) echo "Unsupported test database provider: $TEST_DB_TYPE" >&2; exit 1 ;;
+esac
 bin/console itsmng:database:install \
   --config-dir=./tests/config --ansi --no-interaction \
-  --reconfigure --db-name=glpi --db-host=db --db-user=root --force
+  --reconfigure --db-name="${TEST_DB_NAME:-glpi}" --db-host=db --db-user=root --force "${database_options[@]}"
 
 # Execute update
-## Should do nothing.
-bin/console itsmng:database:update --config-dir=./tests/config --ansi --no-interaction | tee $LOG_FILE
-if [[ -z $(grep "No migration needed." $LOG_FILE) ]];
-  then echo "itsmng:database:update command FAILED" && exit 1;
-fi
+## Must succeed, including an already-complete canonical history.
+bin/console itsmng:database:update --config-dir=./tests/config --ansi --no-interaction 2>&1 | tee "$LOG_FILE"
+php tests/e2e/check_installed_history.php ./tests/config

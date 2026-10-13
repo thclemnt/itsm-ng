@@ -33,6 +33,8 @@
 
 namespace Glpi\System\Requirement;
 
+use DBAdapter;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,7 +51,7 @@ class DbTimezones extends AbstractRequirement
      */
     private $db;
 
-    public function __construct(\DBmysql $db)
+    public function __construct(DBAdapter $db)
     {
         $this->title = __('Testing DB timezone data');
         $this->db = $db;

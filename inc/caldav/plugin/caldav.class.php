@@ -39,10 +39,12 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Backend\Calendar;
 use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
+use Group;
 use Sabre\CalDAV\Plugin;
 use Sabre\DAV\INode;
 use Sabre\DAV\IProperties;
 use Sabre\DAV\PropFind;
+use User;
 
 /**
  * CalDAV plugin for CalDAV server.
@@ -60,10 +62,10 @@ class CalDAV extends Plugin
 
         $principal_itemtype = $this->getPrincipalItemtypeFromUri($principalUrl);
         switch ($principal_itemtype) {
-            case \Group::class:
+            case Group::class:
                 $calendar_uri = Calendar::PREFIX_GROUPS . '/' . $this->getGroupIdFromPrincipalUri($principalUrl);
                 break;
-            case \User::class:
+            case User::class:
                 $calendar_uri = Calendar::PREFIX_USERS . '/' . $this->getUsernameFromPrincipalUri($principalUrl);
                 break;
         }

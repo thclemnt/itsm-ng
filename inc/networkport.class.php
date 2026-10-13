@@ -31,6 +31,17 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\NetworkPort as NetworkPortRecord;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\TransactionOwnershipMismatch;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NetworkConnectionRepository;
+use itsmng\Database\Repository\NetworkPortAggregateRepository;
+use itsmng\Database\RowIterator;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,6 +60,312 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NetworkPort extends CommonDBChild
 {
+    /** Only the current operation owns its child staging and permission subject. */
+    private ?array $networkPortOperation = null;
+    private ?array $networkPortPendingState = null;
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        return $this->withNetworkPortOperation(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        return $this->withNetworkPortOperation(fn () => parent::update($input, $history, $options));
+    }
+
+    private function withNetworkPortOperation(callable $operation): mixed
+    {
+        $outer = $this->networkPortOperation;
+        $pending = $this->networkPortPendingState;
+        $this->networkPortPendingState = null;
+        $journal = $outer !== null ? new LifecycleModelJournal() : null;
+        $staged = [];
+        foreach (['input_for_instantiation', 'input_for_NetworkName', 'input_for_NetworkPortConnect'] as $property) {
+            if (array_key_exists($property, get_object_vars($this))) {
+                $staged[$property] = $this->$property;
+            }
+            if ($outer !== null) {
+                unset($this->$property);
+            }
+        }
+        if ($outer !== null) {
+            $journal->remember($this, LifecycleModelJournal::state($this));
+        }
+        $this->networkPortOperation = ['receiver' => $this, 'writer' => $GLOBALS['DB'], 'connection' => null, 'parent' => null, 'scope' => []];
+        $completed = false;
+        try {
+            $result = $operation();
+            $completed = $result !== false;
+            return $result;
+        } finally {
+            if ($outer !== null) {
+                // Success of the inner command must not replace the outer audit subject.
+                $journal->restore();
+            }
+            if ($outer !== null || !$completed) {
+                foreach (['input_for_instantiation', 'input_for_NetworkName', 'input_for_NetworkPortConnect'] as $property) {
+                    if (array_key_exists($property, $staged)) {
+                        $this->$property = $staged[$property];
+                    } else {
+                        unset($this->$property);
+                    }
+                }
+            }
+            $this->networkPortOperation = $outer;
+            $this->networkPortPendingState = $pending;
+        }
+    }
+
+    protected function captureLifecycleWriter(DBAdapter $writer): void
+    {
+        parent::captureLifecycleWriter($writer);
+        if ($this->networkPortOperation !== null) {
+            if ($writer !== $this->networkPortOperation['writer'] || ($GLOBALS['DB'] ?? null) !== $writer) {
+                throw new TransactionOwnershipMismatch('Network port lifecycle changed its supplied writer.');
+            }
+            $connection = $writer->getDoctrineConnection();
+            if (($GLOBALS['DB'] ?? null) !== $writer) {
+                throw new TransactionOwnershipMismatch('Network port lifecycle changed its supplied writer.');
+            }
+            OwnershipUpdateUnit::assertResolvedWriter($writer, $connection);
+            $this->networkPortOperation['connection'] = $connection;
+        }
+    }
+
+    private function assertNetworkPortWriter(): void
+    {
+        $writer = $this->networkPortOperation['writer'] ?? null;
+        if ($writer === null) {
+            return;
+        }
+        if (($GLOBALS['DB'] ?? null) !== $writer
+            || $writer->getDoctrineConnection() !== $this->networkPortOperation['connection']
+            || ($GLOBALS['DB'] ?? null) !== $writer) {
+            throw new TransactionOwnershipMismatch('Network port lifecycle changed its supplied writer.');
+        }
+        OwnershipUpdateUnit::assertResolvedWriter($writer, $this->networkPortOperation['connection']);
+    }
+
+    /** The actual public parent must agree with the property-owned target before loading. */
+    private function resolvedNetworkPortParent(array $input, $getFromDB = true, $getEmpty = true, $getFromDBOrEmpty = false): CommonDBTM|false
+    {
+        $this->assertNetworkPortWriter();
+        $table = static::getTable();
+        $this->assertNetworkPortWriter();
+        if ((EntityRegistry::tables()[$table] ?? null) !== NetworkPortRecord::class) {
+            throw new InvalidArgumentException('Network port ownership requires its declared physical table.');
+        }
+        $parent = static::getItemFromArray(static::$itemtype, static::$items_id, $input, false, false);
+        $this->assertNetworkPortWriter();
+        if ($parent === false) {
+            return false;
+        }
+        $selection = EntityRegistry::discriminatedReferences($table)['items_id']['selections'][$input['itemtype']] ?? null;
+        if ($selection !== null) {
+            $parentTable = $parent->getTable();
+            $this->assertNetworkPortWriter();
+            if ($parentTable !== $selection['target']) {
+                throw new InvalidArgumentException('Network port parent uses a different physical owner table.');
+            }
+        }
+        if ($getFromDB || $getFromDBOrEmpty) {
+            $loaded = isset($input[static::$items_id]) && $parent->getFromDB($input[static::$items_id]);
+            $this->assertNetworkPortWriter();
+            if ($loaded) {
+                return $parent;
+            }
+            if (!$getFromDBOrEmpty) {
+                return false;
+            }
+        } elseif (!$getEmpty) {
+            return $parent;
+        }
+        $empty = $parent->getEmpty();
+        $this->assertNetworkPortWriter();
+        return $empty ? $parent : false;
+    }
+
+    public function getConnexityItem(
+        $itemtype,
+        $items_id,
+        $getFromDB = true,
+        $getEmpty = true,
+        $getFromDBOrEmpty = false
+    ) {
+        if ($this->networkPortOperation !== null && $itemtype === static::$itemtype && $items_id === static::$items_id) {
+            return $this->resolvedNetworkPortParent($this->fields, $getFromDB, $getEmpty, $getFromDBOrEmpty);
+        }
+        return parent::getConnexityItem($itemtype, $items_id, $getFromDB, $getEmpty, $getFromDBOrEmpty);
+    }
+
+    public function addNeededInfoToInput($input)
+    {
+        if ($this->networkPortOperation === null) {
+            return parent::addNeededInfoToInput($input);
+        }
+        $forward = $this->tryEntityForwarding();
+        $this->assertNetworkPortWriter();
+        if ($forward && !isset($input['entities_id'])) {
+            $parent = $this->resolvedNetworkPortParent(array_merge($this->fields, $input));
+            if ($parent !== false) {
+                $forwards = $parent->isEntityForwardTo(get_called_class());
+                $this->assertNetworkPortWriter();
+                if ($forwards) {
+                    $entity = $parent->getEntityID();
+                    $this->assertNetworkPortWriter();
+                    $recursive = $parent->isRecursive();
+                    $this->assertNetworkPortWriter();
+                    $input['entities_id'] = $entity;
+                    $input['is_recursive'] = intval($recursive);
+                } else {
+                    $input['entities_id'] = 0;
+                    $input['is_recursive'] = 0;
+                }
+            }
+        }
+        return $input;
+    }
+
+    /** Callbacks may restrict the pending write, but cannot substitute its receiver. */
+    private function retainsNetworkPortReceiver(array $state, ?array $context): bool
+    {
+        $this->assertNetworkPortWriter();
+        return LifecycleModelJournal::state($this) === $state && $this->networkPortOperation === $context;
+    }
+
+    public function checkAttachedItemChangesAllowed(array $input, array $fields)
+    {
+        if ($this->networkPortOperation === null) {
+            return parent::checkAttachedItemChangesAllowed($input, $fields);
+        }
+        $receiver = $this->networkPortOperation['receiver'];
+        if ($receiver === $this) {
+            // Early authorization precedes ordinary preparation of pending fields.
+            [$state, $context] = [LifecycleModelJournal::state($receiver), $receiver->networkPortOperation];
+        } else {
+            $this->networkPortPendingState ??= [LifecycleModelJournal::state($receiver), $receiver->networkPortOperation];
+            [$state, $context] = $this->networkPortPendingState;
+        }
+        $allowed = parent::checkAttachedItemChangesAllowed($input, $fields);
+        return $receiver->retainsNetworkPortReceiver($state, $context) && $allowed;
+    }
+
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        $receiver = $this->networkPortOperation['receiver'] ?? $this;
+        [$state, $context] = $this->networkPortPendingState ?? [LifecycleModelJournal::state($receiver), $receiver->networkPortOperation];
+        if (($input['itemtype'] ?? null) === ($this->fields['itemtype'] ?? null)
+            && ($input['items_id'] ?? null) == ($this->fields['items_id'] ?? null)) {
+            // Preserved native empty/opaque parents do not gain an attachment requirement.
+            $table = static::getTable();
+            if (!$receiver->retainsNetworkPortReceiver($state, $context)) {
+                return false;
+            }
+            if ((EntityRegistry::tables()[$table] ?? null) !== NetworkPortRecord::class) {
+                throw new InvalidArgumentException('Network port ownership requires its declared physical table.');
+            }
+            return $input;
+        }
+        $parent = $this->resolvedNetworkPortParent($input);
+        if (!$receiver->retainsNetworkPortReceiver($state, $context) || $parent === false) {
+            return false;
+        }
+        $input = $this->addNeededInfoToInput($input);
+        return $receiver->retainsNetworkPortReceiver($state, $context) ? $input : false;
+    }
+
+    protected function retainLifecycleEndpointDecision(CommonDBConnexity $probe): void
+    {
+        if ($probe instanceof self && $probe->networkPortPendingState !== null) {
+            [$state, $context] = $probe->networkPortPendingState;
+            if (!$this->retainsNetworkPortReceiver($state, $context)) {
+                throw new InvalidArgumentException('Network port callbacks changed the pending write receiver.');
+            }
+        }
+    }
+
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        $state = LifecycleModelJournal::state($this);
+        $context = $this->networkPortOperation;
+        $input = $this->normalizeLifecycleInput(array_replace($this->input, $this->fields));
+        if (!$this->retainsNetworkPortReceiver($state, $context) || $input === false) {
+            return false;
+        }
+        $parent = $this->resolvedNetworkPortParent($input);
+        if (!$this->retainsNetworkPortReceiver($state, $context) || $parent === false) {
+            return false;
+        }
+        $admitted = $context['parent'] ?? null;
+        if ($admitted !== [$input['itemtype'], $input['items_id']]) {
+            $probe = clone $this;
+            $probe->fields = $input;
+            $allowed = $probe->canChildItem('canUpdateItem', 'canUpdate');
+            if (!$this->retainsNetworkPortReceiver($state, $context) || !$allowed) {
+                return false;
+            }
+            foreach (['entities_id', 'is_recursive'] as $column) {
+                if (!in_array($column, $context['scope'] ?? [], true)) {
+                    unset($input[$column]);
+                }
+            }
+            $input = $this->addNeededInfoToInput($input);
+            $this->assertNetworkPortWriter();
+            $forwarded = LifecycleModelJournal::state($this);
+            // Forwarding owns fields-cache initialization, not pending input.
+            // The validated input below supplies the final physical field bag.
+            unset($state['fields'], $forwarded['fields']);
+            if ($forwarded !== $state || $this->networkPortOperation !== $context) {
+                return false;
+            }
+            $state = LifecycleModelJournal::state($this);
+        }
+        $columns = EntityRegistry::columnNames(static::getTable());
+        if (!$this->retainsNetworkPortReceiver($state, $context)) {
+            return false;
+        }
+        $this->input = $input;
+        $this->fields = array_intersect_key($input, array_fill_keys($columns, true));
+        $prepared = LifecycleModelJournal::state($this);
+        return parent::executePreparedAdd(
+            fn () => $this->retainsNetworkPortReceiver($prepared, $context) ? $operation() : false,
+            $priorState
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $priorState): bool
+    {
+        $state = LifecycleModelJournal::state($this);
+        $context = $this->networkPortOperation;
+        return parent::executePreparedUpdate(
+            fn () => $this->retainsNetworkPortReceiver($state, $context) ? $operation() : false,
+            $priorState
+        );
+    }
+
+    /** Whether a cable reaches an entity that cannot see the non-recursive owner. */
+    public static function hasConnectionsOutsideEntities(string $itemtype, int $id, array $entities): bool
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            $peers = (new NetworkConnectionRepository($em))->peers($itemtype, $id);
+        } finally {
+            $em->clear();
+        }
+        foreach ($peers as $type => $ids) {
+            $item = getItemForItemtype($type);
+            if ($item && $item->isEntityAssign() && countElementsInTable($item->getTable(), [
+                'id' => array_values($ids), 'NOT' => ['entities_id' => $entities],
+            ]) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // From CommonDBChild
     public static $itemtype             = 'itemtype';
     public static $items_id             = 'items_id';
@@ -202,10 +519,10 @@ class NetworkPort extends CommonDBChild
             isset($input['_create_children'])
             && $input['_create_children']
         ) {
-            return $this->splitInputForElements($input);
+            $input = $this->splitInputForElements($input);
         }
 
-        return $input;
+        return parent::prepareInputForUpdate($input);
     }
 
     public function post_updateItem($history = 1)
@@ -334,7 +651,19 @@ class NetworkPort extends CommonDBChild
     **/
     public function updateDependencies($history = true)
     {
+        if ($this->networkPortOperation === null) {
+            $this->withNetworkPortOperation(function () use ($history): void {
+                $this->captureLifecycleWriter($GLOBALS['DB']);
+                $this->applyNetworkPortDependencies($history);
+            });
+            return;
+        }
+        $this->applyNetworkPortDependencies($history);
+    }
 
+    private function applyNetworkPortDependencies($history): void
+    {
+        $this->assertNetworkPortWriter();
         $instantiation = $this->getInstantiation();
         if (
             $instantiation !== false
@@ -348,6 +677,7 @@ class NetworkPort extends CommonDBChild
                 $instantiation->update($this->input_for_instantiation, $history);
             }
         }
+        $this->assertNetworkPortWriter();
         unset($this->input_for_instantiation);
 
         if (
@@ -384,6 +714,7 @@ class NetworkPort extends CommonDBChild
                 }
             }
         }
+        $this->assertNetworkPortWriter();
         unset($this->input_for_NetworkName);
 
         if (
@@ -399,6 +730,7 @@ class NetworkPort extends CommonDBChild
                 $nn->add($this->input_for_NetworkPortConnect, [], $history);
             }
         }
+        $this->assertNetworkPortWriter();
         unset($this->input_for_NetworkPortConnect);
     }
 
@@ -421,7 +753,24 @@ class NetworkPort extends CommonDBChild
             $input = $this->splitInputForElements($input);
         }
 
-        return parent::prepareInputForAdd($input);
+        $scope = is_array($input) ? array_keys(array_intersect_key($input, array_flip(['entities_id', 'is_recursive']))) : [];
+        if (!is_array($input)) {
+            return false;
+        }
+        if (static::$mustBeAttached && $this->resolvedNetworkPortParent($input) === false) {
+            return false;
+        }
+        $input = $this->addNeededInfoToInput($input);
+        if (is_array($input)) {
+            if ($this->resolvedNetworkPortParent($input) === false) {
+                return false;
+            }
+            if ($this->networkPortOperation !== null) {
+                $this->networkPortOperation['parent'] = [$input['itemtype'], $input['items_id']];
+                $this->networkPortOperation['scope'] = $scope;
+            }
+        }
+        return $input;
     }
 
     public function post_addItem()
@@ -431,6 +780,13 @@ class NetworkPort extends CommonDBChild
 
     public function cleanDBonPurge()
     {
+        global $DB;
+        $origins = new NetworkPortAggregateRepository(Orm::create($DB));
+        if (!empty($this->input['_replace_by'])) {
+            $origins->replacePort((int)$this->getID(), (int)$this->input['_replace_by']);
+        } else {
+            $origins->removeForPort((int)$this->getID());
+        }
 
         $instantiation = $this->getInstantiation();
         if ($instantiation !== false) {
@@ -440,6 +796,13 @@ class NetworkPort extends CommonDBChild
 
         $this->deleteChildrenAndRelationsFromDb(
             [
+              NetworkPortAggregate::class,
+              NetworkPortAlias::class,
+              NetworkPortDialup::class,
+              NetworkPortEthernet::class,
+              NetworkPortFiberchannel::class,
+              NetworkPortLocal::class,
+              NetworkPortWifi::class,
               NetworkName::class,
               NetworkPort_NetworkPort::class,
               NetworkPort_Vlan::class,
@@ -736,7 +1099,7 @@ class NetworkPort extends CommonDBChild
 
                     case 'NetworkPortAggregate':
                         $search_table   = 'glpi_networkportaggregates';
-                        $search_request = ['networkports_id_list' => ['LIKE', "%$items_id%"]];
+                        $search_request = [];
                         break;
                 }
                 $criteria = [
@@ -758,7 +1121,14 @@ class NetworkPort extends CommonDBChild
                 ];
             }
 
-            $iterator = $DB->request($criteria);
+            $iterator = $itemtype === 'NetworkPort' && $portType === 'NetworkPortAggregate'
+                ? new RowIterator(Orm::readPrepared(
+                    $DB,
+                    static fn (): int => (int)$items_id,
+                    static fn (EntityManager $manager, int $port): array =>
+                        (new NetworkPortAggregateRepository($manager))->aggregatesForPort($port)
+                ))
+                : $DB->request($criteria);
             $number_port = count($iterator);
 
             if ($number_port != 0) {
@@ -1038,7 +1408,7 @@ class NetworkPort extends CommonDBChild
 
         $networkNameJoin = ['jointype'          => 'itemtype_item',
                                  'specific_itemtype' => 'NetworkPort',
-                                 'condition'         => 'AND NEWTABLE.`is_deleted` = 0',
+                                 'condition'         => 'AND NEWTABLE.`is_deleted` = \'0\'',
                                  'beforejoin'        => ['table'      => 'glpi_networkports',
                                                               'joinparams' => $joinparams]];
         NetworkName::rawSearchOptionsToAdd($tab, $networkNameJoin, $itemtype);
@@ -1210,7 +1580,9 @@ class NetworkPort extends CommonDBChild
             $np->getFromDB($data["id"]);
             $instantiation = $np->getInstantiation();
             unset($np->fields["id"]);
-            $np->fields["items_id"] = $new_items_id;
+            $np->fields = NetworkPortRecord::withReference($np->fields, $np->fields['itemtype'], 0);
+            $np->fields['items_id'] = $new_items_id;
+            $np->fields = (new NetworkPortRecord())->normalizeInput($np->fields);
             $portid                 = $np->addToDB();
 
             if ($instantiation !== false) {
@@ -1229,10 +1601,7 @@ class NetworkPort extends CommonDBChild
 
             $npv = new NetworkPort_Vlan();
             foreach (
-                $DB->request(
-                    $npv->getTable(),
-                    [$npv::$items_id_1 => $data["id"]]
-                ) as $vlan
+                NetworkPort_Vlan::membershipsForPort($data["id"]) as $vlan
             ) {
                 $input = [$npv::$items_id_1 => $portid,
                                $npv::$items_id_2 => $vlan['vlans_id']];
@@ -1247,7 +1616,7 @@ class NetworkPort extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         // Can exists on template
         $nb = 0;
@@ -1270,10 +1639,12 @@ class NetworkPort extends CommonDBChild
             } else {
                 $aliases = '';
             }
-            $nbAggregates = countElementsInTable(
-                'glpi_networkportaggregates',
-                ['networkports_id_list'   => ['LIKE', '%"' . $item->getField('id') . '"%']]
-            );
+            $nbAggregates = count(Orm::readPrepared(
+                $DB,
+                static fn (): int => (int)$item->getField('id'),
+                static fn (EntityManager $manager, int $port): array =>
+                    (new NetworkPortAggregateRepository($manager))->aggregatesForPort($port)
+            ));
             if ($nbAggregates > 0) {
                 $aggregates = self::createTabEntry(
                     NetworkPortAggregate::getTypeName(Session::getPluralNumber()),

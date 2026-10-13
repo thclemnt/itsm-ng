@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\IPNetworkRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -60,31 +64,18 @@ class IPAddress_IPNetwork extends CommonDBRelation
         global $DB;
 
         $linkObject    = new self();
-        $linkTable     = $linkObject->getTable();
         $ipnetworks_id = $network->getID();
 
         // First, remove all links of the current Network
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => $linkTable,
-           'WHERE'  => ['ipnetworks_id' => $ipnetworks_id]
-        ]);
-        while ($link = $iterator->next()) {
-            $linkObject->delete(['id' => $link['id']]);
+        $ids = MappedReads::identifiers($DB, self::getTable(), 'id', ['ipnetworks_id' => $ipnetworks_id]);
+        foreach ($ids as $id) {
+            $linkObject->delete(['id' => $id]);
         }
 
         // Then, look each IP address contained inside current Network
-        $iterator = $DB->request([
-           'SELECT' => [
-              new \QueryExpression($DB->quoteValue($ipnetworks_id) . ' AS ' . $DB->quoteName('ipnetworks_id')),
-              'id AS ipaddresses_id'
-           ],
-           'FROM'   => 'glpi_ipaddresses',
-           'WHERE'  => $network->getCriteriaForMatchingElement('glpi_ipaddresses', 'binary', 'version'),
-           'GROUP'  => 'id'
-        ]);
-        while ($link = $iterator->next()) {
-            $linkObject->add($link);
+        $addresses = (new IPNetworkRepository(Orm::create($DB)))->containedAddresses((int)$ipnetworks_id);
+        foreach ($addresses as $address) {
+            $linkObject->add(['ipnetworks_id' => $ipnetworks_id, 'ipaddresses_id' => $address]);
         }
     }
 

@@ -88,7 +88,7 @@ class NotificationMailing extends DbTestCase
            ->isIdenticalTo([
               'itemtype'                 => 'NotificationMailing',
               'items_id'                 => 1,
-              'notificationtemplates_id' => 0,
+              'notificationtemplates_id' => null,
               'entities_id'              => 0,
               'is_deleted'               => 0,
               'sent_try'                 => 0,

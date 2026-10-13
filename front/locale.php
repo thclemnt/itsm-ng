@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Laminas\I18n\Translator\TextDomain;
+
 $_GET['donotcheckversion']   = true;
 $dont_check_maintenance_mode = true;
 
@@ -126,7 +128,7 @@ $locales = [];
 foreach ($requested_domains as $domain) {
     // Get messages from translator component.
     $messages = $TRANSLATE->getAllMessages($domain);
-    if (!($messages instanceof \Laminas\I18n\Translator\TextDomain)) {
+    if (!($messages instanceof TextDomain)) {
         // No TextDomain found means that there is no translations for given domain.
         // It is mostly related to plugins that does not provide any translations.
         $locales[$domain] = $default_response;

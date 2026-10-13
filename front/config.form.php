@@ -74,6 +74,8 @@ if (!empty($_POST['reset_opcache'])) {
 if (!empty($_POST['reset_cache'])) {
     $config->checkGlobal(UPDATE);
     $cache = isset($_POST['optname']) ? Config::getCache($_POST['optname']) : $GLPI_CACHE;
+    require_once GLPI_ROOT . '/src/twig/twig.class.php';
+    Twig::clearCache();
     if ($cache->clear()) {
         Session::addMessageAfterRedirect(__('Cache reset successful'));
     }

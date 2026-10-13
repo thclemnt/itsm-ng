@@ -357,7 +357,7 @@ abstract class CommonDCModelDropdown extends CommonDropdown
                 );
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 }

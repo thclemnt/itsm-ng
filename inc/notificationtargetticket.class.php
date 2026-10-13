@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -81,7 +85,7 @@ class NotificationTargetTicket extends NotificationTargetCommonITILObject
     {
 
         if (
-            $this->getMode() == \Notification_NotificationTemplate::MODE_MAIL
+            $this->getMode() == Notification_NotificationTemplate::MODE_MAIL
             && MailCollector::countActiveCollectors()
             && $this->allowResponse()
         ) {
@@ -100,7 +104,7 @@ class NotificationTargetTicket extends NotificationTargetCommonITILObject
     {
 
         if (
-            $this->getMode() == \Notification_NotificationTemplate::MODE_MAIL
+            $this->getMode() == Notification_NotificationTemplate::MODE_MAIL
             && MailCollector::countActiveCollectors()
             && $this->allowResponse()
         ) {
@@ -605,31 +609,8 @@ class NotificationTargetTicket extends NotificationTargetCommonITILObject
         global $DB,$CFG_GLPI;
 
         if ($CFG_GLPI['notifications_mailing']) {
-            $result = $DB->request([
-               'COUNT'        => 'cpt',
-               'FROM'         => 'glpi_notifications',
-               'INNER JOIN'   => [
-                  'glpi_notificationtargets' => [
-                     'ON' => [
-                        'glpi_notificationtargets' => 'notifications_id',
-                        'glpi_notifications'       => 'id'
-                     ]
-                  ],
-                  'glpi_notifications_notificationtemplates' => [
-                     'ON' => [
-                        'glpi_notifications_notificationtemplates'   => 'notifications_id',
-                        'glpi_notifications'                         => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_notifications.itemtype'                   => 'Ticket',
-                  'glpi_notifications_notificationtemplates.mode' => Notification_NotificationTemplate::MODE_MAIL,
-                  'glpi_notificationtargets.type'                 => Notification::USER_TYPE,
-                  'glpi_notificationtargets.items_id'             => Notification::AUTHOR
-               ]
-            ])->next();
-            return $result['cpt'] > 0;
+            return Orm::read($DB, static fn (EntityManager $manager): bool =>
+                (new NotificationRecipientRepository($manager))->hasAuthorMailing());
         }
         return false;
     }

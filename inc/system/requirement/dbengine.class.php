@@ -33,6 +33,10 @@
 
 namespace Glpi\System\Requirement;
 
+use DBAdapter;
+use RuntimeException;
+use itsmng\Database\CheckConstraintSupport;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -49,7 +53,7 @@ class DbEngine extends AbstractRequirement
      */
     private $db;
 
-    public function __construct(\DBmysql $db)
+    public function __construct(DBAdapter $db)
     {
         $this->title = __('Testing DB engine version');
         $this->db = $db;
@@ -57,9 +61,21 @@ class DbEngine extends AbstractRequirement
 
     protected function check()
     {
-        $version = preg_replace('/^((\d+\.?)+).*$/', '$1', $this->db->getVersion());
+        $rawVersion = $this->db->getVersion();
+        $version = preg_replace('/^((\d+\.?)+).*$/', '$1', $rawVersion);
+        if ($this->db->getProvider() === 'pgsql') {
+            $supported = version_compare($version, '14', '>=');
+        } else {
+            $maria = stripos($rawVersion, 'MariaDB') !== false;
+            try {
+                $version = CheckConstraintSupport::version($rawVersion, $maria);
+                $supported = CheckConstraintSupport::supportsVersion($rawVersion, $maria);
+            } catch (RuntimeException) {
+                $supported = false;
+            }
+        }
 
-        if (version_compare($version, '5.6', '>=')) {
+        if ($supported) {
             $this->validated = true;
             $this->validation_messages[] = sprintf(
                 __('Database version seems correct (%s) - Perfect!'),

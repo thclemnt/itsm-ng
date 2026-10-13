@@ -31,11 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ComponentRepository;
+
 /**
  * @since 0.85
  */
 
-include('../inc/includes.php');
+include(__DIR__ . '/../inc/includes.php');
 
 header("Content-Type: text/html; charset=UTF-8");
 Html::header_nocache();
@@ -50,20 +54,43 @@ if (
     $devicetype = $_POST['itemtype'];
     $linktype   = $devicetype::getItem_DeviceType();
 
-    if (count($linktype::getSpecificities())) {
-        $keys = array_keys($linktype::getSpecificities());
-        array_walk($keys, function (&$val) use ($DB) {
-            return $DB->quoteName($val);
-        });
-        $name_field = new QueryExpression(
-            "CONCAT_WS(' - ', " . implode(', ', $keys) . ")"
-            . "AS " . $DB->quoteName("name")
-        );
+    if (isset(EntityRegistry::tables()[$linktype::getTable()])) {
+        $manager = Orm::create($DB);
+        try {
+            $result = (new ComponentRepository($manager))->stock(
+                $linktype::getTable(),
+                $devicetype::getForeignKeyField(),
+                (int)$_POST['items_id']
+            );
+        } finally {
+            $manager->clear();
+        }
+        foreach ($result as &$row) {
+            $values = [];
+            foreach (array_keys($linktype::getSpecificities()) as $field) {
+                if (($row[$field] ?? null) !== null) {
+                    $values[] = $row[$field];
+                }
+            }
+            $row['name'] = $values ? implode(' - ', $values) : $row['id'];
+        }
+        unset($row);
     } else {
-        $name_field = 'id AS name';
-    }
-    $result = $DB->request(
-        [
+        // Unmapped plugin components retain their existing selection boundary.
+        if (count($linktype::getSpecificities())) {
+            $keys = array_keys($linktype::getSpecificities());
+            array_walk($keys, function (&$val) use ($DB) {
+                return $DB->quoteName($val);
+            });
+            $name_field = new QueryExpression(
+                "CONCAT_WS(' - ', " . implode(', ', $keys) . ")"
+                . "AS " . $DB->quoteName("name")
+            );
+        } else {
+            $name_field = 'id AS name';
+        }
+        $result = $DB->request(
+            [
           'SELECT' => ['id', $name_field],
           'FROM'   => $linktype::getTable(),
           'WHERE'  => [
@@ -71,7 +98,8 @@ if (
              'itemtype'                        => '',
           ]
         ]
-    );
+        );
+    }
     $devices = [];
     foreach ($result as $row) {
         $name = $row['name'];

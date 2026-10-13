@@ -33,6 +33,7 @@
 
 namespace Glpi\Dashboard;
 
+use Line;
 use Mexitek\PHPColors\Color;
 use ScssPhp\ScssPhp\Compiler;
 use Michelf\MarkdownExtra;
@@ -113,7 +114,7 @@ class Widget extends CommonGLPI
               'height'   => 3,
            ],
            'line' => [
-              'label'    => \Line::getTypeName(1),
+              'label'    => Line::getTypeName(1),
               'function' => 'Glpi\\Dashboard\\Widget::simpleLine',
               'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
               'limit'    => true,
@@ -704,7 +705,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1197,7 +1198,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1534,7 +1535,7 @@ JAVASCRIPT;
 
         // fix auto-escaping
         if (isset($p['markdown_content'])) {
-            $p['markdown_content'] = \Html::cleanPostForTextArea($p['markdown_content']);
+            $p['markdown_content'] = Html::cleanPostForTextArea($p['markdown_content']);
         }
 
         $ph           = __("Type markdown text here");
@@ -1782,7 +1783,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1875,7 +1876,7 @@ JAVASCRIPT;
         $series_names  = implode(',', $palette['names']);
         $series_colors = implode(',', $palette['colors']);
 
-        $hash = sha1($series_names . $series_colors);
+        $hash = sha1($series_names . $series_colors . $css_dom_parent);
         if (($palette_css = $GLPI_CACHE->get($hash)) !== null) {
             return $palette_css;
         }
@@ -1883,12 +1884,12 @@ JAVASCRIPT;
         $scss = new Compiler();
         $scss->addImportPath(GLPI_ROOT);
 
-        $palette_css = $scss->compile("{$css_dom_parent} {
+        $palette_css = $scss->compileString("{$css_dom_parent} {
          \$ct-series-names: ({$series_names});
          \$ct-series-colors: ({$series_colors});
 
          @import 'css/chartist/generate';
-      }");
+      }")->getCss();
 
         $GLPI_CACHE->set($hash, $palette_css);
 

@@ -31,6 +31,12 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\ReservationRepository;
+use itsmng\Database\ReservationUserReadOperation;
+use itsmng\Reporting\Criteria;
 use itsmng\Timezone;
 
 if (!defined('GLPI_ROOT')) {
@@ -49,6 +55,11 @@ class Reservation extends CommonDBChild
     public static $rightname                = 'reservation';
     public static $checkParentRights = self::HAVE_VIEW_RIGHT_ON_ITEM;
 
+
+    public function cleanDBonPurge()
+    {
+        (new Alert())->cleanDBonItemDelete($this->getType(), $this->getID());
+    }
 
     /**
      * @param $nb  integer  for singular or plural
@@ -147,35 +158,23 @@ class Reservation extends CommonDBChild
     **/
     public function prepareInputForUpdate($input)
     {
-
-        $item = 0;
-        if (isset($input['_item'])) {
-            $item = $_POST['_item'];
+        $schedule = array_intersect_key($input, array_flip(['begin', 'end', 'reservationitems_id']));
+        if ($schedule) {
+            $oldfields = $this->fields;
+            $this->fields = array_replace($this->fields, $schedule);
+            try {
+                if (!$this->test_valid_date()) {
+                    $this->displayError('date', $this->fields['reservationitems_id']);
+                    return false;
+                }
+                if ($this->is_reserved()) {
+                    $this->displayError('is_res', $this->fields['reservationitems_id']);
+                    return false;
+                }
+            } finally {
+                $this->fields = $oldfields;
+            }
         }
-
-        // Save fields
-        $oldfields             = $this->fields;
-        // Needed for test already planned
-        if (isset($input["begin"])) {
-            $this->fields["begin"] = $input["begin"];
-        }
-        if (isset($input["end"])) {
-            $this->fields["end"] = $input["end"];
-        }
-
-        if (!$this->test_valid_date()) {
-            $this->displayError("date", $item);
-            return false;
-        }
-
-        if ($this->is_reserved()) {
-            $this->displayError("is_res", $item);
-            return false;
-        }
-
-        // Restore fields
-        $this->fields = $oldfields;
-
         return parent::prepareInputForUpdate($input);
     }
 
@@ -240,21 +239,16 @@ class Reservation extends CommonDBChild
         }
 
         parent::post_addItem();
-
-        if (isset($this->fields['reservationitems_id'])) {
-            if (strpos((string) $_SERVER['REQUEST_URI'], '/plugins/formcreator/front/') !== false ||
-                (isset($_SESSION['glpiactiveprofile']['interface']) &&
-                $_SESSION['glpiactiveprofile']['interface'] == 'helpdesk')) {
-
-                $redirect_url = $CFG_GLPI['root_doc'] . '/plugins/formcreator/front/reservation.php?reservationitems_id=' . $this->fields['reservationitems_id'] . '&reservation_added=1';
-            } else {
-                $redirect_url = $CFG_GLPI['root_doc'] . '/front/reservation.php?reservationitems_id=' . $this->fields['reservationitems_id'] . '&reservation_added=1';
-            }
-
-            Html::redirect($redirect_url);
-        }
     }
 
+
+    private static function reservationUserName(array $row, bool $link = false): string
+    {
+        if (empty($row['users_id'])) {
+            return '';
+        }
+        return formatUserName($row['users_id'], $row['_user_name'], $row['_user_realname'], $row['_user_firstname'], $link);
+    }
 
     // SPECIFIC FUNCTIONS
 
@@ -268,16 +262,8 @@ class Reservation extends CommonDBChild
         do {
             $rand = mt_rand(1, mt_getrandmax());
 
-            $result = $DB->request([
-               'COUNT'  => 'cpt',
-               'FROM'   => 'glpi_reservations',
-               'WHERE'  => [
-                  'reservationitems_id'   => $reservationitems_id,
-                  'group'                 => $rand
-               ]
-            ])->next();
-            $count = (int)$result['cpt'];
-        } while ($count > 0);
+        } while (Orm::read($DB, static fn (EntityManager $manager): bool =>
+            (new ReservationRepository($manager))->groupExists((int)$reservationitems_id, $rand)));
 
         return $rand;
     }
@@ -299,22 +285,13 @@ class Reservation extends CommonDBChild
             return true;
         }
 
-        // When modify a reservation do not itself take into account
-        $where = [];
-        if (isset($this->fields["id"])) {
-            $where['id'] = ['<>', $this->fields['id']];
-        }
-
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => $this->getTable(),
-           'WHERE'  => $where + [
-              'reservationitems_id'   => $this->fields['reservationitems_id'],
-              'end'                   => ['>', $this->fields['begin']],
-              'begin'                 => ['<', $this->fields['end']]
-           ]
-        ])->next();
-        return $result['cpt'] > 0;
+        return Orm::read($DB, fn (EntityManager $manager): bool =>
+            (new ReservationRepository($manager))->conflicts(
+                (int)$this->fields['reservationitems_id'],
+                $this->fields['begin'],
+                $this->fields['end'],
+                isset($this->fields['id']) ? (int)$this->fields['id'] : null
+            ));
     }
 
 
@@ -343,24 +320,43 @@ class Reservation extends CommonDBChild
     public function displayError($type, $ID)
     {
 
-        echo "<br><div class='center'>";
-        switch ($type) {
-            case "date":
-                echo __('Error in entering dates. The starting date is later than the ending date');
-                break;
-
-            case "is_res":
-                echo __('The required item is already reserved for this timeframe');
-                break;
-
-            default:
-                echo __("Unknown error");
+        $message = match ($type) {
+            'date' => __('Error in entering dates. The starting date is later than the ending date'),
+            'is_res' => __('The required item is already reserved for this timeframe'),
+            default => __('Unknown error'),
+        };
+        if (isAPI()) {
+            // Let the API collect the rejection and send its status and JSON body.
+            Session::addMessageAfterRedirect($message, false, ERROR);
+            return;
         }
 
+        echo "<br><div class='center'>";
+        echo $message;
         echo "<br><a href='reservation.php?reservationitems_id=$ID'>" . __('Back to planning') . "</a>";
         echo "</div>";
     }
 
+
+    public function canCreateItem()
+    {
+        $item = $this->getItem();
+        if (!$item instanceof ReservationItem || !$item->canReserve()) {
+            return false;
+        }
+        $owner = $this->fields['users_id'] ?? null;
+        // Empty selection is also used while opening a new form. A selected
+        // borrower follows the same self-or-administrator policy as its POST.
+        if ($owner !== null && !ReferenceValues::isEmptySelection($owner)) {
+            $ownerId = (is_int($owner) || is_string($owner))
+                ? filter_var($owner, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+            if ($ownerId === false || ($ownerId !== Session::getLoginUserID()
+                && !Session::haveRight('reservation', UPDATE))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * @since 0.84
@@ -424,16 +420,12 @@ class Reservation extends CommonDBChild
         global $DB;
 
         if (isset($this->input['_delete_group']) && $this->input['_delete_group']) {
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_reservations',
-               'WHERE'  => [
-                  'reservationitems_id'   => $this->fields['reservationitems_id'],
-                  'group'                 => $this->fields['group']
-               ]
-            ]);
+            $ids = Orm::read($DB, fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->groupIds((int)$this->fields['reservationitems_id'], (int)$this->fields['group']));
             $rr = clone $this;
-            while ($data = $iterator->next()) {
-                $rr->delete(['id' => $data['id']]);
+            unset($rr->input['_delete_group']);
+            foreach ($ids as $id) {
+                $rr->delete(['id' => $id]);
             }
         }
     }
@@ -998,32 +990,16 @@ class Reservation extends CommonDBChild
             self::displayReservationsForAnItem($ID, $date);
         } else {
             $debut = $date . " 00:00:00";
-            $fin   = $date . " 23:59:59";
+            $fin   = (new DateTimeImmutable($date))->modify("+1 day")->format("Y-m-d 00:00:00");
 
-            $iterator = $DB->request([
-               'SELECT'          => 'glpi_reservationitems.id',
-               'DISTINCT'        => true,
-               'FROM'            => 'glpi_reservationitems',
-               'INNER JOIN'      => [
-                  'glpi_reservations'  => [
-                     'ON' => [
-                        'glpi_reservationitems' => 'id',
-                        'glpi_reservations'     => 'reservationitems_id'
-                     ]
-                  ]
-               ],
-               'WHERE'           => [
-                  'is_active' => 1,
-                  'end'       => ['>', $debut],
-                  'begin'     => ['<', $fin]
-               ],
-               'ORDERBY'         => 'begin'
-            ]);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->activeItemIds($debut, $fin));
 
             if (count($iterator)) {
                 $m = new ReservationItem();
-                while ($data = $iterator->next()) {
-                    $m->getFromDB($data['id']);
+                foreach ($iterator as $id) {
+                    $data = ['id' => $id];
+                    $m->getFromDB($id);
 
                     if (!($item = getItemForItemtype($m->fields["itemtype"]))) {
                         continue;
@@ -1072,28 +1048,19 @@ class Reservation extends CommonDBChild
     {
         global $DB;
 
-        $users_id = Session::getLoginUserID();
         $resa     = new self();
-        $user     = new User();
         list($year, $month, $day) = explode("-", (string) $date);
         $debut    = $date . " 00:00:00";
         $fin      = $date . " 23:59:59";
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_reservations',
-           'WHERE'  => [
-              'end'                   => ['>', $debut],
-              'begin'                 => ['<', $fin],
-              'reservationitems_id'   => $ID
-           ],
-           'ORDER'  => 'begin'
-        ]);
+        $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ReservationRepository($manager))->during((int)$ID, $debut, (new DateTimeImmutable($date))->modify("+1 day")->format("Y-m-d 00:00:00")));
 
         if (count($iterator)) {
             echo "<table width='100%' aria-label='User Time Interval'>";
-            while ($row = $iterator->next()) {
+            foreach ($iterator as $row) {
                 echo "<tr>";
-                $user->getFromDB($row["users_id"]);
+
                 $display = "";
 
                 if ($debut > $row['begin']) {
@@ -1135,12 +1102,7 @@ class Reservation extends CommonDBChild
                 }
 
                 echo "<td class='tab_resa center'>" . $modif . "<span>" . $display . "<br><span class='b'>" .
-                formatUserName(
-                    $user->fields["id"],
-                    $user->fields["name"],
-                    $user->fields["realname"],
-                    $user->fields["firstname"]
-                );
+                self::reservationUserName($row, true);
                 echo "</span></span>";
                 echo $modif_end;
                 echo "</td></tr>\n";
@@ -1173,14 +1135,8 @@ class Reservation extends CommonDBChild
             $now = $_SESSION["glpi_currenttime"];
 
             // Print reservation in progress
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_reservations',
-               'WHERE'  => [
-                  'end'                   => ['>', $now],
-                  'reservationitems_id'   => $ri->fields['id']
-               ],
-               'ORDER'  => 'begin'
-            ]);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->forItem((int)$ri->fields['id'], $now, false));
 
             echo "<table class='tab_cadre_fixehov' aria-label='Current and future reservations'><tr><th colspan='5'>";
 
@@ -1204,15 +1160,15 @@ class Reservation extends CommonDBChild
                 echo "<th>" . __('By') . "</th>";
                 echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     echo "<tr class='tab_bg_2'>";
                     echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                     echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
                     echo "<td class='center'>";
-                    if (Session::haveRight('user', READ)) {
-                        echo "<a href='" . User::getFormURLWithID($data["users_id"]) . "'>" . getUserName($data["users_id"]) . "</a>";
+                    if (!empty($data['users_id']) && Session::haveRight('user', READ)) {
+                        echo "<a href='" . User::getFormURLWithID($data["users_id"]) . "'>" . self::reservationUserName($data) . "</a>";
                     } else {
-                        echo getUserName($data["users_id"]);
+                        echo self::reservationUserName($data);
                     }
                     echo "</td>";
                     echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
@@ -1233,14 +1189,8 @@ class Reservation extends CommonDBChild
             echo "</table></div>\n";
 
             // Print old reservations
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_reservations',
-               'WHERE'  => [
-                  'end'                   => ['<=', $now],
-                  'reservationitems_id'   => $ri->fields['id']
-               ],
-               'ORDER'  => 'begin DESC'
-            ]);
+            $iterator = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ReservationRepository($manager))->forItem((int)$ri->fields['id'], $now, true));
 
             echo "<div class='spaced'><table class='tab_cadre_fixehov' aria-label='Past Reservations'><tr><th colspan='5'>";
 
@@ -1264,15 +1214,15 @@ class Reservation extends CommonDBChild
                 echo "<th>" . __('By') . "</th>";
                 echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     echo "<tr class='tab_bg_2'>";
                     echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                     echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
                     echo "<td class='center'>";
-                    if (Session::haveRight('user', READ)) {
-                        echo "<a href='" . User::getFormURLWithID($data["users_id"]) . "'>" . getUserName($data["users_id"]) . "</a>";
+                    if (!empty($data['users_id']) && Session::haveRight('user', READ)) {
+                        echo "<a href='" . User::getFormURLWithID($data["users_id"]) . "'>" . self::reservationUserName($data) . "</a>";
                     } else {
-                        echo getUserName($data["users_id"]);
+                        echo self::reservationUserName($data);
                     }
                     echo "</td>";
                     echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
@@ -1316,44 +1266,15 @@ class Reservation extends CommonDBChild
         $now = $_SESSION["glpi_currenttime"];
 
         // Print reservation in progress
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'begin',
-              'end',
-              'items_id',
-              'glpi_reservationitems.entities_id',
-              'users_id',
-              'glpi_reservations.comment',
-              'reservationitems_id',
-              'completename'
-           ],
-           'FROM'      => 'glpi_reservations',
-           'LEFT JOIN' => [
-              'glpi_reservationitems' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'id',
-                    'glpi_reservations'     => 'reservationitems_id'
-                 ]
-              ],
-              'glpi_entities' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'entities_id',
-                    'glpi_entities'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'end'       => ['>', $now],
-              'users_id'  => $ID
-           ],
-           'ORDERBY'   => 'begin'
-        ]);
+        $rows = ReservationUserReadOperation::forDatabase($DB)
+            ->forUser((int)$ID, $now, false, Criteria::entities());
 
-        $ri = new ReservationItem();
+        $entityNames = [];
+        $userName = null;
         echo "<table class='tab_cadre_fixehov' aria-label='Current and future reservations'>";
         echo "<tr><th colspan='6'>" . __('Current and future reservations') . "</th></tr>\n";
 
-        if (count($iterator) == 0) {
+        if (count($rows) == 0) {
             echo "<tr class='tab_bg_2'>";
             echo "<td class='center' colspan='6'>" . __('No reservation') . "</td></tr\n>";
         } else {
@@ -1364,26 +1285,26 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('By') . "</th>";
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
+                $entityId = (int)$data['entities_id'];
+                if (!array_key_exists($entityId, $entityNames)) {
+                    $entityNames[$entityId] = Dropdown::getDropdownName('glpi_entities', $entityId);
+                }
+                $userName ??= getUserName($data['users_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
 
-                if ($ri->getFromDB($data["reservationitems_id"])) {
-                    $link = "&nbsp;";
-
-                    if ($item = getItemForItemtype($ri->fields['itemtype'])) {
-                        if ($item->getFromDB($ri->fields['items_id'])) {
-                            $link = $item->getLink();
-                        }
+                $link = "&nbsp;";
+                if ($item = getItemForItemtype($data['itemtype'])) {
+                    if ($item->getFromDB($data['items_id'])) {
+                        $link = $item->getLink();
                     }
-                    echo "<td class='center'>$link</td>";
-                    echo "<td class='center'>" . $data['completename'] . "</td>";
-                } else {
-                    echo "<td class='center'>&nbsp;</td>";
                 }
+                echo "<td class='center'>$link</td>";
+                echo "<td class='center'>" . $entityNames[$entityId] . "</td>";
 
-                echo "<td class='center'>" . getUserName($data["users_id"]) . "</td>";
+                echo "<td class='center'>" . $userName . "</td>";
                 echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
                 echo "<td class='center'>";
                 list($annee, $mois, $jour) = explode("-", (string) $data["begin"]);
@@ -1398,44 +1319,14 @@ class Reservation extends CommonDBChild
         echo "</table></div>\n";
 
         // Print old reservations
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'begin',
-              'end',
-              'items_id',
-              'glpi_reservationitems.entities_id',
-              'users_id',
-              'glpi_reservations.comment',
-              'reservationitems_id',
-              'completename'
-           ],
-           'FROM'      => 'glpi_reservations',
-           'LEFT JOIN' => [
-              'glpi_reservationitems' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'id',
-                    'glpi_reservations'     => 'reservationitems_id'
-                 ]
-              ],
-              'glpi_entities'         => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'entities_id',
-                    'glpi_entities'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'end'       => ['<=', $now],
-              'users_id'  => $ID
-           ],
-           'ORDERBY'   => 'begin DESC'
-        ]);
+        $rows = ReservationUserReadOperation::forDatabase($DB)
+            ->forUser((int)$ID, $now, true, Criteria::entities());
 
         echo "<div class='spaced'>";
         echo "<table class='tab_cadre_fixehov' aria-label='Past Reservations'>";
         echo "<tr><th colspan='6'>" . __('Past reservations') . "</th></tr>\n";
 
-        if (count($iterator) == 0) {
+        if (count($rows) == 0) {
             echo "<tr class='tab_bg_2'>";
             echo "<td class='center' colspan='6'>" . __('No reservation') . "</td></tr>\n";
         } else {
@@ -1446,26 +1337,26 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('By') . "</th>";
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
+                $entityId = (int)$data['entities_id'];
+                if (!array_key_exists($entityId, $entityNames)) {
+                    $entityNames[$entityId] = Dropdown::getDropdownName('glpi_entities', $entityId);
+                }
+                $userName ??= getUserName($data['users_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
 
-                if ($ri->getFromDB($data["reservationitems_id"])) {
-                    $link = "&nbsp;";
-
-                    if ($item = getItemForItemtype($ri->fields['itemtype'])) {
-                        if ($item->getFromDB($ri->fields['items_id'])) {
-                            $link = $item->getLink();
-                        }
+                $link = "&nbsp;";
+                if ($item = getItemForItemtype($data['itemtype'])) {
+                    if ($item->getFromDB($data['items_id'])) {
+                        $link = $item->getLink();
                     }
-                    echo "<td class='center'>$link</td>";
-                    echo "<td class='center'>" . $data['completename'] . "</td>";
-                } else {
-                    echo "<td class='center'>&nbsp;</td>";
                 }
+                echo "<td class='center'>$link</td>";
+                echo "<td class='center'>" . $entityNames[$entityId] . "</td>";
 
-                echo "<td class='center'>" . getUserName($data["users_id"]) . "</td>";
+                echo "<td class='center'>" . $userName . "</td>";
                 echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
                 echo "<td class='center'>";
                 list($annee, $mois, $jour) = explode("-", (string) $data["begin"]);

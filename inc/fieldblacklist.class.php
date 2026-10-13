@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\FieldUnicityRepository;
+
 use function PHPSTORM_META\map;
 
 if (!defined('GLPI_ROOT')) {
@@ -469,15 +473,9 @@ class Fieldblacklist extends CommonDropdown
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_fieldblacklists',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'field'     => $field,
-              'value'     => $value
-           ] + getEntitiesRestrictCriteria('glpi_fieldblacklists', 'entities_id', $entities_id, true)
-        ])->next();
-        return $result['cpt'] > 0;
+        $database = $DB;
+        $scope = (new DbUtils())->getEntityRestriction('glpi_fieldblacklists', 'entities_id', $entities_id, true);
+        return Orm::read($database, static fn (EntityManager $manager): bool =>
+            (new FieldUnicityRepository($manager))->blacklistedValue($itemtype, $field, $value, $scope));
     }
 }

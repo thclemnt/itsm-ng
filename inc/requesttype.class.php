@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\ITILClassificationRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -178,13 +183,8 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            $DB->update(
-                $this->getTable(),
-                $update,
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new ITILClassificationRepository(Orm::create($DB)))
+                ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
 
@@ -230,13 +230,8 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            $DB->update(
-                $this->getTable(),
-                $update,
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new ITILClassificationRepository(Orm::create($DB)))
+                ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
 
@@ -252,14 +247,13 @@ class RequestType extends CommonDropdown
     {
         global $DB;
 
-        if (!in_array($source, ['mail', 'mailfollowup', 'helpdesk', 'followup'])) {
-            return 0;
-        }
-
-        foreach ($DB->request('glpi_requesttypes', ['is_' . $source . '_default' => 1, 'is_active' => 1]) as $data) {
-            return $data['id'];
-        }
-        return 0;
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $source): int {
+            return (new ITILClassificationRepository($manager ?? Orm::forConnection($connection)))
+                ->defaultRequestType((string)$source);
+        });
     }
 
 

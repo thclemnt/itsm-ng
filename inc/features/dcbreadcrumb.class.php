@@ -172,7 +172,7 @@ trait DCBreadcrumb
            'items_id'  => $items_id
         ]);
         if ($found && $getobj) {
-            $rack = new \Rack();
+            $rack = new Rack();
             if ($rack->getFromDb($ira->fields['racks_id'])) {
                 return $rack;
             } else {

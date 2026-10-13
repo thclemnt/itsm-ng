@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\DeletionCancelled;
+use itsmng\Database\DeletionUnit;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KanbanRepository;
+
 class Item_Kanban extends CommonDBRelation
 {
     public static $itemtype_1 = 'itemtype';
@@ -38,6 +43,43 @@ class Item_Kanban extends CommonDBRelation
     public static $itemtype_2 = 'User';
     public static $items_id_2 = 'users_id';
     public static $checkItem_1_Rights = self::DONT_CHECK_ITEM_RIGHTS;
+
+    /** Parent-owned cleanup preserves valid private replacement states. */
+    public function cleanForParent(CommonDBTM $parent): void
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        $repository = new KanbanRepository(Orm::create($DB));
+        $states = $repository->statesForItem($parent->getType(), (int)$parent->getID());
+        $replacement = (int)($parent->input['_replace_by'] ?? 0);
+        if ($replacement > 0) {
+            $owners = array_values(array_unique(array_filter(array_column($states, 'owner'), static fn ($owner): bool => $owner !== null)));
+            if ($repository->hasPrivateStateForOwners($parent->getType(), $replacement, $owners)) {
+                Session::addMessageAfterRedirect(__('Cannot replace this item: a private Kanban state already exists at the replacement.'), false, ERROR);
+                throw new DeletionCancelled('Replacement already owns private Kanban state.');
+            }
+        }
+        foreach ($states as $state) {
+            $board = new self();
+            if ($replacement > 0 && $state['owner'] !== null) {
+                // Keep the public User endpoint/retarget guards. A shared NULL
+                // owner is not a valid required User for a generic retarget.
+                DeletionUnit::requireSuccess($connection, (bool)$board->update([
+                    'id' => $state['id'], 'items_id' => $replacement, '_disablenotif' => true,
+                ]));
+                $persisted = $repository->stateIdentity((int)$state['id']);
+                DeletionUnit::requireSuccess($connection, $persisted !== null
+                    && $persisted['kind'] === $parent->getType() && (int)$persisted['item'] === $replacement
+                    && (int)$persisted['owner'] === (int)$state['owner']);
+            } else {
+                DeletionUnit::requireSuccess($connection, (bool)$board->delete([
+                    'id' => $state['id'], '_no_history' => true, '_disablenotif' => true,
+                ], true));
+                DeletionUnit::requireSuccess($connection, $repository->stateIdentity((int)$state['id']) === null);
+            }
+        }
+    }
 
     /**
      * Save the state of a Kanban's columns for a specific item for the current user or globally.
@@ -59,32 +101,13 @@ class Item_Kanban extends CommonDBRelation
         $oldstate = self::loadStateForItem($itemtype, $items_id);
         $users_id = $force_global ? 0 : Session::getLoginUserID();
         $state = $item->prepareKanbanStateForUpdate($oldstate, $state, $users_id);
-        if ($state === null || $state === 'null' || $state === false) {
+        if (!is_array($state)) {
             // Save was probably denied in prepareKanbanStateForUpdate or an invalid state was given
             return false;
         }
 
-        $common_input = [
-           'itemtype'  => $itemtype,
-           'items_id'  => $items_id,
-           'users_id'  => $users_id,
-           'state'     => json_encode($state, JSON_FORCE_OBJECT),
-           'date_mod'  => $_SESSION['glpi_currenttime']
-        ];
-        $criteria = [
-           'users_id' => $users_id,
-           'itemtype' => $itemtype,
-           'items_id' => $items_id
-        ];
-        if (countElementsInTable('glpi_items_kanbans', $criteria)) {
-            $DB->update('glpi_items_kanbans', [
-               'date_mod'  => $_SESSION['glpi_currenttime']
-            ] + $common_input, $criteria);
-        } else {
-            $DB->insert('glpi_items_kanbans', [
-               'date_creation'   => $_SESSION['glpi_currenttime']
-            ] + $common_input);
-        }
+        (new KanbanRepository(Orm::create($DB)))
+            ->save($itemtype, (int)$items_id, (int)$users_id, $state, new DateTimeImmutable($_SESSION['glpi_currenttime']));
         return true;
     }
 
@@ -107,31 +130,8 @@ class Item_Kanban extends CommonDBRelation
         $item->getFromDB($items_id);
         $force_global = $item->forceGlobalState();
 
-        $iterator = $DB->request([
-           'SELECT' => ['date_mod', 'state'],
-           'FROM'   => 'glpi_items_kanbans',
-           'WHERE'  => [
-              'users_id' => $force_global ? 0 : Session::getLoginUserID(),
-              'itemtype' => $itemtype,
-              'items_id' => $items_id
-           ]
-        ]);
-
-        if (count($iterator)) {
-            $data = $iterator->next();
-            if ($timestamp !== null) {
-                if (strtotime($timestamp) < strtotime((string) $data['date_mod'])) {
-                    return json_decode((string) $data['state'], true);
-                } else {
-                    // No changes since last check
-                    return null;
-                }
-            }
-            return json_decode((string) $data['state'], true);
-        } else {
-            // State is not saved
-            return [];
-        }
+        return (new KanbanRepository(Orm::create($DB)))
+            ->load($itemtype, (int)$items_id, $force_global ? 0 : (int)Session::getLoginUserID(), $timestamp);
     }
 
     public static function moveCard($itemtype, $items_id, $card, $column, $position)
@@ -232,7 +232,7 @@ class Item_Kanban extends CommonDBRelation
     {
         $state = self::loadStateForItem($itemtype, $items_id);
         $existing_pos = array_search($column, array_column($state, 'column'));
-        if ($existing_pos) {
+        if ($existing_pos !== false) {
             $col = $state[$existing_pos];
             unset($state[$existing_pos]);
             array_splice($state, $position, 0, [$col]);

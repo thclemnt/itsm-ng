@@ -33,7 +33,10 @@
 
 namespace Glpi\System;
 
+use ArrayIterator;
 use Glpi\System\Requirement\RequirementInterface;
+use IteratorAggregate;
+use Traversable;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -42,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
 /**
  * @since 9.5.0
  */
-class RequirementsList implements \IteratorAggregate
+class RequirementsList implements IteratorAggregate
 {
     /**
      * Requirements.
@@ -59,9 +62,9 @@ class RequirementsList implements \IteratorAggregate
         $this->requirements = $requirements;
     }
 
-    public function getIterator(): \Traversable
+    public function getIterator(): Traversable
     {
-        return new \ArrayIterator($this->requirements);
+        return new ArrayIterator($this->requirements);
     }
 
     /**

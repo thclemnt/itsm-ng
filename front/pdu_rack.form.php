@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$pra  = new \PDU_Rack();
+$pra  = new PDU_Rack();
 $rack = new Rack();
 
 if (isset($_POST['update'])) {

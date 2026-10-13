@@ -46,6 +46,8 @@ use Glpi\CalDAV\Plugin\Browser;
 use Glpi\CalDAV\Plugin\CalDAV;
 use Sabre\DAV;
 use Sabre\DAVACL;
+use Throwable;
+use Toolbox;
 
 class Server extends DAV\Server
 {
@@ -90,13 +92,13 @@ class Server extends DAV\Server
      *
      * @param \Throwable $exception
      */
-    public function logException(\Throwable $exception)
+    public function logException(Throwable $exception)
     {
-        if ($exception instanceof \Sabre\DAV\Exception && $exception->getHTTPCode() < 500) {
+        if ($exception instanceof DAV\Exception && $exception->getHTTPCode() < 500) {
             // Ignore server exceptions that does not corresponds to a server error
             return;
         }
-        \Toolbox::logError(
+        Toolbox::logError(
             get_class($exception) . ': ' . $exception->getMessage() . "\n" . $exception->getTraceAsString()
         );
     }

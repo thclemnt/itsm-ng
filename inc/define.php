@@ -33,18 +33,13 @@
 
 // Last version of GLPI only for plugin compatibility
 define('GLPI_VERSION', '9.5.13');
-define('ITSM_VERSION', '2.1.7');
-if (substr(ITSM_VERSION, -4) === '-dev') {
-    //for dev version
-    define('ITSM_PREVER', str_replace('-dev', '', ITSM_VERSION));
-    define(
-        'ITSM_SCHEMA_VERSION',
-        ITSM_PREVER . '@' . sha1_file(GLPI_ROOT . '/install/mysql/glpi-empty.sql')
-    );
-} else {
-    //for stable version
-    define("ITSM_SCHEMA_VERSION", '2.1.3');
+define('ITSM_MIN_PHP', '8.2.27');
+define('ITSM_VERSION', '2.2.0');
+if (str_ends_with(ITSM_VERSION, '-dev')) {
+    define('ITSM_PREVER', substr(ITSM_VERSION, 0, -4));
 }
+// ORM releases own schema versions; the historical MySQL dump is not current schema.
+define('ITSM_SCHEMA_VERSION', '2.2.0');
 
 // Current version of ITSM-NG
 define('ITSM_YEAR', date("Y"));
@@ -229,7 +224,7 @@ $CFG_GLPI["document_types"]               = [
    'Reminder', 'Software', 'Line',
    'SoftwareLicense', 'Supplier', 'Ticket', 'User',
    'Certificate', 'Cluster', 'ITILFollowup', 'ITILSolution',
-   'ChangeTask', 'ProblemTask', 'TicketTask', 'Appliance'
+   'ChangeTask', 'ProblemTask', 'TicketTask', 'Appliance', 'Domain'
 ];
 
 $CFG_GLPI["consumables_types"]            = ['Group', 'User'];
@@ -318,7 +313,7 @@ $CFG_GLPI["dictionnary_types"]            = [
    'OperatingSystemEdition'
 ];
 
-$CFG_GLPI["helpdesk_visible_types"]       = ['Software', 'Appliance'];
+$CFG_GLPI["helpdesk_visible_types"]       = ['Software', 'Appliance', 'Domain'];
 
 $CFG_GLPI["networkport_types"]            = [
    'Computer', 'Monitor', 'NetworkEquipment', 'Peripheral',
@@ -355,13 +350,11 @@ $CFG_GLPI["itemdevices_types"]            = [
 
 $CFG_GLPI["itemdevices_itemaffinity"]     = ['Computer'];
 
-$CFG_GLPI["itemdevicememory_types"]       = ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer'];
 
 $CFG_GLPI["itemdevicepowersupply_types"]  = ['Computer', 'NetworkEquipment', 'Enclosure'];
 
 $CFG_GLPI["itemdevicenetworkcard_types"]  = ['Computer', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer'];
 
-$CFG_GLPI['itemdeviceharddrive_types']    = ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone'];
 
 $CFG_GLPI['itemdevicebattery_types']      = ['Computer', 'Peripheral', 'Phone', 'Printer'];
 
@@ -375,13 +368,10 @@ $CFG_GLPI['itemdevicepci_types']          = ['*'];
 
 $CFG_GLPI['itemdevicesensor_types']       = ['Computer', 'Peripheral'];
 
-$CFG_GLPI['itemdeviceprocessor_types']    = ['Computer'];
-
 $CFG_GLPI['itemdevicesoundcard_types']    = ['Computer'];
 
 $CFG_GLPI['itemdevicegraphiccard_types']  = ['Computer'];
 
-$CFG_GLPI['itemdevicemotherboard_types']  = ['Computer'];
 
 $CFG_GLPI["notificationtemplates_types"]  = [
    'CartridgeItem', 'Change', 'ConsumableItem',

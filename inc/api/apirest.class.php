@@ -38,6 +38,7 @@
 namespace Glpi\Api;
 
 use ItsmngUploadHandler;
+use ReflectionClass;
 use stdClass;
 use Toolbox;
 
@@ -354,7 +355,7 @@ class APIRest extends API
                 }
 
                 // Get case sensitive itemtype name
-                $rc = new \ReflectionClass($itemtype);
+                $rc = new ReflectionClass($itemtype);
                 $itemtype = $rc->getShortName();
                 return $itemtype;
             }

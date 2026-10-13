@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -1375,7 +1378,7 @@ class CommonGLPI
                 if ($user->getFromDB($uid)) {
                     $user->update(['id' => $uid,
                                         'display_options'
-                                             => exportArrayToDB($_SESSION['glpi_display_options'])]);
+                                             => Toolbox::addslashes_deep(exportArrayToDB($_SESSION['glpi_display_options']))]);
                 }
             }
         }
@@ -1393,15 +1396,15 @@ class CommonGLPI
     **/
     public static function getDisplayOptions($sub_itemtype = '')
     {
+        global $DB;
 
         if (!isset($_SESSION['glpi_display_options'])) {
             // Load display_options from user table
             $_SESSION['glpi_display_options'] = [];
             if ($uid = Session::getLoginUserID()) {
-                $user = new User();
-                if ($user->getFromDB($uid)) {
-                    $_SESSION['glpi_display_options'] = importArrayFromDB($user->fields['display_options']);
-                }
+                $options = (new UserRepository(Orm::create($DB)))
+                    ->displayOptions((int)Toolbox::cleanInteger($uid));
+                $_SESSION['glpi_display_options'] = importArrayFromDB($options);
             }
         }
         if (!isset($_SESSION['glpi_display_options'][self::getType()])) {

@@ -37,6 +37,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use DBAdapter;
 use Glpi\Console\AbstractCommand;
 use Glpi\System\RequirementsManager;
 use Symfony\Component\Console\Helper\Table;
@@ -61,7 +62,7 @@ class CheckRequirementsCommand extends AbstractCommand
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $this->db instanceof \DBmysql && $this->db->connected ? $this->db : null
+            $this->db instanceof DBAdapter && $this->db->connected ? $this->db : null
         );
 
         $informations = new Table($output);

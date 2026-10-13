@@ -1,0 +1,96 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Repository;
+
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use InvalidArgumentException;
+use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\RecordCriteria;
+
+use function getTableForItemType;
+
+/** Inventory assignments and the related cleanup performed when a user is purged. */
+final class UserItemRepository
+{
+    public function __construct(private EntityManager $em)
+    {
+    }
+
+    public static function supports(string $type): bool
+    {
+        return isset(EntityRegistry::tables()[getTableForItemType($type)]);
+    }
+
+    public function groups(int $user): array
+    {
+        return $this->em->createQueryBuilder()->select('g.id AS groups_id', 'g.name AS name')
+            ->from(Entity\GroupMembership::class, 'membership')->innerJoin('membership.groups', 'g')
+            ->where('IDENTITY(membership.users) = :user')->setParameter('user', $user, Types::INTEGER)
+            ->orderBy('g.id')->getQuery()->getScalarResult();
+    }
+
+    /** Stream each mapped record with labels; membership and entity filters stay in SQL. */
+    public function items(string $type, string $field, array $actors, array $scope): iterable
+    {
+        if (!in_array($field, ['users_id', 'users_id_tech', 'groups_id', 'groups_id_tech'], true)) {
+            throw new InvalidArgumentException('Unsupported inventory assignment field');
+        }
+        if (!$actors) {
+            return;
+        }
+        $class = EntityRegistry::tables()[getTableForItemType($type)];
+        $metadata = $this->em->getClassMetadata($class);
+        $criteria = [[$field => array_values($actors)], $scope];
+        foreach (['is_deleted', 'is_template'] as $flag) {
+            if ($metadata->hasField($flag)) {
+                $criteria[$flag] = 0;
+            }
+        }
+        $query = $this->em->createQueryBuilder()->select('r', 'entity.completename AS entity_name')
+            ->from($class, 'r')->leftJoin('r.entities', 'entity')->orderBy('r.id');
+        if ($metadata->hasAssociation('states')) {
+            $query->addSelect('state.completename AS state_name')->leftJoin('r.states', 'state');
+        }
+        $query->where((new RecordCriteria($query, $metadata))->where($criteria));
+        $records = new RecordRepository($this->em);
+        foreach ($query->getQuery()->toIterable() as $result) {
+            $row = $records->toRow($result[0]) + ['_entity_name' => $result['entity_name'], '_state_name' => $result['state_name'] ?? ''];
+            $this->em->detach($result[0]);
+            yield $row;
+        }
+    }
+
+    /** Preserve planning history without replaying scheduling and ownership hooks. */
+    public function reassignPlanningOwners(int $user, ?int $replacement): void
+    {
+        $this->reassignOwners([Entity\Project::class, Entity\ProjectTask::class, Entity\ProjectTaskTemplate::class, Entity\PlanningExternalEvent::class], $user, $replacement);
+    }
+
+    public function reassignPersonalContentOwners(int $user, ?int $replacement): void
+    {
+        $this->reassignOwners([Entity\RSSFeed::class, Entity\ReminderTranslation::class], $user, $replacement);
+    }
+
+    private function reassignOwners(array $classes, int $user, ?int $replacement): void
+    {
+        foreach ($classes as $class) {
+            $this->em->createQueryBuilder()->update($class, 'r')->set('r.users', ':replacement')
+                ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER)
+                ->setParameter('replacement', $replacement, Types::INTEGER)->getQuery()->execute();
+        }
+    }
+
+    public function releaseUserResources(int $user): void
+    {
+        // Private saved searches are deleted by their model hooks before this step.
+        $this->em->createQueryBuilder()->update(Entity\SavedSearch::class, 's')->set('s.users', ':none')
+            ->where('IDENTITY(s.users) = :user AND s.is_private = :public')
+            ->setParameter('none', null, Types::INTEGER)->setParameter('user', $user, Types::INTEGER)
+            ->setParameter('public', false, Types::BOOLEAN)->getQuery()->execute();
+        (new ConsumableRepository($this->em))->releaseUser($user);
+    }
+}

@@ -1,0 +1,66 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use DateTimeInterface;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\BooleanStorage;
+use itsmng\Database\Mapping\NativeTimestamp;
+use itsmng\Database\Mapping\PlatformOptions;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\SchemaIndex;
+use itsmng\Database\Mapping\SchemaOwner;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_solutiontemplates')]
+#[PlatformOptions(AbstractMySQLPlatform::class, ['create_options' => [], 'charset' => 'utf8', 'collation' => 'utf8_unicode_ci', 'engine' => 'InnoDB'])]
+#[SchemaOwner]
+#[SchemaIndex('name', ['name'], postgresqlName: 'glpi_solutiontemplates_name')]
+#[SchemaIndex('is_recursive', ['is_recursive'], postgresqlName: 'glpi_solutiontemplates_is_recursive')]
+#[SchemaIndex('solutiontypes_id', ['solutiontypes_id'], postgresqlName: 'glpi_solutiontemplates_solutiontypes_id')]
+#[SchemaIndex('entities_id', ['entities_id'], postgresqlName: 'glpi_solutiontemplates_entities_id')]
+#[SchemaIndex('date_mod', ['date_mod'], postgresqlName: 'glpi_solutiontemplates_date_mod')]
+#[SchemaIndex('date_creation', ['date_creation'], postgresqlName: 'glpi_solutiontemplates_date_creation')]
+class SolutionTemplate
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', foreignKeyName: 'fk_solutiontemplates_entities_id', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    public ?Entity $entities = null;
+
+    #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    #[BooleanStorage(mysqlType: Types::SMALLINT)]
+    public bool $is_recursive = false;
+
+    #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
+    public ?string $name = null;
+
+    #[ORM\Column(name: '`content`', type: 'text', nullable: true)]
+    public ?string $content = null;
+
+    #[ORM\ManyToOne(targetEntity: SolutionType::class)]
+    #[ORM\JoinColumn(name: 'solutiontypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', foreignKeyName: 'fk_solutiontemplates_solutiontypes_id', options: ['default' => null])]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    public ?SolutionType $solutiontypes = null;
+
+    #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
+    public ?string $comment = null;
+
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_mod = null;
+
+    #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[NativeTimestamp]
+    public ?DateTimeInterface $date_creation = null;
+}

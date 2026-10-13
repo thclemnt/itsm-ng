@@ -38,7 +38,7 @@ Html::header_nocache();
 Session::checkLoginUser();
 
 if (!isset($_POST['kbitem_id'])) {
-    throw new \RuntimeException('Required argument missing!');
+    throw new RuntimeException('Required argument missing!');
 }
 
 $kbitem_id = $_POST['kbitem_id'];

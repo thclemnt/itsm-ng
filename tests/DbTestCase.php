@@ -35,6 +35,12 @@
 
 class DbTestCase extends \GLPITestCase
 {
+    /** Shared probe for behavior tests that enforce a manager allocation budget. */
+    public static function ormManagerCounter(): \ReflectionProperty
+    {
+        return new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+    }
+
     public function beforeTestMethod($method)
     {
         global $DB;
@@ -47,6 +53,26 @@ class DbTestCase extends \GLPITestCase
         global $DB;
         $DB->rollback();
         parent::afterTestMethod($method);
+    }
+
+
+    /** Read the actual cells from a rendered local table. */
+    protected function renderLocalTableRows(callable $renderer): array
+    {
+        ob_start();
+        try {
+            $renderer();
+            $output = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $count = preg_match_all('/<script type="application\/json"[^>]*>(.*?)<\/script>/s', $output, $matches);
+        $this->integer($count)->isIdenticalTo(1);
+        $configuration = json_decode($matches[1][0], true, 512, JSON_THROW_ON_ERROR);
+        $this->string($configuration['dataSource']['type'])->isIdenticalTo('local');
+        $this->array($configuration['dataSource']['rows']);
+
+        return $configuration['dataSource']['rows'];
     }
 
 

@@ -34,12 +34,14 @@
 namespace Glpi\System\Status;
 
 use AuthLDAP;
-use CronTask;
-use DBConnection;
-use DBmysql;
+use Exception;
 use MailCollector;
 use Plugin;
+use RuntimeException;
 use Toolbox;
+use itsmng\Database\DatabaseHealthProbe;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronTaskRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -71,68 +73,53 @@ final class StatusChecker
      * @param bool $public_only True if only public status information should be given.
      * @return array
      */
-    public static function getDBStatus($public_only = true): array
+    public static function getDBStatus($public_only = true, ?DatabaseHealthProbe $probe = null): array
     {
         static $status = null;
 
-        if ($status === null) {
-            $status = [
-               'status' => self::STATUS_OK,
-               'master' => [
-                  'status' => self::STATUS_OK,
-               ],
-               'slaves' => [
-                  'status' => self::STATUS_NO_DATA,
-                  'servers' => []
-               ]
-            ];
-            // Check slave server connection
-            if (DBConnection::isDBSlaveActive()) {
-                $DBslave = DBConnection::getDBSlaveConf();
-                if (is_array($DBslave->dbhost)) {
-                    $hosts = $DBslave->dbhost;
-                } else {
-                    $hosts = [$DBslave->dbhost];
-                }
+        if ($probe !== null) {
+            return self::inspectDatabase($probe);
+        }
+        return $status ??= self::inspectDatabase(DatabaseHealthProbe::configured());
+    }
 
-                if (count($hosts)) {
-                    $status['slaves']['status'] = self::STATUS_OK;
-                }
-
-                foreach ($hosts as $num => $name) {
-                    $diff = DBConnection::getReplicateDelay($num);
-                    if (abs($diff) > 1000000000) {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => '-1'
-                        ];
-                        $status['slaves']['status'] = self::STATUS_PROBLEM;
-                        $status['status'] = self::STATUS_PROBLEM;
-                    } elseif (abs($diff) > HOUR_TIMESTAMP) {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => abs($diff)
-                        ];
-                        $status['slaves']['status'] = self::STATUS_PROBLEM;
-                        $status['status'] = self::STATUS_PROBLEM;
-                    } else {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_OK,
-                           'replication_delay'  => abs($diff)
-                        ];
-                    }
-                }
-            }
-
-            // Check main server connection
-            if (!DBConnection::establishDBConnection(false, true, false)) {
-                $status['master'] = [
-                   'status' => self::STATUS_PROBLEM
+    private static function inspectDatabase(DatabaseHealthProbe $probe): array
+    {
+        $status = [
+            'status' => self::STATUS_OK,
+            'master' => ['status' => self::STATUS_OK],
+            'slaves' => ['status' => self::STATUS_NO_DATA, 'servers' => []],
+        ];
+        if ($probe->replicaPositions() !== []) {
+            $status['slaves']['status'] = self::STATUS_OK;
+        }
+        foreach ($probe->replicaPositions() as $position) {
+            $delay = $probe->replicationDelay($position);
+            if (abs($delay) > 1000000000) {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_PROBLEM,
+                    'replication_delay' => '-1',
                 ];
+            } elseif (abs($delay) > HOUR_TIMESTAMP) {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_PROBLEM,
+                    'replication_delay' => abs($delay),
+                ];
+            } else {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_OK,
+                    'replication_delay' => abs($delay),
+                ];
+            }
+            if ($status['slaves']['servers'][$position]['status'] === self::STATUS_PROBLEM) {
+                $status['slaves']['status'] = self::STATUS_PROBLEM;
                 $status['status'] = self::STATUS_PROBLEM;
             }
         }
-
+        if (!$probe->masterAvailable()) {
+            $status['master']['status'] = self::STATUS_PROBLEM;
+            $status['status'] = self::STATUS_PROBLEM;
+        }
         return $status;
     }
 
@@ -186,7 +173,7 @@ final class StatusChecker
                                 ];
                                 $status['status'] = self::STATUS_PROBLEM;
                             }
-                        } catch (\RuntimeException $e) {
+                        } catch (RuntimeException $e) {
                             // May be missing LDAP extension (Probably test environment)
                             $status['servers'][$method['name']] = [
                                'status' => self::STATUS_PROBLEM
@@ -307,7 +294,7 @@ final class StatusChecker
                                 $status['servers'][$display_name] = [
                                    'status' => 'OK'
                                 ];
-                            } catch (\Exception $e) {
+                            } catch (Exception $e) {
                                 $status['servers'][$display_name] = [
                                    'status'       => self::STATUS_PROBLEM,
                                    'error_code'   => $e->getCode()
@@ -329,6 +316,8 @@ final class StatusChecker
      */
     public static function getCronTaskStatus($public_only = true): array
     {
+        global $DB;
+
         static $status = null;
 
         if ($status === null) {
@@ -337,25 +326,7 @@ final class StatusChecker
                'stuck' => []
             ];
             if (self::isDBAvailable()) {
-                $stuck_crontasks = getAllDataFromTable(
-                    'glpi_crontasks',
-                    [
-                      'state'  => CronTask::STATE_RUNNING,
-                      'OR'     => [
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             DBmysql::quoteName('frequency') . ' < unix_timestamp(now()))'
-                         ),
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             HOUR_TIMESTAMP . ' < unix_timestamp(now()))'
-                         )
-                      ]
-                    ]
-                );
-                foreach ($stuck_crontasks as $ct) {
-                    $status['stuck'][] = $ct['name'];
-                }
+                $status['stuck'] = (new CronTaskRepository(Orm::create($DB)))->overdueNames();
                 $status['status'] = count($status['stuck']) ? self::STATUS_PROBLEM : self::STATUS_OK;
             }
         }

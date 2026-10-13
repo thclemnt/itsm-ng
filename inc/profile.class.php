@@ -31,6 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\NotificationRecipientRepository;
+use itsmng\Database\Repository\ProfileRepository;
+use itsmng\Database\Repository\ProfileRightRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\UserRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -210,15 +219,7 @@ class Profile extends CommonDBTM
         }
 
         if (in_array('is_default', $this->updates) && ($this->input["is_default"] == 1)) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id' => ['<>', $this->input['id']]
-                ]
-            );
+            (new ProfileRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
         }
 
         // To avoid log out and login when rights change (very useful in debug mode)
@@ -227,7 +228,8 @@ class Profile extends CommonDBTM
             && $_SESSION['glpiactiveprofile']['id'] == $this->input['id']
         ) {
             if (in_array('helpdesk_item_type', $this->updates)) {
-                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = importArrayFromDB($this->input['helpdesk_item_type']);
+                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = (new ProfileRepository(Orm::create($DB)))
+                    ->helpdeskItemTypes((int)$this->input['id']);
             }
 
             if (in_array('managed_domainrecordtypes', $this->updates)) {
@@ -248,15 +250,7 @@ class Profile extends CommonDBTM
         unset($this->profileRight);
 
         if (isset($this->fields['is_default']) && ($this->fields["is_default"] == 1)) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new ProfileRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
         }
     }
 
@@ -282,6 +276,18 @@ class Profile extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        (new Dashboard())->deleteByCriteria(['profileId' => $this->getID()]);
+        global $DB;
+
+        (new NotificationRecipientRepository(Orm::create($DB)))->replaceProfile(
+            (int)$this->getID(),
+            (int)($this->input['_replace_by'] ?? 0)
+        );
+        $repository = new UserRepository(Orm::create($DB));
+        foreach ($repository->defaultProfileReplacements((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0)) as $row) {
+            $user = new User();
+            $user->update(['id' => $row['id'], 'profiles_id' => $row['profiles_id'] ?? 0, '_disablenotif' => true]);
+        }
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -418,8 +424,9 @@ class Profile extends CommonDBTM
 
         // check if right if the last write profile on Profile object
         if (
-            ($this->fields['profile'] & UPDATE)
-            && isset($input['profile']) && !($input['profile'] & UPDATE)
+            isset($input['profile'])
+            && ($this->fields['profile'] & UPDATE)
+            && !($input['profile'] & UPDATE)
             && (countElementsInTable(
                 "glpi_profilerights",
                 ['name' => 'profile', 'rights' => ['&',  UPDATE]]
@@ -464,6 +471,29 @@ class Profile extends CommonDBTM
         return true;
     }
 
+
+    /** Replace an exact registered item type while retaining array keys and other values. */
+    public function replaceHelpdeskItemType(string $previous, string $replacement): bool
+    {
+        if (!$this->getFromDB($this->getID())) {
+            throw new RuntimeException('Profile no longer exists.');
+        }
+        $values = importArrayFromDB($this->fields['helpdesk_item_type']);
+        $changed = false;
+        foreach ($values as &$value) {
+            if ($value === $previous) {
+                $value = $replacement;
+                $changed = true;
+            }
+        }
+        unset($value);
+        if (!$changed) {
+            return true;
+        }
+        // This model boundary expects legacy pre-escaping; encode before escaping,
+        // so Unicode and literal backslashes survive decoding in MappedStorage.
+        return $this->update(['id' => $this->getID(), 'helpdesk_item_type' => Toolbox::addslashes_deep(exportArrayToDB($values))]);
+    }
 
     public function prepareInputForAdd($input)
     {
@@ -575,58 +605,38 @@ class Profile extends CommonDBTM
      **/
     public static function getUnderActiveProfileRestrictCriteria()
     {
-
-        // Not logged -> no profile to see
+        global $DB;
         if (!isset($_SESSION['glpiactiveprofile'])) {
-            return [0];
+            return ['glpi_profiles.id' => ['<', 0]];
         }
-
-        // Profile right : may modify profile so can attach all profile
         if (Profile::canCreate()) {
-            return [1];
+            return [];
         }
+        $ids = Orm::readPrepared(
+            $DB,
+            static function (): array {
+                $rights = self::activeRights();
+                // Keep manageableIds' weak string argument conversion outside the scope.
+                $interface = (static fn (string $value): string => $value)(Session::getCurrentInterface());
+                return [$rights, $interface];
+            },
+            static fn (EntityManager $manager, array $prepared): array =>
+                (new ProfileRepository($manager))->manageableIds($prepared[0], $prepared[1])
+        );
+        return ['glpi_profiles.id' => $ids ?: ['<', 0]];
+    }
 
-        $criteria = ['glpi_profiles.interface' => Session::getCurrentInterface()];
-
-        // First, get all possible rights
-        $right_subqueries = [];
+    private static function activeRights(): array
+    {
+        $rights = [];
+        $interface = Session::getCurrentInterface();
         foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
-            $val = isset($_SESSION['glpiactiveprofile'][$key]) ? $_SESSION['glpiactiveprofile'][$key] : 0;
-
-            if (
-                !is_array($val) // Do not include entities field added by login
-                && (Session::getCurrentInterface() == 'central'
-                   || in_array($key, self::$helpdesk_rights))
-            ) {
-                $right_subqueries[] = [
-                   'glpi_profilerights.name'     => $key,
-                   'RAW'                         => [
-                      '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val
-                   ]
-                ];
+            $value = $_SESSION['glpiactiveprofile'][$key] ?? 0;
+            if (!is_array($value) && ($interface === 'central' || in_array($key, self::$helpdesk_rights))) {
+                $rights[$key] = (int)$value;
             }
         }
-
-        $sub_query = new QuerySubQuery([
-           'FROM'   => 'glpi_profilerights',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'glpi_profilerights.profiles_id' => new \QueryExpression(\DBmysql::quoteName('glpi_profiles.id')),
-              'OR'                             => $right_subqueries
-           ]
-        ]);
-        $criteria[] = new \QueryExpression(count($right_subqueries) . " = " . $sub_query->getQuery());
-
-        if (Session::getCurrentInterface() == 'central') {
-            return [
-               'OR'  => [
-                  'glpi_profiles.interface' => 'helpdesk',
-                  $criteria
-               ]
-            ];
-        }
-
-        return $criteria;
+        return $rights;
     }
 
 
@@ -644,31 +654,18 @@ class Profile extends CommonDBTM
         if (Session::isCron()) {
             return true;
         }
-        if (count($IDs) == 0) {
-            // Check all profiles (means more right than all possible profiles)
-            return (countElementsInTable('glpi_profiles')
-               == countElementsInTable(
-                   'glpi_profiles',
-                   self::getUnderActiveProfileRestrictCriteria()
-               ));
+        if (!isset($_SESSION['glpiactiveprofile'])) {
+            return false;
         }
-        $under_profiles = [];
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria()
-        ]);
-
-        while ($data = $iterator->next()) {
-            $under_profiles[$data['id']] = $data['id'];
-        }
-
-        foreach ($IDs as $ID) {
-            if (!isset($under_profiles[$ID])) {
-                return false;
-            }
-        }
-        return true;
+        $rights = self::activeRights();
+        $interface = Session::getCurrentInterface();
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        return Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $IDs, $rights, $interface): bool {
+            return (new ProfileRepository($manager ?? Orm::forConnection($connection)))
+                ->canManage($IDs, $rights, $interface, Profile::canCreate());
+        });
     }
 
 
@@ -1188,6 +1185,11 @@ class Profile extends CommonDBTM
               'itemtype'  => 'Domain',
               'label'     => _n('Domain', 'Domains', Session::getPluralNumber()),
               'field'     => 'domain'
+           ],
+           [
+              'itemtype'  => DomainType::class,
+              'label'     => DomainType::getTypeName(Session::getPluralNumber()),
+              'field'     => 'domaintype'
            ],
            [
               'itemtype'  => 'Appliance',
@@ -2612,6 +2614,20 @@ class Profile extends CommonDBTM
         ];
 
         $tab[] = [
+           'id'                 => '180',
+           'table'              => 'glpi_profilerights',
+           'field'              => 'rights',
+           'name'               => DomainType::getTypeName(Session::getPluralNumber()),
+           'datatype'           => 'right',
+           'rightclass'         => DomainType::class,
+           'rightname'          => 'domaintype',
+           'joinparams'         => [
+              'jointype'           => 'child',
+              'condition'          => "AND `NEWTABLE`.`name`= 'domaintype'"
+           ]
+        ];
+
+        $tab[] = [
            'id'                 => '44',
            'table'              => 'glpi_profilerights',
            'field'              => 'rights',
@@ -3398,16 +3414,8 @@ class Profile extends CommonDBTM
             }
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria(),
-           'ORDER'  => 'name'
-        ]);
-
-        //New rule -> get the next free ranking
-        while ($data = $iterator->next()) {
-            $profiles[$data['id']] = $data['name'];
-        }
+        $profiles = array_column((new RecordRepository(Orm::create($DB)))
+            ->matching(self::getTable(), self::getUnderActiveProfileRestrictCriteria(), ['name']), 'name', 'id');
         Dropdown::showFromArray(
             $p['name'],
             $profiles,
@@ -3428,11 +3436,8 @@ class Profile extends CommonDBTM
     public static function getDefault()
     {
         global $DB;
-
-        foreach ($DB->request('glpi_profiles', ['is_default' => 1]) as $data) {
-            return $data['id'];
-        }
-        return 0;
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new ProfileRepository($manager))->defaultId());
     }
 
 
@@ -3532,15 +3537,8 @@ class Profile extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => DomainRecordType::getTable(),
-        ]);
-
-        $types = [];
-        while ($row = $iterator->next()) {
-            $types[$row['id']] = $row['name'];
-        }
-        return $types;
+        return array_column((new RecordRepository(Orm::create($DB)))
+            ->matching(DomainRecordType::getTable()), 'name', 'id');
     }
 
     /**
@@ -3592,40 +3590,21 @@ class Profile extends CommonDBTM
     public static function haveUserRight($user_id, $rightname, $rightvalue, $entity_id)
     {
         global $DB;
-
-        $result = $DB->request(
-            [
-              'COUNT'      => 'cpt',
-              'FROM'       => 'glpi_profilerights',
-              'INNER JOIN' => [
-                 'glpi_profiles' => [
-                    'FKEY' => [
-                       'glpi_profilerights' => 'profiles_id',
-                       'glpi_profiles'      => 'id',
-                    ]
-                 ],
-                 'glpi_profiles_users' => [
-                    'FKEY' => [
-                       'glpi_profiles_users' => 'profiles_id',
-                       'glpi_profiles'       => 'id',
-                       [
-                          'AND' => ['glpi_profiles_users.users_id' => $user_id],
-                       ],
-                    ]
-                 ],
-              ],
-              'WHERE'      => [
-                 'glpi_profilerights.name'   => $rightname,
-                 'glpi_profilerights.rights' => ['&',  $rightvalue],
-              ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true),
-            ]
+        return Orm::readPrepared(
+            $DB,
+            static function () use ($user_id, $rightname, $rightvalue, $entity_id): array {
+                $arguments = static fn (int $user, string $name, int $mask, array $scope): array =>
+                    [$user, $name, $mask, $scope];
+                return $arguments(
+                    (int)$user_id,
+                    $rightname,
+                    (int)$rightvalue,
+                    getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true)
+                );
+            },
+            static fn (EntityManager $manager, array $arguments): bool =>
+                (new ProfileRightRepository($manager))->userHas(...$arguments)
         );
-
-        if (!$data = $result->next()) {
-            return false;
-        }
-
-        return $data['cpt'] > 0;
     }
 
 

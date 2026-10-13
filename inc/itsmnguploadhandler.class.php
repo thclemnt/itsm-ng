@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\DocumentRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -150,16 +154,11 @@ class ItsmngUploadHandler
     private static function getValidExtPatterns()
     {
         global $DB;
-        $valid_type_iterator = $DB->request([
-            'FROM'   => 'glpi_documenttypes',
-            'WHERE'  => [
-                'is_uploadable'   => 1
-            ]
-        ]);
+        $extensions = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new DocumentRepository($manager))->uploadableExtensions());
 
         $valid_ext_patterns = [];
-        foreach ($valid_type_iterator as $valid_type) {
-            $valid_ext = $valid_type['ext'];
+        foreach ($extensions as $valid_ext) {
             if (preg_match('/\/.+\//', (string) $valid_ext)) {
                 // Filename matches pattern
                 // Remove surrounding '/' as it will be included in a larger pattern
@@ -167,7 +166,7 @@ class ItsmngUploadHandler
                 $valid_ext_patterns[] = '(' . substr((string) $valid_ext, 1, -1) . ')';
             } else {
                 // Filename ends with allowed ext
-                $valid_ext_patterns[] = '\.' . preg_quote((string) $valid_type['ext'], '/') . '$';
+                $valid_ext_patterns[] = '\.' . preg_quote((string) $valid_ext, '/') . '$';
             }
         }
         return $valid_ext_patterns;

@@ -89,18 +89,11 @@ class NotificationTargetContract extends NotificationTarget
 
             switch ($event) {
                 case 'end':
-                    $tmp['##contract.time##'] = Infocom::getWarrantyExpir(
-                        $contract["begin_date"],
-                        $contract["duration"]
-                    );
+                    $tmp['##contract.time##'] = Contract::formatDeadline($contract);
                     break;
 
                 case 'notice':
-                    $tmp['##contract.time##'] = Infocom::getWarrantyExpir(
-                        $contract["begin_date"],
-                        $contract["duration"],
-                        $contract["notice"]
-                    );
+                    $tmp['##contract.time##'] = Contract::formatDeadline($contract, true);
                     break;
 
                 case 'periodicity':

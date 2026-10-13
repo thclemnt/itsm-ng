@@ -31,7 +31,13 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
+use itsmng\Database\EntityConfigurationReferences;
+use itsmng\Database\Orm;
+use itsmng\Database\ReferenceValues;
+use itsmng\Database\Repository\EntityConfigurationRepository;
+use itsmng\Database\Repository\EntityOwnershipRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -231,16 +237,24 @@ class Entity extends CommonTreeDropdown
             if ($right == 'entity_helpdesk') {
                 if (Session::haveRight(self::$rightname, self::UPDATEHELPDESK)) {
                     foreach ($fields as $field) {
-                        if (isset($input[$field])) {
+                        if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
+                        }
+                        $mode = EntityConfigurationReferences::fields()[$field]->modeColumn ?? null;
+                        if ($mode !== null && array_key_exists($mode, $input)) {
+                            $tmp[$mode] = $input[$mode];
                         }
                     }
                 }
             } else {
                 if (Session::haveRight($right, UPDATE)) {
                     foreach ($fields as $field) {
-                        if (isset($input[$field])) {
+                        if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
+                        }
+                        $mode = EntityConfigurationReferences::fields()[$field]->modeColumn ?? null;
+                        if ($mode !== null && array_key_exists($mode, $input)) {
+                            $tmp[$mode] = $input[$mode];
                         }
                     }
                 }
@@ -276,20 +290,14 @@ class Entity extends CommonTreeDropdown
 
         $input = parent::prepareInputForAdd($input);
 
-        $result = $DB->request([
-           'SELECT' => new \QueryExpression(
-               'MAX(' . $DB->quoteName('id') . ')+1 AS newID'
-           ),
-           'FROM'   => $this->getTable()
-        ])->next();
-        $input['id'] = $result['newID'];
+        $input['id'] = (new EntityConfigurationRepository(Orm::create($DB)))->nextIdentifier();
 
         $input['max_closedate'] = $_SESSION["glpi_currenttime"];
 
         if (!Session::isCron()) { // Filter input for connected
             $input = $this->checkRightDatas($input);
         }
-        return $input;
+        return EntityConfigurationReferences::legacyInput($input);
     }
 
 
@@ -329,7 +337,7 @@ class Entity extends CommonTreeDropdown
         if (!Session::isCron()) { // Filter input for connected
             $input = $this->checkRightDatas($input);
         }
-        return $input;
+        return EntityConfigurationReferences::legacyInput($input, $this->fields);
     }
 
 
@@ -495,6 +503,41 @@ class Entity extends CommonTreeDropdown
         // Add right to current user - Hack to avoid login/logout
         $_SESSION['glpiactiveentities'][$this->fields['id']] = $this->fields['id'];
         $_SESSION['glpiactiveentities_string']              .= ",'" . $this->fields['id'] . "'";
+    }
+
+    public function post_getFromDB()
+    {
+        $this->fields = ReferenceValues::legacyRow($this->getTable(), $this->fields);
+        parent::post_getFromDB();
+    }
+
+    public function post_getEmpty()
+    {
+        foreach (EntityConfigurationReferences::fields() as $column => $definition) {
+            $this->fields[$column] = null;
+            $this->fields[$definition->modeColumn] = $definition->defaultMode->value;
+        }
+        $this->fields = EntityConfigurationReferences::legacyRow($this->fields);
+        parent::post_getEmpty();
+    }
+
+
+    public function cleanRelationData()
+    {
+        global $DB;
+
+        parent::cleanRelationData();
+        $cached = [];
+        foreach (getDbRelations()['glpi_entities'] as $table => $fields) {
+            if (str_starts_with($table, '_') && in_array('entities_id', (array)$fields, true)) {
+                $cached[] = substr($table, 1);
+            }
+        }
+        $owners = new EntityOwnershipRepository(Orm::create($DB));
+        $owners->moveCachedOwners($cached, (int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
+        // An inaccessible replacement is rejected by User::prepareInputForUpdate.
+        // Clear any remaining default to root without creating profile membership.
+        $owners->moveCachedOwners(['glpi_users'], (int)$this->getID(), 0);
     }
 
 
@@ -1386,43 +1429,8 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        $entities = [];
-
-        // root entity first
-        $ent = new self();
-        if ($ent->getFromDB(0)) {  // always exists
-            $val = $ent->getField($field);
-            if ($val > 0) {
-                $entities[0] = $val;
-            }
-        }
-
-        // Others entities in level order (parent first)
-        $iterator = $DB->request([
-           'SELECT' => [
-              'id AS entity',
-              'entities_id AS parent',
-              $field
-           ],
-           'FROM'   => self::getTable(),
-           'ORDER'  => 'level ASC'
-        ]);
-
-        while ($entitydata = $iterator->next()) {
-            if (
-                (is_null($entitydata[$field])
-                 || ($entitydata[$field] == self::CONFIG_PARENT))
-                && isset($entities[$entitydata['parent']])
-            ) {
-                // config inherit from parent
-                $entities[$entitydata['entity']] = $entities[$entitydata['parent']];
-            } elseif ($entitydata[$field] > 0) {
-                // config found in entity
-                $entities[$entitydata['entity']] = $entitydata[$field];
-            }
-        }
-
-        return $entities;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new EntityConfigurationRepository($manager))->notificationValues($field));
     }
 
 
@@ -2244,17 +2252,8 @@ class Entity extends CommonTreeDropdown
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [$field => $value]
-        ]);
-
-        if (count($iterator) == 1) {
-            $result = $iterator->next();
-            return $result['id'];
-        }
-        return -1;
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new EntityConfigurationRepository($manager))->uniqueIdentifier($field, $value));
     }
 
 
@@ -2581,53 +2580,15 @@ class Entity extends CommonTreeDropdown
     **/
     public static function getUsedConfig($fieldref, $entities_id = null, $fieldval = '', $default_value = -2)
     {
+        global $DB;
 
-        // Get for current entity
-        if ($entities_id === null) {
-            $entities_id = Session::getActiveEntity();
-        }
-
-        // for calendar
-        if (empty($fieldval)) {
-            $fieldval = $fieldref;
-        }
-
-        $entity = new self();
-        // Search in entity data of the current entity
-        if ($entity->getFromDB($entities_id)) {
-            // Value is defined : use it
-            if (isset($entity->fields[$fieldref])) {
-                // Numerical value
-                if (
-                    is_numeric($default_value)
-                    && ($entity->fields[$fieldref] != self::CONFIG_PARENT)
-                ) {
-                    return $entity->fields[$fieldval];
-                }
-                // String value
-                if (
-                    !is_numeric($default_value)
-                    && $entity->fields[$fieldref]
-                ) {
-                    return $entity->fields[$fieldval];
-                }
-            }
-        }
-
-        // Entity data not found or not defined : search in parent one
-        if ($entities_id > 0) {
-            if ($entity->getFromDB($entities_id)) {
-                $ret = self::getUsedConfig(
-                    $fieldref,
-                    $entity->fields['entities_id'],
-                    $fieldval,
-                    $default_value
-                );
-                return $ret;
-            }
-        }
-
-        return $default_value;
+        return EntityConfigurationRepository::readUsedConfiguration(
+            $DB->getDoctrineConnection(),
+            $fieldref,
+            (int)($entities_id ?? Session::getActiveEntity()),
+            $fieldval ?: $fieldref,
+            $default_value,
+        );
     }
 
 
@@ -3181,7 +3142,7 @@ class Entity extends CommonTreeDropdown
                 $this->showMap();
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 

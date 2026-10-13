@@ -35,7 +35,14 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Toolbox\URL;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\DomainRepository;
+use itsmng\Database\Repository\InfocomRepository;
+use itsmng\Reporting\Criteria;
 
 /**
  * Supplier class (suppliers)
@@ -60,6 +67,47 @@ class Supplier extends CommonDBTM
         return _n('Supplier', 'Suppliers', $nb);
     }
 
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(
+            parent::getDropdownNameFields($tooltip),
+            $tooltip ? ['phonenumber', 'fax', 'email'] : []
+        );
+    }
+
+
+    public function prepareInputForUpdate($input)
+    {
+        if (!array_key_exists('entities_id', $input) && !array_key_exists('is_recursive', $input)) {
+            return $input;
+        }
+        try {
+            $this->validateCommercialDomainScope($input);
+        } catch (InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
+        return $input;
+    }
+
+    /** Refuse an invalid move before the coordinator changes related records. */
+    public function validateEntityTransfer(int $destination): void
+    {
+        $this->validateCommercialDomainScope(['entities_id' => $destination]);
+    }
+
+    private function validateCommercialDomainScope(array $input): void
+    {
+        global $DB;
+
+        $em = Orm::create($DB);
+        try {
+            (new DomainRepository($em))
+                ->assertSupplierScopeAssignment($input, (int)$this->getID());
+        } finally {
+            $em->close();
+        }
+    }
 
     public function cleanDBonPurge()
     {
@@ -89,6 +137,7 @@ class Supplier extends CommonDBTM
         $this->addStandardTab('Contact_Supplier', $ong, $options);
         $this->addStandardTab('Contract_Supplier', $ong, $options);
         $this->addStandardTab('Infocom', $ong, $options);
+        $this->addStandardTab('Domain', $ong, $options);
         $this->addStandardTab('Document_Item', $ong, $options);
         $this->addStandardTab('Ticket', $ong, $options);
         $this->addStandardTab('Item_Problem', $ong, $options);
@@ -519,7 +568,7 @@ class Supplier extends CommonDBTM
         echo "</tr>";
 
         $num = 0;
-        while ($row = $types_iterator->next()) {
+        foreach ($types_iterator as $row) {
             $itemtype = $row['itemtype'];
 
             if (!($item = getItemForItemtype($itemtype))) {
@@ -527,80 +576,40 @@ class Supplier extends CommonDBTM
             }
 
             if ($item->canView()) {
-                $linktype  = $itemtype;
-                $linkfield = 'id';
-                $itemtable = getTableForItemType($itemtype);
-
-                $criteria = [
-                   'SELECT'       => [],
-                   'FROM'         => 'glpi_infocoms',
-                   'INNER JOIN'   => [
-                      $itemtable  => [
-                         'ON' => [
-                            'glpi_infocoms'   => 'items_id',
-                            $itemtable        => 'id'
-                         ]
-                      ]
-                   ]
-                ];
-
-                // Set $linktype for entity restriction AND link to search engine
-                if ($itemtype == 'Cartridge') {
-                    $criteria['INNER JOIN']['glpi_cartridgeitems'] = [
-                       'ON' => [
-                          'glpi_cartridgeitems'   => 'id',
-                          'glpi_cartridges'       => 'cartridgeitems_id'
-                       ]
+                [$linktype, $linkfield] = InfocomRepository::linkFor($itemtype);
+                if (InfocomRepository::supports($itemtype)) {
+                    $database = $DB;
+                    $connection = $database->getDoctrineConnection();
+                    OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                    $projection = Orm::withConnection(
+                        $connection,
+                        static fn (EntityManager $manager): array => (new InfocomRepository($manager))->forSupplier(
+                            $itemtype,
+                            (int)$instID,
+                            Criteria::entities(),
+                            (int)$_SESSION['glpilist_limit']
+                        )
+                    );
+                    $nb = $projection['count'];
+                    $iterator = $projection['rows'];
+                } else {
+                    // Unmapped plugin items retain their registered table and visibility rules.
+                    $itemtable = getTableForItemType($itemtype);
+                    $linktable = getTableForItemType($linktype);
+                    $criteria = [
+                        'SELECT' => ["$itemtable.*", "$linktable." . $linktype::getNameField()],
+                        'FROM' => 'glpi_infocoms',
+                        'INNER JOIN' => [$itemtable => ['ON' => ['glpi_infocoms' => 'items_id', $itemtable => 'id']]],
+                        'WHERE' => ['glpi_infocoms.itemtype' => $itemtype, 'glpi_infocoms.suppliers_id' => $instID]
+                            + getEntitiesRestrictCriteria($linktable),
+                        'ORDERBY' => ['glpi_infocoms.entities_id', "$linktable." . $linktype::getNameField()],
                     ];
-
-                    $linktype  = 'CartridgeItem';
-                    $linkfield = 'cartridgeitems_id';
+                    if ($linkfield !== 'id') {
+                        $criteria['INNER JOIN'][$linktable] = ['ON' => [$itemtable => $linkfield, $linktable => 'id']];
+                    }
+                    $iterator = $DB->request($criteria);
+                    $nb = count($iterator);
                 }
-
-                if ($itemtype == 'Consumable') {
-                    $criteria['INNER JOIN']['glpi_consumableitems'] = [
-                       'ON' => [
-                          'glpi_consumableitems'  => 'id',
-                          'glpi_consumables'      => 'cartridgeitems_id'
-                       ]
-                    ];
-
-                    $linktype  = 'ConsumableItem';
-                    $linkfield = 'consumableitems_id';
-                }
-
-                if ($itemtype == 'Item_DeviceControl') {
-                    $criteria['INNER JOIN']['glpi_devicecontrols'] = [
-                       'ON' => [
-                          'glpi_items_devicecontrols'   => 'devicecontrols_id',
-                          'glpi_devicecontrols'         => 'id'
-                       ]
-                    ];
-
-                    $linktype = 'DeviceControl';
-                    $linkfield = 'devicecontrols_id';
-                }
-
-                $linktable = getTableForItemType($linktype);
-
-                $criteria['SELECT'] = [
-                   'glpi_infocoms.entities_id',
-                   $linktype::getNameField(),
-                   "$itemtable.*"
-                ];
-
-                $criteria['WHERE'] = [
-                   'glpi_infocoms.itemtype'      => $itemtype,
-                   'glpi_infocoms.suppliers_id'  => $instID,
-                ] + getEntitiesRestrictCriteria($linktable);
-
-                $criteria['ORDERBY'] = [
-                   'glpi_infocoms.entities_id',
-                   "$linktable." . $linktype::getNameField()
-                ];
-
-                $iterator = $DB->request($criteria);
-                $nb = count($iterator);
 
                 if ($nb > $_SESSION['glpilist_limit']) {
                     echo "<tr class='tab_bg_1'>";
@@ -631,7 +640,7 @@ class Supplier extends CommonDBTM
                     echo "<td class='center'>-</td><td class='center'>-</td></tr>";
                 } elseif ($nb) {
                     $prem = true;
-                    while ($data = $iterator->next()) {
+                    foreach ($iterator as $data) {
                         $name = $data[$linktype::getNameField()];
                         if ($_SESSION["glpiis_ids_visible"] || empty($data["name"])) {
                             $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
@@ -687,13 +696,10 @@ class Supplier extends CommonDBTM
     {
         global $DB;
 
-        $suppliers = $DB->request([
-           'SELECT' => ["id"],
-           'FROM' => 'glpi_suppliers',
-           'WHERE' => ['email' => $email]
-        ]);
-
-        return $suppliers;
+        return array_map(
+            static fn (int $id): array => ['id' => $id],
+            MappedReads::identifiers($DB, self::getTable(), 'id', ['email' => $email])
+        );
     }
 
 

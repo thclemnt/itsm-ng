@@ -33,12 +33,128 @@
 
 namespace tests\units;
 
+use Glpi\Cache\SimpleCache;
+use Html as HtmlModel;
 use org\bovigo\vfs\vfsStream;
+use Session as SessionModel;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Psr16Cache;
+use Symfony\Component\Filesystem\Filesystem;
+use Twig;
 
 /* Test for inc/html.class.php */
 
 class Html extends \GLPITestCase
 {
+    public function testTwigCompilationCacheKeepsRenderContextFresh(): void
+    {
+        global $CFG_GLPI;
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $directory = GLPI_TMP_DIR . '/twig-' . bin2hex(random_bytes(6));
+        mkdir($directory);
+        $template = $directory . '/context.twig';
+        file_put_contents($template, '{{ root_doc }}|{{ currentEntity }}|{{ currentRecursive ? "yes" : "no" }}|{{ value }}');
+        $root = $CFG_GLPI['root_doc'];
+        try {
+            $CFG_GLPI['root_doc'] = '/first';
+            $_SESSION['glpiactive_entity'] = 1;
+            $_SESSION['glpiactive_entity_recursive'] = false;
+            $first = Twig::load($directory);
+            $this->string($first->getCache())->isEqualTo(GLPI_CACHE_DIR . '/twig');
+            $this->boolean($first->isAutoReload())->isTrue();
+            $this->string($first->render('context.twig', ['value' => '<first>']))
+                ->isEqualTo('/first|1|no|&lt;first&gt;');
+            $key = $first->getCache(false)->generateKey('context.twig', $first->getTemplateClass('context.twig'));
+            $this->boolean(is_file($key))->isTrue();
+
+            $CFG_GLPI['root_doc'] = '/second';
+            $_SESSION['glpiactive_entity'] = 2;
+            $_SESSION['glpiactive_entity_recursive'] = true;
+            $second = Twig::load($directory);
+            $this->object($second)->isNotIdenticalTo($first);
+            $this->string($second->render('context.twig', ['value' => 'second']))
+                ->isEqualTo('/second|2|yes|second');
+            $this->string($second->getTemplateClass('context.twig'))
+                ->isEqualTo($first->getTemplateClass('context.twig'));
+            $this->boolean($second->isTemplateFresh('context.twig', time() + 1))->isTrue();
+            touch($template, time() + 10);
+            clearstatcache(true, $template);
+            $this->boolean($second->isTemplateFresh('context.twig', time()))->isFalse();
+
+            $uncached = Twig::load($directory, false, true);
+            $this->boolean($uncached->getCache())->isFalse();
+            $this->boolean($uncached->isDebug())->isTrue();
+            $this->string($uncached->render('context.twig', ['value' => 'uncached']))
+                ->isEqualTo('/second|2|yes|uncached');
+        } finally {
+            $CFG_GLPI['root_doc'] = $root;
+            Twig::clearCache();
+            (new Filesystem())->remove($directory);
+        }
+    }
+
+    public function testInstallerTemplatesCanRenderWithoutACompilationCache(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        require_once GLPI_ROOT . '/src/twig/twig.utils.php';
+        Twig::clearCache();
+        ob_start();
+        try {
+            renderTwigTemplate('install/error.twig', [], '/templates', false);
+            $output = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $this->string($output)->contains('action="install.php?step=languages"');
+        $this->boolean(is_dir(GLPI_CACHE_DIR . '/twig'))->isFalse();
+    }
+
+    public function testTwigOptionalMacroArgumentsKeepTheirNullDefaults(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $twig = Twig::load(GLPI_ROOT . '/templates', false);
+        $deprecations = [];
+        set_error_handler(static function ($severity, $message) use (&$deprecations) {
+            if ($severity === E_USER_DEPRECATED) {
+                $deprecations[] = $message;
+                return true;
+            }
+            return false;
+        });
+        try {
+            $input = $twig->createTemplate('{% from "macros.twig" import input %}{{ input("field", "<value>") }}')->render([]);
+            $checked = $twig->createTemplate('{% from "macros.twig" import input %}{{ input(name: "named", value: "yes", required: true, checked: true) }}')->render([]);
+            $button = $twig->createTemplate('{% from "macros.twig" import button %}{{ button("submit", "Continue") }}')->render([]);
+        } finally {
+            restore_error_handler();
+        }
+        $this->array($deprecations)->isEmpty();
+        $this->string($input)->contains('type="text"')->contains('name="field"')
+            ->contains('value="&lt;value&gt;"')->notContains('required')->notContains('checked');
+        $this->string($checked)->contains('name="named"')->contains('required')->contains('checked');
+        $this->string($button)->contains('type="submit"')->contains('name=""')->contains('Continue');
+    }
+
+    public function testTwigClearRemovesOnlyCompiledTemplates(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $sentinel = GLPI_CACHE_DIR . '/twig-unrelated-' . bin2hex(random_bytes(6));
+        file_put_contents($sentinel, 'keep');
+        $directory = GLPI_CACHE_DIR . '/twig/test-clear';
+        if (!is_dir($directory)) {
+            mkdir($directory, 0777, true);
+        }
+        file_put_contents($directory . '/compiled.php', '<?php // compiled template');
+        try {
+            Twig::clearCache();
+            $this->boolean(is_dir(GLPI_CACHE_DIR . '/twig'))->isFalse();
+            $this->string(file_get_contents($sentinel))->isEqualTo('keep');
+            Twig::clearCache(); // Clearing an absent directory is harmless.
+        } finally {
+            unlink($sentinel);
+        }
+    }
+
     public function testShowToolTipOnClickUsesNativePopover()
     {
         $output = \Html::showToolTip(
@@ -497,103 +613,94 @@ class Html extends \GLPITestCase
            'other.css',
            'other-min.css'
         ];
-        $dir = str_replace(realpath(GLPI_ROOT), '', realpath(GLPI_TMP_DIR));
-        $base_expected = '<link rel="stylesheet" type="text/css" href="'.
-           $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'" %attrs>';
-        $base_attrs = 'media="all"';
+        $this->withTemporaryWebResources($fake_files, function (string $dir) use ($CFG_GLPI): void {
+            $base_expected = '<link rel="stylesheet" type="text/css" href="'.
+               $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'" %attrs>';
+            $base_attrs = 'media="all"';
 
-        //create test files
-        foreach ($fake_files as $fake_file) {
-            touch(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css'))->isIdenticalTo($expected);
 
-        //expect minified file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
+            //explicitely require not minified file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
 
-        //explicitely require not minified file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
+            //activate debug mode: expect not minified file
+            $_SESSION['glpi_use_mode'] = SessionModel::DEBUG_MODE;
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
 
-        //activate debug mode: expect not minified file
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
-        $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['nofile.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/nofile.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['nofile.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/nofile.css'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['other.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/other.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['other.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/other.css'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['other-min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/other-min.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['other-min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/other-min.css'))->isIdenticalTo($expected);
+            //expect minified file, print media
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', 'media="print"'],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
 
-        //expect minified file, print media
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', 'media="print"'],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
+            //expect minified file, screen media
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
 
-        //expect minified file, screen media
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
+            //expect minified file and specific version
+            $fake_version = '0.0.1';
+            $expected = str_replace(
+                ['%url', '%attrs', ITSM_VERSION],
+                ['file.min.css', $base_attrs, $fake_version],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
 
-        //expect minified file and specific version
-        $fake_version = '0.0.1';
-        $expected = str_replace(
-            ['%url', '%attrs', ITSM_VERSION],
-            ['file.min.css', $base_attrs, $fake_version],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
-
-        //expect minified file with added attributes
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', 'attribute="one" ' . $base_attrs],
-            $base_expected
-        );
-        $this->string($expected, \Html::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
-
-        //remove test files
-        foreach ($fake_files as $fake_file) {
-            unlink(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file with added attributes
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', 'attribute="one" ' . $base_attrs],
+                $base_expected
+            );
+            $this->string(HtmlModel::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
+        });
     }
 
     public function testScript()
@@ -607,77 +714,101 @@ class Html extends \GLPITestCase
            'other.js',
            'other-min.js'
         ];
-        $dir = str_replace(realpath(GLPI_ROOT), '', realpath(GLPI_TMP_DIR));
-        $base_expected = '<script type="text/javascript" src="'.
-           $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'"></script>';
+        $this->withTemporaryWebResources($fake_files, function (string $dir) use ($CFG_GLPI): void {
+            $base_expected = '<script type="text/javascript" src="'.
+               $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'"></script>';
 
-        //create test files
-        foreach ($fake_files as $fake_file) {
-            touch(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file
+            $expected = str_replace(
+                '%url',
+                'file.min.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/file.js'))->isIdenticalTo($expected);
 
-        //expect minified file
-        $expected = str_replace(
-            '%url',
-            'file.min.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
+            //explicitely require not minified file
+            $expected = str_replace(
+                '%url',
+                'file.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
 
-        //explicitely require not minified file
-        $expected = str_replace(
-            '%url',
-            'file.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
+            //activate debug mode: expect not minified file
+            $_SESSION['glpi_use_mode'] = SessionModel::DEBUG_MODE;
+            $expected = str_replace(
+                '%url',
+                'file.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/file.js'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
 
-        //activate debug mode: expect not minified file
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
-        $expected = str_replace(
-            '%url',
-            'file.js',
-            $base_expected
-        );
-        $this->string($expected, \Html::script($dir . '/file.js'))->isIdenticalTo($expected);
-        $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'nofile.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/nofile.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'nofile.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/nofile.js'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'other.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/other.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'other.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/other.js'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'other-min.js',
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/other-min.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'other-min.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/other-min.js'))->isIdenticalTo($expected);
+            //expect minified file and specific version
+            $fake_version = '0.0.1';
+            $expected = str_replace(
+                ['%url', ITSM_VERSION],
+                ['file.min.js', $fake_version],
+                $base_expected
+            );
+            $this->string(HtmlModel::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
+        });
+    }
 
-        //expect minified file and specific version
-        $fake_version = '0.0.1';
-        $expected = str_replace(
-            ['%url', ITSM_VERSION],
-            ['file.min.js', $fake_version],
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
-
-        //remove test files
-        foreach ($fake_files as $fake_file) {
-            unlink(GLPI_TMP_DIR . '/' . $fake_file);
+    /** Html resource URLs are relative to the application tree, not GLPI_TMP_DIR. */
+    private function withTemporaryWebResources(array $files, callable $test): void
+    {
+        $dir = '/tests/units/.html-resources-' . bin2hex(random_bytes(8));
+        $path = GLPI_ROOT . $dir;
+        $hadMode = array_key_exists('glpi_use_mode', $_SESSION);
+        $mode = $_SESSION['glpi_use_mode'] ?? null;
+        $created = false;
+        try {
+            $created = mkdir($path, 0700);
+            $this->boolean($created)->isTrue();
+            foreach ($files as $file) {
+                $this->boolean(touch($path . '/' . $file))->isTrue();
+            }
+            $_SESSION['glpi_use_mode'] = SessionModel::NORMAL_MODE;
+            $test($dir);
+        } finally {
+            if ($hadMode) {
+                $_SESSION['glpi_use_mode'] = $mode;
+            } else {
+                unset($_SESSION['glpi_use_mode']);
+            }
+            if ($created) {
+                foreach ($files as $file) {
+                    if (is_file($path . '/' . $file)) {
+                        unlink($path . '/' . $file);
+                    }
+                }
+                rmdir($path);
+            }
         }
     }
 
@@ -1059,6 +1190,71 @@ SCSS
         // Simple scss file hash corresponds to self md5
         $this->string(\Html::getScssFileHash(vfsStream::url('glpi/css/another.scss')))
            ->isEqualTo($files_md5['another.scss']);
+
+        global $CFG_GLPI, $GLPI_CACHE;
+        $cache = $GLPI_CACHE;
+        try {
+            $GLPI_CACHE = new SimpleCache(new Psr16Cache(new ArrayAdapter()), '', false);
+            $GLPI_CACHE->set('css_raw_file_css/bootstrap-itsm.scss', HtmlModel::getScssFileHash(GLPI_ROOT . '/css/bootstrap-itsm.scss'));
+            $args = ['file' => 'css/bootstrap-itsm', 'v' => 'scss-unit'];
+            $normal = HtmlModel::compileScss($args);
+            $compact = HtmlModel::compileScss($args + ['variant' => 'compact']);
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.25rem\s*!important;?\s*\}/', $normal))
+                ->isIdenticalTo(1);
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.125rem\s*!important;?\s*\}/', $compact))
+                ->isIdenticalTo(1);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($normal);
+            $this->string(HtmlModel::compileScss($args + ['variant' => 'compact']))->isIdenticalTo($compact);
+            $cacheKey = 'css_scss-unit_css/bootstrap-itsm';
+            $sentinel = '.cached-marker{display:none}';
+            $GLPI_CACHE->set($cacheKey, $sentinel);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($sentinel);
+            $this->string(HtmlModel::compileScss($args + ['nocache' => true]))->isIdenticalTo($normal);
+            $this->string($GLPI_CACHE->get($cacheKey))->isIdenticalTo($sentinel);
+            $this->string(HtmlModel::compileScss($args + ['reload' => true]))->isIdenticalTo($normal);
+            $this->string($GLPI_CACHE->get($cacheKey))->isIdenticalTo($normal);
+            $debug = HtmlModel::compileScss($args + ['debug' => true]);
+            $this->integer(preg_match(
+                '~sourceMappingURL=data:application/json(?:;charset=[^;,]+)?(;base64)?,([^\s*]+)~',
+                $debug,
+                $sourceMap
+            ))->isIdenticalTo(1);
+            $map = json_decode(
+                ($sourceMap[1] ?? '') === ';base64' ? base64_decode($sourceMap[2]) : rawurldecode($sourceMap[2]),
+                true,
+                flags: JSON_THROW_ON_ERROR
+            );
+            $this->integer($map['version'])->isIdenticalTo(3);
+            $this->array($map['sources'])->isNotEmpty();
+            $this->string($map['sourceRoot'])->isIdenticalTo($CFG_GLPI['root_doc'] . '/');
+            $this->integer(preg_match('/\.m-1\s*\{\s*margin:\s*0?\.25rem\s*!important;?\s*\}/', $debug))
+                ->isIdenticalTo(1);
+            $this->string(HtmlModel::compileScss($args + ['debug' => true]))->isIdenticalTo($debug);
+            $this->string(HtmlModel::compileScss($args))->isIdenticalTo($normal);
+
+            foreach ([
+                ['css/styles', '#network_container', 'body', 'font-size', '12px', '12px'],
+                ['css/itsm2', '.form-section-content', '\.form-section-content', 'padding', '1\.5rem', '0?\.75rem'],
+            ] as [$file, $selector, $rule, $property, $normalPattern, $compactPattern]) {
+                $GLPI_CACHE->set('css_raw_file_' . $file . '.scss', HtmlModel::getScssFileHash(GLPI_ROOT . '/' . $file . '.scss'));
+                $styleArgs = ['file' => $file, 'v' => 'scss-unit'];
+                foreach ([[$normalPattern, []], [$compactPattern, ['variant' => 'compact']]] as [$valuePattern, $variantArgs]) {
+                    $compileArgs = $styleArgs + $variantArgs;
+                    $stylesheet = HtmlModel::compileScss($compileArgs);
+                    $this->string($stylesheet)->contains($selector);
+                    if ($file === 'css/itsm2') {
+                        $this->integer(preg_match('~--header-height:\s*3\.5rem(?:;|\})~', $stylesheet))->isIdenticalTo(1);
+                    }
+                    $pattern = '~' . $rule . '\s*\{[^{}]*' . $property . ':\s*' . $valuePattern . '(?:;|\})~';
+                    $this->integer(preg_match($pattern, $stylesheet))->isIdenticalTo(1);
+                    $mappedStylesheet = HtmlModel::compileScss($compileArgs + ['debug' => true]);
+                    $this->string($mappedStylesheet)->contains($selector)->contains('sourceMappingURL=data:application/json');
+                    $this->integer(preg_match($pattern, $mappedStylesheet))->isIdenticalTo(1);
+                }
+            }
+        } finally {
+            $GLPI_CACHE = $cache;
+        }
     }
 
 

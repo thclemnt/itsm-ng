@@ -77,8 +77,6 @@ class SlaLevel extends LevelAgreementLevel
     **/
     public function showForSLA(SLA $sla)
     {
-        global $DB;
-
         $ID = $sla->getField('id');
         if (!$sla->can($ID, READ)) {
             return false;
@@ -123,14 +121,8 @@ class SlaLevel extends LevelAgreementLevel
             echo "</div>";
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'slas_id'   => $ID
-           ],
-           'ORDER'  => 'execution_time'
-        ]);
-        $numrows = count($iterator);
+        $rows = $this->find(['slas_id' => $ID], ['execution_time', 'id']);
+        $numrows = count($rows);
 
         echo "<div class='spaced'>";
         if ($canedit && $numrows) {
@@ -159,7 +151,7 @@ class SlaLevel extends LevelAgreementLevel
             )
         );
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             Session::addToNavigateListItems('SlaLevel', $data["id"]);
 
             echo "<tr class='tab_bg_2'>";
@@ -291,23 +283,7 @@ class SlaLevel extends LevelAgreementLevel
     **/
     public static function getFirstSlaLevel($slas_id)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'slas_id'   => $slas_id,
-              'is_active' => 1
-           ],
-           'ORDER'  => 'execution_time ASC',
-           'LIMIT'  => 1
-        ]);
-
-        if ($result = $iterator->next()) {
-            return $result['id'];
-        }
-        return 0;
+        return static::serviceRepository()->firstLevel((int)$slas_id);
     }
 
 
@@ -321,34 +297,6 @@ class SlaLevel extends LevelAgreementLevel
     **/
     public static function getNextSlaLevel($slas_id, $slalevels_id)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'execution_time',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['id' => $slalevels_id]
-        ]);
-
-        if ($result = $iterator->next()) {
-            $execution_time = $result['execution_time'];
-
-            $lvl_iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'slas_id'         => $slas_id,
-                  'is_active'       => 1,
-                  'id'              => ['<>', $slalevels_id],
-                  'execution_time'  => ['>', $execution_time]
-               ],
-               'ORDER'  => 'execution_time ASC',
-               'LIMIT'  => 1
-            ]);
-
-            if ($result = $lvl_iterator->next()) {
-                return $result['id'];
-            }
-        }
-        return 0;
+        return static::serviceRepository()->nextLevel((int)$slas_id, (int)$slalevels_id);
     }
 }

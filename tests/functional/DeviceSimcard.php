@@ -34,6 +34,8 @@
 namespace tests\units;
 
 use DbTestCase;
+use DeviceSimcardType;
+use Manufacturer;
 
 class DeviceSimcard extends DbTestCase
 {
@@ -55,11 +57,16 @@ class DeviceSimcard extends DbTestCase
         $this->login();
         $obj = new \DeviceSimcard();
 
+        $manufacturer = (new Manufacturer())->add(['name' => $this->getUniqueString()]);
+        $type = (new DeviceSimcardType())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$manufacturer)->isGreaterThan(0);
+        $this->integer((int)$type)->isGreaterThan(0);
+
         // Add
         $in = [
               'designation'              => $this->method,
-              'manufacturers_id'         => $this->getUniqueInteger(),
-              'devicesimcardtypes_id'    => $this->getUniqueInteger(),
+              'manufacturers_id'         => $manufacturer,
+              'devicesimcardtypes_id'    => $type,
               'voltage'                  => $this->getUniqueInteger(),
               'allow_voip'               => '1'
         ];
@@ -85,12 +92,17 @@ class DeviceSimcard extends DbTestCase
         ]);
         $this->integer($id)->isGreaterThan(0);
 
+        $manufacturer = (new Manufacturer())->add(['name' => $this->getUniqueString()]);
+        $type = (new DeviceSimcardType())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$manufacturer)->isGreaterThan(0);
+        $this->integer((int)$type)->isGreaterThan(0);
+
         // Update
         $in = [
               'id'                       => $id,
               'designation'              => $this->method,
-              'manufacturers_id'         => $this->getUniqueInteger(),
-              'devicesimcardtypes_id'    => $this->getUniqueInteger(),
+              'manufacturers_id'         => $manufacturer,
+              'devicesimcardtypes_id'    => $type,
               'voltage'                  => $this->getUniqueInteger(),
               'allow_voip'               => '1'
         ];

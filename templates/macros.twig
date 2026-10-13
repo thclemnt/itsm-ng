@@ -1,4 +1,4 @@
-{% macro input(name, value, type = "text", class, id, placeholder, required, autocomplete = "on", checked) %}
+{% macro input(name, value, type = "text", class = null, id = null, placeholder = null, required = null, autocomplete = "on", checked = null) %}
     <input  class="{{ class }}" id="{{ id }}" type="{{ type }}" name="{{ name }}" value="{{ value|e }}" placeholder="{{ palceholder }}" {{ required ? "required"}} {{checked ? 'checked'}} "autocomplete"="{{ autocomplete }}"/>
 {% endmacro %}
 
@@ -6,7 +6,7 @@
     <textarea name="{{ name }}" rows="{{ rows }}" cols="{{ cols }}">{{ value|e }}</textarea>
 {% endmacro %}
 
-{% macro button(type = "button", text, name, value) %}
+{% macro button(type = "button", text = null, name = null, value = null) %}
     {% if type != "submit" %}
     <button type="{{type|default("submit")}}" aria-label="{{ name }}" name="{{name|default("submit")}}" class="{{class|default("submit")}}" value="{{ value|e }}"/></button>
     {% else %}

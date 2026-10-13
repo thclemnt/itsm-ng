@@ -1,0 +1,48 @@
+name: Prepare test database and install ITSM-ng
+description: Prepare the existing MariaDB or PostgreSQL service, then install the application test database.
+inputs:
+  container:
+    description: GitHub service container ID
+    required: true
+  provider:
+    description: Database provider (mysql or pgsql)
+    required: true
+  port:
+    description: Published database port
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Prepare native database prerequisites
+      shell: bash
+      env:
+        TEST_DATABASE_CONTAINER: ${{ inputs.container }}
+        TEST_DATABASE_PROVIDER: ${{ inputs.provider }}
+      run: |
+        set -euo pipefail
+        case "$TEST_DATABASE_PROVIDER" in
+          mysql)
+            docker exec "$TEST_DATABASE_CONTAINER" mariadb-tzinfo-to-sql /usr/share/zoneinfo | docker exec -i "$TEST_DATABASE_CONTAINER" mariadb -uroot -p"$DB_PASSWORD" mysql
+            docker exec "$TEST_DATABASE_CONTAINER" mariadb -uroot -p"$DB_PASSWORD" -e "GRANT SELECT ON mysql.time_zone_name TO '$DB_USER'@'%'"
+            ;;
+          pgsql)
+            docker exec "$TEST_DATABASE_CONTAINER" psql -U "$DB_USER" -d "$DB_DATABASE" --set=ON_ERROR_STOP=1 -c 'ALTER SYSTEM SET max_locks_per_transaction = 512'
+            docker restart "$TEST_DATABASE_CONTAINER"
+            ready=false
+            for attempt in $(seq 1 30); do
+              if docker exec "$TEST_DATABASE_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_DATABASE"; then ready=true; break; fi
+              sleep 1
+            done
+            test "$ready" = true
+            ;;
+          *) echo "Unsupported test database provider: $TEST_DATABASE_PROVIDER" >&2; exit 1 ;;
+        esac
+    - name: Install through the public command
+      shell: bash
+      env:
+        TEST_DATABASE_PROVIDER: ${{ inputs.provider }}
+        TEST_DATABASE_PORT: ${{ inputs.port }}
+      run: >-
+        php bin/console db:install --config-dir="$GITHUB_WORKSPACE/tests/config"
+        --db-type="$TEST_DATABASE_PROVIDER" --db-host=127.0.0.1 --db-port="$TEST_DATABASE_PORT"
+        --db-name="$DB_DATABASE" --db-user="$DB_USER" --db-password="$DB_PASSWORD" --no-interaction

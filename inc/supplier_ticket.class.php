@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILActorRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -59,26 +63,8 @@ class Supplier_Ticket extends CommonITILActor
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_suppliers'  => [
-                 'ON' => [
-                    $this->getTable() => 'suppliers_id',
-                    'glpi_suppliers'  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              $this->getTable() . '.tickets_id'   => $items_id,
-              'glpi_suppliers.email'              => $email
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            return true;
-        }
-        return false;
+        return Orm::read($DB, static fn (EntityManager $manager): bool =>
+            (new ITILActorRepository($manager))->hasSupplierEmailForTicket((int)$items_id, $email));
     }
 
     public function post_addItem()

@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
 use Glpi\Console\AbstractCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\OidcRepository;
 
 class OidcUpdateCommand extends AbstractCommand
 {
@@ -57,8 +59,7 @@ class OidcUpdateCommand extends AbstractCommand
 
         global $DB;
 
-        $querry = "UPDATE glpi_oidc_users SET `update` = 0;";
-        $DB->queryOrDie($querry);
+        (new OidcRepository(Orm::create($DB)))->requestRefresh();
 
         return 0; // Success
     }

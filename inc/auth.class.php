@@ -31,8 +31,20 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
 use Glpi\Event;
 use Glpi\Toolbox\URL;
+use itsmng\Database\AuthenticationType;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LdapRepository;
+use itsmng\Database\Repository\MailAuthenticationRepository;
+use itsmng\Database\Repository\OidcRepository;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\UserPasswordRepository;
+use itsmng\Database\Repository\UserRepository;
+use itsmng\Domain\Authentication\AuthenticationCompletion;
+use itsmng\Domain\Authentication\VerifiedLoginProvider;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -60,6 +72,9 @@ class Auth extends CommonGLPI
     /** @var int Indicates if the user password expired */
     public $password_expired = false;
 
+    /** Only modeled verification producers may own an existing-account completion. */
+    private ?AuthenticationCompletion $authenticationCompletion = null;
+
     /**
      * Indicated if user was found in the directory.
      * @var boolean
@@ -71,15 +86,15 @@ class Auth extends CommonGLPI
     /** @var bool Store user LDAP dn */
     public $user_dn = false;
 
-    public const DB_GLPI  = 1;
-    public const MAIL     = 2;
-    public const LDAP     = 3;
-    public const EXTERNAL = 4;
-    public const CAS      = 5;
-    public const X509     = 6;
-    public const API      = 7;
-    public const COOKIE   = 8;
-    public const NOT_YET_AUTHENTIFIED = 0;
+    public const DB_GLPI  = AuthenticationType::Local->value;
+    public const MAIL     = AuthenticationType::Mail->value;
+    public const LDAP     = AuthenticationType::Ldap->value;
+    public const EXTERNAL = AuthenticationType::External->value;
+    public const CAS      = AuthenticationType::Cas->value;
+    public const X509     = AuthenticationType::X509->value;
+    public const API      = AuthenticationType::Api->value;
+    public const COOKIE   = AuthenticationType::Cookie->value;
+    public const NOT_YET_AUTHENTIFIED = AuthenticationType::Pending->value;
 
     public const USER_DOESNT_EXIST       = 0;
     public const USER_EXISTS_WITH_PWD    = 1;
@@ -130,7 +145,7 @@ class Auth extends CommonGLPI
     /**
      * Check user existence in DB
      *
-     * @global DBmysql $DB
+     * @global DBAdapter $DB
      * @param  array   $options conditions : array('name'=>'glpi')
      *                                    or array('email' => 'test at test.com')
      *
@@ -140,24 +155,17 @@ class Auth extends CommonGLPI
     {
         global $DB;
 
-        $result = $DB->request(
-            'glpi_users',
-            [
-              'WHERE'    => $options,
-              'LEFT JOIN' => ['glpi_useremails' => ['FKEY' => [
-                 'glpi_users'      => 'id',
-                 'glpi_useremails' => 'users_id'
-              ]]]
-            ]
+        $row = Orm::readPrepared(
+            $DB,
+            static fn (): array => $options,
+            static fn (EntityManager $manager, array $criteria): ?array =>
+                (new UserRepository($manager))->authenticationMatch($criteria)
         );
         // Check if there is a row
-        if ($result->numrows() == 0) {
+        if ($row === null) {
             $this->addToError(__('Incorrect username or password'));
             return self::USER_DOESNT_EXIST;
         } else {
-            // Get the first result...
-            $row = $result->next();
-
             // Check if we have a password...
             if (empty($row['password'])) {
                 //If the user has an LDAP DN, then store it in the Auth object
@@ -202,7 +210,7 @@ class Auth extends CommonGLPI
 
             $protocol = Toolbox::getMailServerProtocolInstance($config['type'], false);
             if ($protocol === null) {
-                throw new \RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
+                throw new RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
             }
             if ($config['validate-cert'] === false) {
                 $protocol->setNoValidateCert(true);
@@ -214,7 +222,7 @@ class Auth extends CommonGLPI
             );
 
             return $protocol->login($login, $pass);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->addToError($e->getMessage());
             return false;
         } finally {
@@ -267,7 +275,7 @@ class Auth extends CommonGLPI
                    'condition'         => $ldap_method['condition'],
                    'user_dn'           => $this->user_dn
                 ]);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Toolbox::logError($e->getMessage());
                 $this->addToError(__('Unable to connect to the LDAP directory'));
                 return false;
@@ -364,7 +372,7 @@ class Auth extends CommonGLPI
      * If not found or can't connect to DB updates the instance variable err
      * with an eventual error message
      *
-     * @global DBmysql $DB
+     * @global DBAdapter $DB
      * @param string $name     User Login
      * @param string $password User Password
      *
@@ -374,42 +382,20 @@ class Auth extends CommonGLPI
     {
         global $CFG_GLPI, $DB;
 
+        $this->authenticationCompletion = null;
+
         $pass_expiration_delay = (int)$CFG_GLPI['password_expiration_delay'];
         $lock_delay            = (int)$CFG_GLPI['password_expiration_lock_delay'];
 
-        // SQL query
-        $result = $DB->request(
-            [
-              'SELECT' => [
-                 'id',
-                 'password',
-                 new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('password_expiration_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay
-                     )
-                 ),
-                 new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('lock_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay + $lock_delay
-                     )
-                 )
-              ],
-              'FROM'   => User::getTable(),
-              'WHERE'  =>  [
-                 'name'     => $name,
-                 'authtype' => self::DB_GLPI,
-                 'auths_id' => 0,
-              ]
-            ]
+        $row = Orm::readPrepared(
+            $DB,
+            static fn (): string => LegacyValues::decodeString((string)$name),
+            static fn (EntityManager $manager, string $login): ?array =>
+                (new UserPasswordRepository($manager))->localCredentials($login, $pass_expiration_delay, $lock_delay)
         );
 
         // Have we a result ?
-        if ($result->numrows() == 1) {
-            $row = $result->next();
+        if ($row !== null) {
             $password_db = $row['password'];
 
             if (self::checkPassword($password, $password_db)) {
@@ -445,7 +431,10 @@ class Auth extends CommonGLPI
                     $user = new User();
                     $user->update($input);
                 }
-                $this->user->getFromDBByCrit(['id' => $row['id']]);
+                if (!$this->user->getFromDBByCrit(['id' => $row['id']])) {
+                    $this->addToError(__('Incorrect username or password'));
+                    return false;
+                }
                 $this->extauth                  = 0;
                 $this->user_present             = 1;
                 $this->user->fields["authtype"] = self::DB_GLPI;
@@ -455,7 +444,7 @@ class Auth extends CommonGLPI
                 $rules  = new RuleRightCollection();
                 $groups = Group_User::getUserGroups($row['id']);
                 $groups_id = array_column($groups, 'id');
-                $result = $rules->processAllRules(
+                $evaluation = $rules->evaluateAuthentication(
                     $groups_id,
                     Toolbox::stripslashes_deep($this->user->fields),
                     [
@@ -465,9 +454,14 @@ class Auth extends CommonGLPI
                     ]
                 );
 
-                $this->user->fields = $result + [
+                $this->user->fields = $evaluation->context + [
                    '_ruleright_process' => true,
                 ];
+                $this->authenticationCompletion = new AuthenticationCompletion(
+                    (int)$row['id'],
+                    $_SESSION['glpi_currenttime'],
+                    $evaluation->outcome
+                );
 
                 return true;
             }
@@ -705,11 +699,13 @@ class Auth extends CommonGLPI
      */
     public function getAuthMethods()
     {
-
+        global $DB;
         //Return all the authentication methods in an array
         $this->authtypes = [
-           'ldap' => getAllDataFromTable('glpi_authldaps'),
-           'mail' => getAllDataFromTable('glpi_authmails')
+           'ldap' => Orm::read($DB, static fn (EntityManager $manager): array =>
+               array_column((new RecordRepository($manager))->matching('glpi_authldaps', order: ['id']), null, 'id')),
+           'mail' => Orm::read($DB, static fn (EntityManager $manager): array =>
+               array_column((new MailAuthenticationRepository($manager))->servers(), null, 'id'))
         ];
     }
 
@@ -742,6 +738,7 @@ class Auth extends CommonGLPI
     {
         global $DB, $CFG_GLPI;
 
+        $this->authenticationCompletion = null;
         $this->getAuthMethods();
         $this->user_present  = 1;
         $this->auth_succeded = false;
@@ -778,6 +775,20 @@ class Auth extends CommonGLPI
                 $this->user_present                = $this->user->getFromDBbyName(addslashes((string) $login_name));
                 $this->extauth                     = 1;
                 $user_dn                           = false;
+                // Credential provider and stored source are independent. Other
+                // account sources retain their unmodeled synchronization path.
+                if ($this->user_present && in_array($authtype, [self::API, self::COOKIE], true)
+                    && (int)$this->user->fields['authtype'] === self::DB_GLPI
+                    && (int)$this->user->fields['auths_id'] === 0) {
+                    $this->authenticationCompletion = new AuthenticationCompletion(
+                        (int)$this->user->getID(),
+                        $_SESSION['glpi_currenttime'],
+                        provider:
+                        $authtype === self::API
+                            ? VerifiedLoginProvider::ApiToken
+                            : VerifiedLoginProvider::RememberCookie
+                    );
+                }
 
                 if (array_key_exists('_useremails', $this->user->fields)) {
                     $email = $this->user->fields['_useremails'];
@@ -800,7 +811,7 @@ class Auth extends CommonGLPI
                             $ldapservers[] = $authldap->fields;
                         }
                     } else { // User has never been authenticated : try all active ldap server to find the right one
-                        foreach (getAllDataFromTable('glpi_authldaps', ['is_active' => 1]) as $ldap_config) {
+                        foreach ((new RecordRepository(Orm::create($DB)))->matching('glpi_authldaps', ['is_active' => true], ['id']) as $ldap_config) {
                             $ldapservers[] = $ldap_config;
                         }
                     }
@@ -835,12 +846,15 @@ class Auth extends CommonGLPI
                                       'value'  => $login_name
                                    ],
                                 ]);
-                            } catch (\RuntimeException $e) {
+                            } catch (RuntimeException $e) {
                                 Toolbox::logError($e->getMessage());
                                 $user_dn = false;
                             }
                             if ($user_dn) {
                                 $this->user_found = true;
+                                // The actual producer, even a failed/partial retrieval,
+                                // owns its legacy input until its outcome is modeled.
+                                $this->authenticationCompletion = null;
                                 $this->user->fields['auths_id'] = $ldap_method['id'];
                                 $this->user->getFromLDAP(
                                     $ds,
@@ -859,6 +873,7 @@ class Auth extends CommonGLPI
                     && ($authtype == self::EXTERNAL)
                 ) {
                     // Case of using external auth and no LDAP servers, so get data from external auth
+                    $this->authenticationCompletion = null;
                     $this->user->getFromSSO();
                 } else {
                     if ($this->user->fields['authtype'] == self::LDAP) {
@@ -978,7 +993,14 @@ class Auth extends CommonGLPI
                     $this->auth_succeded = false;
                 }
             } else {
-                if ($this->user_present) {
+                if ($this->user_present && $this->authenticationCompletion !== null) {
+                    if (!$this->user->completeAuthentication($this->authenticationCompletion)) {
+                        $this->addToError(__('Unable to update user authentication information'));
+                        $this->auth_succeded = false;
+                    }
+                } elseif ($this->user_present) {
+                    // LDAP/mail/SSO and nonlocal alternate sources retain their
+                    // explicit legacy synchronization input, not a guessed patch.
                     // First stripslashes to avoid double slashes
                     $input = Toolbox::stripslashes_deep($this->user->fields);
                     // Then ensure addslashes
@@ -1109,28 +1131,14 @@ class Auth extends CommonGLPI
            self::DB_GLPI => __('Authentication on ITSM-NG database'),
         ];
 
-        $result = $DB->request([
-           'FROM'   => 'glpi_authldaps',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'is_active' => 1
-           ]
-        ])->next();
-
-        if ($result['cpt'] > 0) {
+        if (Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->activeCount()) > 0) {
             $methods[self::LDAP]     = __('Authentication on a LDAP directory');
             $methods[self::EXTERNAL] = __('External authentications');
         }
 
-        $result = $DB->request([
-           'FROM'   => 'glpi_authmails',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'is_active' => 1
-           ]
-        ])->next();
-
-        if ($result['cpt'] > 0) {
+        if (Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new MailAuthenticationRepository($manager))->activeCount()) > 0) {
             $methods[self::MAIL] = __('Authentication on mail server');
         }
 
@@ -1474,14 +1482,12 @@ class Auth extends CommonGLPI
                 case self::LDAP:
                     //Look it the auth server still exists !
                     // <- Bad idea : id not exists unable to change anything
-                    // SQL query
-                    $result = $DB->request([
-                       'SELECT' => 'name',
-                       'FROM' => 'glpi_authldaps',
-                       'WHERE' => ['id' => $user->getField('auths_id'), 'is_active' => 1],
-                    ]);
-
-                    if ($result->numrows() > 0) {
+                    if (Orm::readPrepared(
+                        $DB,
+                        static fn (): int => (int)$user->getField('auths_id'),
+                        static fn (EntityManager $manager, int $directory): bool =>
+                            (new LdapRepository($manager))->isActive($directory)
+                    )) {
                         echo "<table class='tab_cadre' aria-label='Synchronisation'><tr class='tab_bg_2'><td>";
                         echo "<input type='hidden' name='id' value='" . $user->getID() . "'>";
                         echo "<input class=submit type='submit' name='force_ldap_resynch' value='" .
@@ -1809,23 +1815,10 @@ class Auth extends CommonGLPI
                'logout'       => URL::sanitizeURL(trim((string) $_POST["logout"])),
                'sso_link_users' => $_POST['sso_link_users'],
             ];
-            $DB->updateOrInsert("glpi_oidc_config", $oidc_result, ['id'   => 0]);
+            (new OidcRepository(Orm::create($DB)))->saveConfiguration($oidc_result);
         }
-        $criteria = "SELECT * FROM glpi_oidc_config";
-        $iterators = $DB->request($criteria);
-        $oidc_db = [];
-        foreach ($iterators as $iterator) {
-            $oidc_db['Provider'] = $iterator['Provider'];
-            $oidc_db['ClientID'] = $iterator['ClientID'];
-            $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt($iterator['ClientSecret']);
-            $oidc_db['is_activate'] = $iterator['is_activate'];
-            $oidc_db['is_forced'] = $iterator['is_forced'];
-            $oidc_db['scope'] = $iterator['scope'];
-            $oidc_db['proxy'] = $iterator['proxy'];
-            $oidc_db['cert'] = $iterator['cert'];
-            $oidc_db['logout'] = $iterator['logout'];
-            $oidc_db['sso_link_users'] = $iterator['sso_link_users'];
-        }
+        $oidc_db = (new OidcRepository(Orm::create($DB)))->configuration();
+        $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
 
         $form = [
            'action' => $CFG_GLPI['root_doc'] . '/front/auth.oidc.php',
@@ -1921,14 +1914,11 @@ class Auth extends CommonGLPI
 
         // Get LDAP
         if (Toolbox::canUseLdap()) {
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_authldaps',
-               'WHERE'  => [
-                  'is_active' => 1
-               ],
-               'ORDER'  => ['name']
-            ]);
-            while ($data = $iterator->next()) {
+            $directories = Orm::read(
+                $DB,
+                static fn (EntityManager $manager): array => (new LdapRepository($manager))->directories(true)
+            );
+            foreach ($directories as $data) {
                 $elements['ldap-' . $data['id']] = $data['name'];
                 if ($data['is_default'] == 1) {
                     $elements['_default'] = 'ldap-' . $data['id'];
@@ -1937,14 +1927,11 @@ class Auth extends CommonGLPI
         }
 
         // GET Mail servers
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_authmails',
-           'WHERE'  => [
-              'is_active' => 1
-           ],
-           'ORDER'  => ['name']
-        ]);
-        while ($data = $iterator->next()) {
+        $servers = Orm::read(
+            $DB,
+            static fn (EntityManager $manager): array => (new MailAuthenticationRepository($manager))->servers(true)
+        );
+        foreach ($servers as $data) {
             $elements['mail-' . $data['id']] = $data['name'];
         }
 

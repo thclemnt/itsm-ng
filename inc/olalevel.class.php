@@ -82,8 +82,6 @@ class OlaLevel extends LevelAgreementLevel
     **/
     public function showForOLA(OLA $ola)
     {
-        global $DB;
-
         $ID = $ola->getField('id');
         if (!$ola->can($ID, READ)) {
             return false;
@@ -127,12 +125,8 @@ class OlaLevel extends LevelAgreementLevel
             echo "</div>";
         }
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_olalevels',
-           'WHERE'  => ['olas_id' => $ID],
-           'ORDER'  => 'execution_time'
-        ]);
-        $numrows = count($iterator);
+        $rows = $this->find(['olas_id' => $ID], ['execution_time', 'id']);
+        $numrows = count($rows);
 
         echo "<div class='spaced'>";
         if ($canedit && $numrows) {
@@ -161,7 +155,7 @@ class OlaLevel extends LevelAgreementLevel
             )
         );
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             Session::addToNavigateListItems('OlaLevel', $data["id"]);
 
             echo "<tr class='tab_bg_2'>";
@@ -287,24 +281,7 @@ class OlaLevel extends LevelAgreementLevel
     **/
     public static function getFirstOlaLevel($olas_id)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_olalevels',
-           'WHERE'  => [
-              'olas_id'   => $olas_id,
-              'is_active' => 1
-           ],
-           'ORDER'  => 'execution_time ASC',
-           'LIMIT'  => 1
-        ]);
-
-        if (count($iterator)) {
-            $result = $iterator->next();
-            return $result['id'];
-        }
-        return 0;
+        return static::serviceRepository()->firstLevel((int)$olas_id);
     }
 
 
@@ -318,36 +295,6 @@ class OlaLevel extends LevelAgreementLevel
     **/
     public static function getNextOlaLevel($olas_id, $olalevels_id)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'execution_time',
-           'FROM'   => 'glpi_olalevels',
-           'WHERE'  => ['id' => $olalevels_id]
-        ]);
-
-        if (count($iterator)) {
-            $result = $iterator->next();
-            $execution_time = $result['execution_time'];
-
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => 'glpi_olalevels',
-               'WHERE'  => [
-                  'olas_id'         => $olas_id,
-                  'id'              => ['<>', $olalevels_id],
-                  'execution_time'  => ['>', $execution_time],
-                  'is_active'       => 1
-               ],
-               'ORDER'  => 'execution_time ASC',
-               'LIMIT'  => 1
-            ]);
-
-            if (count($iterator)) {
-                $result = $iterator->next();
-                return $result['id'];
-            }
-        }
-        return 0;
+        return static::serviceRepository()->nextLevel((int)$olas_id, (int)$olalevels_id);
     }
 }

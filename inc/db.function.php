@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\EntityScopeReadOperation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -665,10 +667,11 @@ function getEntitiesRestrictCriteria(
     $field = '',
     $value = '',
     $is_recursive = false,
-    $complete_request = false
+    $complete_request = false,
+    ?EntityScopeReadOperation $treeReads = null
 ) {
-    $dbu = new DbUtils();
-    $res = $dbu->getEntitiesRestrictCriteria(
+    $dbu = new DbUtils($treeReads);
+    $restriction = $dbu->getEntityRestriction(
         $table,
         $field,
         $value,
@@ -676,10 +679,5 @@ function getEntitiesRestrictCriteria(
         $complete_request
     );
 
-    // Add another layer to the array to prevent losing duplicates keys if the
-    // result of the function is merged with another array
-    if (count($res)) {
-        $res = [crc32(serialize($res)) => $res];
-    }
-    return $res;
+    return $restriction->wrappedCriteria();
 }

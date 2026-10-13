@@ -1,5 +1,10 @@
 <?php
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\MappedReads;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\PlacementRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -218,26 +223,8 @@ class PDU_Rack extends CommonDBRelation
     {
         global $DB;
 
-        // search used racked (or sided mounted) pdus
-        $used = [];
-        foreach (
-            $DB->request([
-            'FROM' => $this->getTable()
-            ]) as $not_racked
-        ) {
-            $used[] = $not_racked['pdus_id'];
-        }
-        foreach (
-            $DB->request([
-            'SELECT' => 'items_id',
-            'FROM'   => Item_Rack::getTable(),
-            'WHERE'  => [
-              'itemtype' => 'PDU'
-            ]
-            ]) as $racked
-        ) {
-            $used[] = $racked['items_id'];
-        };
+        $used = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new PlacementRepository($manager))->pduSelection());
 
         echo "<div class='center'>";
 
@@ -252,7 +239,7 @@ class PDU_Rack extends CommonDBRelation
         echo "<tr class='tab_bg_1'>";
         echo "<td><label for='dropdown_pdus_id$rand'>" . PDU::getTypeName(1) . "</label></td>";
         echo "<td>";
-        PDU::dropdown([
+        echo PDU::dropdown([
            'value'       => $this->fields["pdus_id"],
            'rand'        => $rand,
            'used'        => $used,
@@ -276,7 +263,7 @@ class PDU_Rack extends CommonDBRelation
         echo "<tr class='tab_bg_1'>";
         echo "<td><label for='dropdown_racks_id$rand'>" . Rack::getTypeName(1) . "</label></td>";
         echo "<td>";
-        Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
+        echo Rack::dropdown(['value' => $this->fields["racks_id"], 'rand' => $rand]);
         echo "</td>";
         echo "<td><label for='dropdown_position$rand'>" . __('Position') . "</label></td>";
         echo "<td >";
@@ -320,12 +307,7 @@ class PDU_Rack extends CommonDBRelation
         $pdu     = new PDU();
         $canedit = $rack->canEdit($rack->getID());
         $rand    = mt_rand();
-        $items   = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ]
-        ]);
+        $items = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No item Found'><tr><th>" . __('No item found') . "</th></tr>";
@@ -391,13 +373,7 @@ class PDU_Rack extends CommonDBRelation
 
         $found_pdus = [];
         // find pdus from this relation
-        $iterator = $DB->request([
-           'FROM' => self::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID()
-           ],
-           'ORDER' => 'side'
-        ]);
+        $iterator = MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['side']);
         foreach ($iterator as $current) {
             $found_pdus[] = [
                'pdus_id'  => $current['pdus_id'],
@@ -408,13 +384,7 @@ class PDU_Rack extends CommonDBRelation
             ];
         }
         // find pdus from item_rack relation
-        $iterator = $DB->request([
-           'FROM' => Item_Rack::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID(),
-              'itemtype' => 'PDU'
-           ]
-        ]);
+        $iterator = MappedReads::matching($DB, Item_Rack::getTable(), ['racks_id' => $rack->getID(), 'itemtype' => 'PDU']);
         foreach ($iterator as $current) {
             $found_pdus[] = [
                'pdus_id'  => $current['items_id'],
@@ -759,14 +729,7 @@ JAVASCRIPT;
     {
         global $DB;
 
-        return $DB->request([
-           'FROM'  => self::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID(),
-              'side'     => $side
-           ],
-           'ORDER' => 'position ASC'
-        ]);
+        return new ArrayIterator(MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID(), 'side' => $side], ['position ASC']));
     }
 
     /**
@@ -778,9 +741,7 @@ JAVASCRIPT;
     {
         global $DB;
 
-        return $DB->request([
-           'FROM'  => self::getTable()
-        ]);
+        return new ArrayIterator(MappedReads::matching($DB, self::getTable(), []));
     }
 
     /**

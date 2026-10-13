@@ -69,6 +69,8 @@ class TicketFollowup implements DeprecatedInterface
         $this
            ->renameField($fields, "items_id", "tickets_id")
            ->deleteField($fields, "itemtype")
+           ->deleteField($fields, "problems_id")
+           ->deleteField($fields, "changes_id")
            ->deleteField($fields, "sourceitems_id")
            ->deleteField($fields, "sourceof_items_id");
 

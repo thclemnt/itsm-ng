@@ -1,26 +1,57 @@
 name: Web API Tests
 
-on: [pull_request]
+on: [pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
-    name: Run web API tests
+    name: Web API / PHP ${{ matrix.php }} / ${{ matrix.database.label }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+        database:
+          - image: mariadb:11.8
+            label: MariaDB 11.8
+            id: mariadb-11.8
+            provider: mysql
+            port: 3306
+            health: mariadb-admin ping
+          - image: postgres:18
+            label: PostgreSQL 18
+            id: postgres-18
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d test_db
     env:
       DB_DATABASE: test_db
       DB_USER: test
       DB_PASSWORD: test
 
     services:
-      mariadb:
-        image: mariadb:latest
+      database:
+        image: ${{ matrix.database.image }}
         ports:
-          - 3306:3306
+          - ${{ matrix.database.port }}:${{ matrix.database.port }}
         env:
-          MYSQL_USER: ${{env.DB_USER}}
-          MYSQL_PASSWORD: ${{env.DB_PASSWORD}}
-          MYSQL_DATABASE: ${{env.DB_DATABASE}}
-          MYSQL_ROOT_PASSWORD: ${{env.DB_PASSWORD}}
+          MYSQL_USER: ${{ env.DB_USER }}
+          MYSQL_PASSWORD: ${{ env.DB_PASSWORD }}
+          MYSQL_DATABASE: ${{ env.DB_DATABASE }}
+          MYSQL_ROOT_PASSWORD: ${{ env.DB_PASSWORD }}
+          POSTGRES_USER: ${{ env.DB_USER }}
+          POSTGRES_PASSWORD: ${{ env.DB_PASSWORD }}
+          POSTGRES_DB: ${{ env.DB_DATABASE }}
+        options: >-
+          --health-cmd "${{ matrix.database.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
 
     steps:
       - uses: actions/checkout@v7
@@ -28,8 +59,8 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.3
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, apcu, redis
           coverage: none
 
       - name: Install NodeJS
@@ -38,13 +69,22 @@ jobs:
           node-version: '20'
 
       - name: Run composer install
-        run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
+        run: php bin/console dependencies install
 
-      - name: Install ITSM-ng
-        run: php bin/console itsmng:database:install --config-dir=${{ github.workspace }}/tests/config -H 127.0.0.1 -u $DB_USER -p $DB_PASSWORD -d $DB_DATABASE -n
-
-      - name: Start PHP development server
-        run: php -S localhost:8088 tests/router.php &>/dev/null &
+      - name: Prepare database and install ITSM-ng
+        uses: ./.github/actions/setup-test-database
+        with:
+          container: ${{ job.services.database.id }}
+          provider: ${{ matrix.database.provider }}
+          port: ${{ matrix.database.port }}
 
       - name: Run web API tests
-        run: vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web
+        run: bash .github/actions/test_tests-web.sh
+
+      - name: Retain PHP server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-api-server-diagnostics-php-${{ matrix.php }}-${{ matrix.database.id }}
+          path: ${{ runner.temp }}/web-api-server-diagnostics.log
+          if-no-files-found: warn

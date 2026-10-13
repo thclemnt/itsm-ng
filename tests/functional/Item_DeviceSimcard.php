@@ -34,6 +34,13 @@
 namespace tests\units;
 
 use DbTestCase;
+use Computer;
+use NetworkEquipment;
+use Peripheral;
+use Phone;
+use Printer;
+use DeviceSimcard;
+use Item_DeviceSimcard as SimcardLink;
 
 class Item_DeviceSimcard extends DbTestCase
 {
@@ -45,7 +52,7 @@ class Item_DeviceSimcard extends DbTestCase
         // Add
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
-        $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
+        $deviceSimcard = getItemByTypeName('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $in = [
               'itemtype'           => 'Computer',
@@ -72,7 +79,7 @@ class Item_DeviceSimcard extends DbTestCase
         // Add
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
-        $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
+        $deviceSimcard = getItemByTypeName('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
               'itemtype'           => 'Computer',
@@ -130,7 +137,7 @@ class Item_DeviceSimcard extends DbTestCase
         // Add
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
-        $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
+        $deviceSimcard = getItemByTypeName('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
               'itemtype'           => 'Computer',
@@ -172,7 +179,7 @@ class Item_DeviceSimcard extends DbTestCase
         // Add
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
-        $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
+        $deviceSimcard = getItemByTypeName('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
               'itemtype'           => 'Computer',
@@ -187,6 +194,63 @@ class Item_DeviceSimcard extends DbTestCase
               'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
+    }
+
+    public function simcardOwningParents(): array
+    {
+        return [[Computer::class, 'computers_id'], [NetworkEquipment::class, 'networkequipments_id'],
+            [Peripheral::class, 'peripherals_id'], [Phone::class, 'phones_id'], [Printer::class, 'printers_id']];
+    }
+
+    /** @dataProvider simcardOwningParents */
+    public function testProtectedPinUpdateRetainsOwningParentRetargetCloneAndPurge(string $kind, string $column): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $session = $_SESSION;
+        $priorRights = $connection->fetchOne("SELECT rights FROM glpi_profilerights WHERE profiles_id=4 AND name='devicesimcard_pinpuk'");
+        try {
+            $connection->update('glpi_profilerights', ['rights' => READ | UPDATE], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $prefix = $this->getUniqueString();
+            $first = $this->createItem($kind, ['name' => $prefix, 'entities_id' => 0]);
+            $second = $this->createItem($kind, ['name' => $prefix . '-second', 'entities_id' => 0]);
+            $device = $this->createItem(DeviceSimcard::class, ['designation' => $prefix, 'entities_id' => 0]);
+            $row = $this->createItem(SimcardLink::class, ['devicesimcards_id' => $device->getID(), 'itemtype' => $kind,
+                'items_id' => $first->getID(), 'entities_id' => 0, 'pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
+            $original = array_intersect_key($row->fields, array_fill_keys(['pin', 'pin2', 'puk', 'puk2'], true));
+            $this->array($original)->isIdenticalTo(['pin' => '0123', 'pin2' => '1234', 'puk' => '2345', 'puk2' => '3456']);
+            $connection->update('glpi_profilerights', ['rights' => READ], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $this->boolean($row->update(['id' => $row->getID(), 'items_id' => $second->getID(),
+                'pin' => '0000', 'pin2' => '0000', 'puk' => '0000', 'puk2' => '0000']))->isTrue();
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->array(array_intersect_key($row->fields, $original))->isIdenticalTo($original);
+            $this->integer((int)$row->fields[$column])->isIdenticalTo((int)$second->getID());
+            $this->variable($row->fields['opaque_parent_id'])->isNull();
+            $connection->update('glpi_profilerights', ['rights' => READ | UPDATE], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $this->login();
+            $this->setEntity(0, true);
+            $cloned = (int)$second->clone(['name' => $prefix . '-clone']);
+            $this->integer($cloned)->isGreaterThan(0);
+            $children = $row->find(['itemtype' => $kind, 'items_id' => $cloned]);
+            $this->array($children)->hasSize(1);
+            $child = new SimcardLink();
+            $this->boolean($child->getFromDB(array_key_first($children)))->isTrue();
+            $this->array(array_intersect_key($child->fields, $original))->isIdenticalTo($original);
+            $this->integer((int)$child->fields[$column])->isIdenticalTo($cloned);
+            $clone = new $kind();
+            $this->boolean($clone->getFromDB($cloned))->isTrue();
+            $this->boolean($clone->delete(['id' => $cloned], true))->isTrue();
+            $this->boolean($child->getFromDB($child->getID()))->isFalse();
+            $this->boolean($row->getFromDB($row->getID()))->isTrue();
+            $this->array(array_intersect_key($row->fields, $original))->isIdenticalTo($original);
+        } finally {
+            $connection->update('glpi_profilerights', ['rights' => $priorRights], ['profiles_id' => 4, 'name' => 'devicesimcard_pinpuk']);
+            $_SESSION = $session;
+        }
     }
 
 }

@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ServiceLevelRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -342,6 +345,12 @@ abstract class LevelAgreementLevel extends RuleTicket
         return Dropdown::showFromArray($name, $possible_values, $p);
     }
 
+    protected static function serviceRepository(): ServiceLevelRepository
+    {
+        global $DB;
+        return new ServiceLevelRepository(Orm::create($DB), strtolower(static::$parentclass));
+    }
+
     /**
      * Get already used execution time for a OLA
      *
@@ -351,23 +360,7 @@ abstract class LevelAgreementLevel extends RuleTicket
     **/
     public static function getAlreadyUsedExecutionTime($las_id)
     {
-        global $DB;
-
-        $result = [];
-
-        $iterator = $DB->request([
-           'SELECT'          => 'execution_time',
-           'DISTINCT'        => true,
-           'FROM'            => static::getTable(),
-           'WHERE'           => [
-              static::$fkparent => $las_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $result[$data['execution_time']] = $data['execution_time'];
-        }
-        return $result;
+        return static::serviceRepository()->executionTimes((int)$las_id);
     }
 
 

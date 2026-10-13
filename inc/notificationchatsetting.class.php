@@ -38,6 +38,10 @@ if (!defined('GLPI_ROOT')) {
 /**
  *  This class manages the chat settings
  */
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationChatConfigurationRepository;
+
 class NotificationChatSetting extends NotificationSetting
 {
     public static function getTypeName($nb = 0)
@@ -167,28 +171,28 @@ class NotificationChatSetting extends NotificationSetting
                             'type'  => 'select',
                             'name'  => 'value_group',
                             'values' => $formValues['group'],
-                            'value' => $formValues['group'][array_key_first($formValues['group'])] ?? '',
+                            'value' => $formValues['group'][array_key_first($formValues['group']) ?? ''] ?? '',
                             'disabled' => true,
                         ],
                         Entity::getTypeName(1) => [
                             'type'  => 'select',
                             'name'  => 'value_entity',
                             'values' => $formValues['entity'],
-                            'value' => $formValues['entity'][array_key_first($formValues['entity'])] ?? '',
+                            'value' => $formValues['entity'][array_key_first($formValues['entity']) ?? ''] ?? '',
                             'disabled' => true,
                         ],
                         Location::getTypeName(1) => [
                             'type'  => 'select',
                             'name'  => 'value_location',
                             'values' => $formValues['location'],
-                            'value' => $formValues['location'][array_key_first($formValues['location'])] ?? '',
+                            'value' => $formValues['location'][array_key_first($formValues['location']) ?? ''] ?? '',
                             'disabled' => true,
                         ],
                         ITILCategory::getTypeName(1) => [
                             'type'  => 'select',
                             'name'  => 'value_category',
                             'values' => $formValues['category'],
-                            'value' => $formValues['category'][array_key_first($formValues['category'])] ?? '',
+                            'value' => $formValues['category'][array_key_first($formValues['category']) ?? ''] ?? '',
                             'disabled' => true,
                         ],
                         [
@@ -202,20 +206,9 @@ class NotificationChatSetting extends NotificationSetting
         ];
         renderTwigForm($form);
 
-        $query = "SELECT * FROM glpi_notificationchatconfigs";
-        $iterators = $DB->request($query);
-
-        $result = [];
-        foreach ($iterators as $key => $iterator) {
-            $res = [];
-            $res['hookurl'] = $iterator['hookurl'];
-            $res['chat'] = $iterator['chat'];
-            $res['type'] = $iterator['type'];
-            $res['value'] = $iterator['value'];
-            $res['id'] = $iterator['id'];
-
-            $result[] = $res;
-        }
+        // Complete the fixed configuration projection before rendering the table.
+        $result = Orm::read($DB, static fn (EntityManager $em): array =>
+            (new NotificationChatConfigurationRepository($em))->settingsRows());
 
         $fields = [
             'chat' => __('Mode'),

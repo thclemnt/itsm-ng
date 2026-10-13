@@ -1,0 +1,533 @@
+{
+    "six_policies": [
+        {
+            "policy": {
+                "constraint": "glpi_entities_ldap_mode_selection",
+                "check": "\"ldap_mode\" IN ('explicit', 'inherit') AND ((\"ldap_mode\" = 'explicit' AND (\"authldaps_id\" IS NULL OR \"authldaps_id\" > 0)) OR (\"ldap_mode\" <> 'explicit' AND \"authldaps_id\" IS NULL))",
+                "mode_column": "ldap_mode",
+                "selected_column": "authldaps_id",
+                "string_selections": {
+                    "ldap_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "authldaps_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_ldap_mode_selection",
+                "clause": "(((ldap_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text])) AND ((((ldap_mode)::text = 'explicit'::text) AND ((authldaps_id IS NULL) OR (authldaps_id > 0))) OR (((ldap_mode)::text <> 'explicit'::text) AND (authldaps_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 103} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 124 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 155 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 118}) :location 110} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 204} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 214} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 223 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 221} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 247} :nulltesttype 0 :argisrow false :location 260} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 273} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 288 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 286}) :location 269}) :location 241} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 299} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 309} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 319 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 316} {NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 342} :nulltesttype 0 :argisrow false :location 355}) :location 337}) :location 293}) :location 196}",
+                "checked_columns": "[\"ldap_mode\", \"authldaps_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_calendar_mode_selection",
+                "check": "\"calendar_mode\" IN ('explicit', 'inherit') AND ((\"calendar_mode\" = 'explicit' AND (\"calendars_id\" IS NULL OR \"calendars_id\" > 0)) OR (\"calendar_mode\" <> 'explicit' AND \"calendars_id\" IS NULL))",
+                "mode_column": "calendar_mode",
+                "selected_column": "calendars_id",
+                "string_selections": {
+                    "calendar_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "calendars_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_calendar_mode_selection",
+                "clause": "(((calendar_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text])) AND ((((calendar_mode)::text = 'explicit'::text) AND ((calendars_id IS NULL) OR (calendars_id > 0))) OR (((calendar_mode)::text <> 'explicit'::text) AND (calendars_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 97} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 111} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 132 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 163 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 126}) :location 118} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 212} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 226} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 235 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 233} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 259} :nulltesttype 0 :argisrow false :location 272} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 285} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 300 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 298}) :location 281}) :location 253} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 311} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 325} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 335 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 332} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 358} :nulltesttype 0 :argisrow false :location 371}) :location 353}) :location 305}) :location 204}",
+                "checked_columns": "[\"calendar_mode\", \"calendars_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_tickettemplate_mode_selection",
+                "check": "\"tickettemplate_mode\" IN ('explicit', 'inherit') AND ((\"tickettemplate_mode\" = 'explicit' AND (\"tickettemplates_id\" IS NULL OR \"tickettemplates_id\" > 0)) OR (\"tickettemplate_mode\" <> 'explicit' AND \"tickettemplates_id\" IS NULL))",
+                "mode_column": "tickettemplate_mode",
+                "selected_column": "tickettemplates_id",
+                "string_selections": {
+                    "tickettemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "tickettemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_tickettemplate_mode_selection",
+                "clause": "(((tickettemplate_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text])) AND ((((tickettemplate_mode)::text = 'explicit'::text) AND ((tickettemplates_id IS NULL) OR (tickettemplates_id > 0))) OR (((tickettemplate_mode)::text <> 'explicit'::text) AND (tickettemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 103} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 123} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 144 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 175 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 138}) :location 130} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 224} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 244} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 253 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 251} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 277} :nulltesttype 0 :argisrow false :location 296} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 309} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 330 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 328}) :location 305}) :location 271} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 341} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 361} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 371 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 368} {NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 394} :nulltesttype 0 :argisrow false :location 413}) :location 389}) :location 335}) :location 216}",
+                "checked_columns": "[\"tickettemplate_mode\", \"tickettemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_changetemplate_mode_selection",
+                "check": "\"changetemplate_mode\" IN ('explicit', 'inherit') AND ((\"changetemplate_mode\" = 'explicit' AND (\"changetemplates_id\" IS NULL OR \"changetemplates_id\" > 0)) OR (\"changetemplate_mode\" <> 'explicit' AND \"changetemplates_id\" IS NULL))",
+                "mode_column": "changetemplate_mode",
+                "selected_column": "changetemplates_id",
+                "string_selections": {
+                    "changetemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "changetemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_changetemplate_mode_selection",
+                "clause": "(((changetemplate_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text])) AND ((((changetemplate_mode)::text = 'explicit'::text) AND ((changetemplates_id IS NULL) OR (changetemplates_id > 0))) OR (((changetemplate_mode)::text <> 'explicit'::text) AND (changetemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 103} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 123} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 144 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 175 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 138}) :location 130} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 224} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 244} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 253 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 251} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 277} :nulltesttype 0 :argisrow false :location 296} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 309} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 330 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 328}) :location 305}) :location 271} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 341} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 361} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 371 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 368} {NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 394} :nulltesttype 0 :argisrow false :location 413}) :location 389}) :location 335}) :location 216}",
+                "checked_columns": "[\"changetemplate_mode\", \"changetemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_problemtemplate_mode_selection",
+                "check": "\"problemtemplate_mode\" IN ('explicit', 'inherit') AND ((\"problemtemplate_mode\" = 'explicit' AND (\"problemtemplates_id\" IS NULL OR \"problemtemplates_id\" > 0)) OR (\"problemtemplate_mode\" <> 'explicit' AND \"problemtemplates_id\" IS NULL))",
+                "mode_column": "problemtemplate_mode",
+                "selected_column": "problemtemplates_id",
+                "string_selections": {
+                    "problemtemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "problemtemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_problemtemplate_mode_selection",
+                "clause": "(((problemtemplate_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text])) AND ((((problemtemplate_mode)::text = 'explicit'::text) AND ((problemtemplates_id IS NULL) OR (problemtemplates_id > 0))) OR (((problemtemplate_mode)::text <> 'explicit'::text) AND (problemtemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 104} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 125} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 146 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 177 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 140}) :location 132} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 226} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 247} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 256 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 254} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 280} :nulltesttype 0 :argisrow false :location 300} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 313} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 335 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 333}) :location 309}) :location 274} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 346} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 367} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 377 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 374} {NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 400} :nulltesttype 0 :argisrow false :location 420}) :location 395}) :location 340}) :location 218}",
+                "checked_columns": "[\"problemtemplate_mode\", \"problemtemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_software_entity_mode_selection",
+                "check": "\"software_entity_mode\" IN ('explicit', 'inherit', 'unchanged') AND ((\"software_entity_mode\" = 'explicit' AND (\"entities_id_software\" IS NOT NULL AND \"entities_id_software\" >= 0)) OR (\"software_entity_mode\" <> 'explicit' AND \"entities_id_software\" IS NULL))",
+                "mode_column": "software_entity_mode",
+                "selected_column": "entities_id_software",
+                "string_selections": {
+                    "software_entity_mode": [
+                        "explicit",
+                        "inherit",
+                        "unchanged"
+                    ]
+                },
+                "integer_types": {
+                    "entities_id_software": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_software_entity_mode_selection",
+                "clause": "(((software_entity_mode)::text = ANY (ARRAY[('explicit'::character varying)::text, ('inherit'::character varying)::text, ('unchanged'::character varying)::text])) AND ((((software_entity_mode)::text = 'explicit'::text) AND ((entities_id_software IS NOT NULL) AND (entities_id_software >= 0))) OR (((software_entity_mode)::text <> 'explicit'::text) AND (entities_id_software IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 104} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 125} {ARRAYEXPR :array_typeid 1009 :array_collid 100 :element_typeid 25 :elements ({RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 146 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 177 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1} {RELABELTYPE :arg {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 207 :constvalue 13 [ 52 0 0 0 117 110 99 104 97 110 103 101 100 ]} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location -1}) :multidims false :location 140}) :location 132} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 258} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 279} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 288 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 286} {BOOLEXPR :boolop and :args ({NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 312} :nulltesttype 1 :argisrow false :location 333} {OPEXPR :opno 430 :opfuncid 479 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 351} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 375 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 372}) :location 346}) :location 306} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 386} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 1 :location 407} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 417 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 414} {NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 440} :nulltesttype 0 :argisrow false :location 461}) :location 435}) :location 380}) :location 250}",
+                "checked_columns": "[\"software_entity_mode\", \"entities_id_software\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        }
+    ],
+    "pg18_policies": [
+        {
+            "policy": {
+                "constraint": "glpi_entities_ldap_mode_selection",
+                "check": "\"ldap_mode\" IN ('explicit', 'inherit') AND ((\"ldap_mode\" = 'explicit' AND (\"authldaps_id\" IS NULL OR \"authldaps_id\" > 0)) OR (\"ldap_mode\" <> 'explicit' AND \"authldaps_id\" IS NULL))",
+                "mode_column": "ldap_mode",
+                "selected_column": "authldaps_id",
+                "string_selections": {
+                    "ldap_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "authldaps_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_ldap_mode_selection",
+                "clause": "(((ldap_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((ldap_mode)::text = 'explicit'::text) AND ((authldaps_id IS NULL) OR (authldaps_id > 0))) OR (((ldap_mode)::text <> 'explicit'::text) AND (authldaps_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 1 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 1 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 2 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 1 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"ldap_mode\", \"authldaps_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_calendar_mode_selection",
+                "check": "\"calendar_mode\" IN ('explicit', 'inherit') AND ((\"calendar_mode\" = 'explicit' AND (\"calendars_id\" IS NULL OR \"calendars_id\" > 0)) OR (\"calendar_mode\" <> 'explicit' AND \"calendars_id\" IS NULL))",
+                "mode_column": "calendar_mode",
+                "selected_column": "calendars_id",
+                "string_selections": {
+                    "calendar_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "calendars_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_calendar_mode_selection",
+                "clause": "(((calendar_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((calendar_mode)::text = 'explicit'::text) AND ((calendars_id IS NULL) OR (calendars_id > 0))) OR (((calendar_mode)::text <> 'explicit'::text) AND (calendars_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 4 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 3 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"calendar_mode\", \"calendars_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_tickettemplate_mode_selection",
+                "check": "\"tickettemplate_mode\" IN ('explicit', 'inherit') AND ((\"tickettemplate_mode\" = 'explicit' AND (\"tickettemplates_id\" IS NULL OR \"tickettemplates_id\" > 0)) OR (\"tickettemplate_mode\" <> 'explicit' AND \"tickettemplates_id\" IS NULL))",
+                "mode_column": "tickettemplate_mode",
+                "selected_column": "tickettemplates_id",
+                "string_selections": {
+                    "tickettemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "tickettemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_tickettemplate_mode_selection",
+                "clause": "(((tickettemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((tickettemplate_mode)::text = 'explicit'::text) AND ((tickettemplates_id IS NULL) OR (tickettemplates_id > 0))) OR (((tickettemplate_mode)::text <> 'explicit'::text) AND (tickettemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 6 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 6 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 5 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 5 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 6 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 5 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"tickettemplate_mode\", \"tickettemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_changetemplate_mode_selection",
+                "check": "\"changetemplate_mode\" IN ('explicit', 'inherit') AND ((\"changetemplate_mode\" = 'explicit' AND (\"changetemplates_id\" IS NULL OR \"changetemplates_id\" > 0)) OR (\"changetemplate_mode\" <> 'explicit' AND \"changetemplates_id\" IS NULL))",
+                "mode_column": "changetemplate_mode",
+                "selected_column": "changetemplates_id",
+                "string_selections": {
+                    "changetemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "changetemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_changetemplate_mode_selection",
+                "clause": "(((changetemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((changetemplate_mode)::text = 'explicit'::text) AND ((changetemplates_id IS NULL) OR (changetemplates_id > 0))) OR (((changetemplate_mode)::text <> 'explicit'::text) AND (changetemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 8 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 8 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 7 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 7 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 8 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 7 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"changetemplate_mode\", \"changetemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_problemtemplate_mode_selection",
+                "check": "\"problemtemplate_mode\" IN ('explicit', 'inherit') AND ((\"problemtemplate_mode\" = 'explicit' AND (\"problemtemplates_id\" IS NULL OR \"problemtemplates_id\" > 0)) OR (\"problemtemplate_mode\" <> 'explicit' AND \"problemtemplates_id\" IS NULL))",
+                "mode_column": "problemtemplate_mode",
+                "selected_column": "problemtemplates_id",
+                "string_selections": {
+                    "problemtemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "problemtemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_problemtemplate_mode_selection",
+                "clause": "(((problemtemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((problemtemplate_mode)::text = 'explicit'::text) AND ((problemtemplates_id IS NULL) OR (problemtemplates_id > 0))) OR (((problemtemplate_mode)::text <> 'explicit'::text) AND (problemtemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 10 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 10 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 9 :location -1} :nulltesttype 0 :argisrow false :location -1} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 9 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 10 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 9 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"problemtemplate_mode\", \"problemtemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_software_entity_mode_selection",
+                "check": "\"software_entity_mode\" IN ('explicit', 'inherit', 'unchanged') AND ((\"software_entity_mode\" = 'explicit' AND (\"entities_id_software\" IS NOT NULL AND \"entities_id_software\" >= 0)) OR (\"software_entity_mode\" <> 'explicit' AND \"entities_id_software\" IS NULL))",
+                "mode_column": "software_entity_mode",
+                "selected_column": "entities_id_software",
+                "string_selections": {
+                    "software_entity_mode": [
+                        "explicit",
+                        "inherit",
+                        "unchanged"
+                    ]
+                },
+                "integer_types": {
+                    "entities_id_software": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_software_entity_mode_selection",
+                "clause": "(((software_entity_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying, 'unchanged'::character varying])::text[])) AND ((((software_entity_mode)::text = 'explicit'::text) AND ((entities_id_software IS NOT NULL) AND (entities_id_software >= 0))) OR (((software_entity_mode)::text <> 'explicit'::text) AND (entities_id_software IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 12 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAYEXPR :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 13 [ 52 0 0 0 117 110 99 104 97 110 103 101 100 ]}) :multidims false :list_start -1 :list_end -1 :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location -1} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 12 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {BOOLEXPR :boolop and :args ({NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 11 :location -1} :nulltesttype 1 :argisrow false :location -1} {OPEXPR :opno 430 :opfuncid 479 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 11 :location -1} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location -1 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location -1}) :location -1}) :location -1} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 12 :location -1} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location -1 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location -1} {NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varreturningtype 0 :varnosyn 1 :varattnosyn 11 :location -1} :nulltesttype 0 :argisrow false :location -1}) :location -1}) :location -1}) :location -1}",
+                "checked_columns": "[\"software_entity_mode\", \"entities_id_software\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        }
+    ],
+    "pg14_policies": [
+        {
+            "policy": {
+                "constraint": "glpi_entities_ldap_mode_selection",
+                "check": "\"ldap_mode\" IN ('explicit', 'inherit') AND ((\"ldap_mode\" = 'explicit' AND (\"authldaps_id\" IS NULL OR \"authldaps_id\" > 0)) OR (\"ldap_mode\" <> 'explicit' AND \"authldaps_id\" IS NULL))",
+                "mode_column": "ldap_mode",
+                "selected_column": "authldaps_id",
+                "string_selections": {
+                    "ldap_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "authldaps_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_ldap_mode_selection",
+                "clause": "(((ldap_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((ldap_mode)::text = 'explicit'::text) AND ((authldaps_id IS NULL) OR (authldaps_id > 0))) OR (((ldap_mode)::text <> 'explicit'::text) AND (authldaps_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 82} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 96 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 108 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 92} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 125} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 137 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 135} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 153} :nulltesttype 0 :argisrow false :location 166} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 177} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 192 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 190}) :location 174}) :location 148} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 2 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location 200} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 213 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 210} {NULLTEST :arg {VAR :varno 1 :varattno 1 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 1 :location 228} :nulltesttype 0 :argisrow false :location 241}) :location 224}) :location 196}) :location 119}",
+                "checked_columns": "[\"ldap_mode\", \"authldaps_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_calendar_mode_selection",
+                "check": "\"calendar_mode\" IN ('explicit', 'inherit') AND ((\"calendar_mode\" = 'explicit' AND (\"calendars_id\" IS NULL OR \"calendars_id\" > 0)) OR (\"calendar_mode\" <> 'explicit' AND \"calendars_id\" IS NULL))",
+                "mode_column": "calendar_mode",
+                "selected_column": "calendars_id",
+                "string_selections": {
+                    "calendar_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "calendars_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_calendar_mode_selection",
+                "clause": "(((calendar_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((calendar_mode)::text = 'explicit'::text) AND ((calendars_id IS NULL) OR (calendars_id > 0))) OR (((calendar_mode)::text <> 'explicit'::text) AND (calendars_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 86} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 104 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 116 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 100} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 133} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 149 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 147} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 165} :nulltesttype 0 :argisrow false :location 178} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 189} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 204 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 202}) :location 186}) :location 160} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 4 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 4 :location 212} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 229 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 226} {NULLTEST :arg {VAR :varno 1 :varattno 3 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 244} :nulltesttype 0 :argisrow false :location 257}) :location 240}) :location 208}) :location 127}",
+                "checked_columns": "[\"calendar_mode\", \"calendars_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_tickettemplate_mode_selection",
+                "check": "\"tickettemplate_mode\" IN ('explicit', 'inherit') AND ((\"tickettemplate_mode\" = 'explicit' AND (\"tickettemplates_id\" IS NULL OR \"tickettemplates_id\" > 0)) OR (\"tickettemplate_mode\" <> 'explicit' AND \"tickettemplates_id\" IS NULL))",
+                "mode_column": "tickettemplate_mode",
+                "selected_column": "tickettemplates_id",
+                "string_selections": {
+                    "tickettemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "tickettemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_tickettemplate_mode_selection",
+                "clause": "(((tickettemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((tickettemplate_mode)::text = 'explicit'::text) AND ((tickettemplates_id IS NULL) OR (tickettemplates_id > 0))) OR (((tickettemplate_mode)::text <> 'explicit'::text) AND (tickettemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 92} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 116 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 128 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 112} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 145} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 167 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 165} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 183} :nulltesttype 0 :argisrow false :location 202} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 213} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 234 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 232}) :location 210}) :location 178} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 6 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 6 :location 242} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 265 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 262} {NULLTEST :arg {VAR :varno 1 :varattno 5 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 5 :location 280} :nulltesttype 0 :argisrow false :location 299}) :location 276}) :location 238}) :location 139}",
+                "checked_columns": "[\"tickettemplate_mode\", \"tickettemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_changetemplate_mode_selection",
+                "check": "\"changetemplate_mode\" IN ('explicit', 'inherit') AND ((\"changetemplate_mode\" = 'explicit' AND (\"changetemplates_id\" IS NULL OR \"changetemplates_id\" > 0)) OR (\"changetemplate_mode\" <> 'explicit' AND \"changetemplates_id\" IS NULL))",
+                "mode_column": "changetemplate_mode",
+                "selected_column": "changetemplates_id",
+                "string_selections": {
+                    "changetemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "changetemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_changetemplate_mode_selection",
+                "clause": "(((changetemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((changetemplate_mode)::text = 'explicit'::text) AND ((changetemplates_id IS NULL) OR (changetemplates_id > 0))) OR (((changetemplate_mode)::text <> 'explicit'::text) AND (changetemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 92} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 116 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 128 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 112} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 145} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 167 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 165} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 183} :nulltesttype 0 :argisrow false :location 202} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 213} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 234 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 232}) :location 210}) :location 178} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 8 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 8 :location 242} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 265 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 262} {NULLTEST :arg {VAR :varno 1 :varattno 7 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 7 :location 280} :nulltesttype 0 :argisrow false :location 299}) :location 276}) :location 238}) :location 139}",
+                "checked_columns": "[\"changetemplate_mode\", \"changetemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_problemtemplate_mode_selection",
+                "check": "\"problemtemplate_mode\" IN ('explicit', 'inherit') AND ((\"problemtemplate_mode\" = 'explicit' AND (\"problemtemplates_id\" IS NULL OR \"problemtemplates_id\" > 0)) OR (\"problemtemplate_mode\" <> 'explicit' AND \"problemtemplates_id\" IS NULL))",
+                "mode_column": "problemtemplate_mode",
+                "selected_column": "problemtemplates_id",
+                "string_selections": {
+                    "problemtemplate_mode": [
+                        "explicit",
+                        "inherit"
+                    ]
+                },
+                "integer_types": {
+                    "problemtemplates_id": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_problemtemplate_mode_selection",
+                "clause": "(((problemtemplate_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying])::text[])) AND ((((problemtemplate_mode)::text = 'explicit'::text) AND ((problemtemplates_id IS NULL) OR (problemtemplates_id > 0))) OR (((problemtemplate_mode)::text <> 'explicit'::text) AND (problemtemplates_id IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 118 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 130 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 114} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 147} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 170 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 168} {BOOLEXPR :boolop or :args ({NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 186} :nulltesttype 0 :argisrow false :location 206} {OPEXPR :opno 419 :opfuncid 477 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 217} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 239 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 237}) :location 214}) :location 181} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 10 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 10 :location 247} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 271 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 268} {NULLTEST :arg {VAR :varno 1 :varattno 9 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 9 :location 286} :nulltesttype 0 :argisrow false :location 306}) :location 282}) :location 243}) :location 141}",
+                "checked_columns": "[\"problemtemplate_mode\", \"problemtemplates_id\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        },
+        {
+            "policy": {
+                "constraint": "glpi_entities_software_entity_mode_selection",
+                "check": "\"software_entity_mode\" IN ('explicit', 'inherit', 'unchanged') AND ((\"software_entity_mode\" = 'explicit' AND (\"entities_id_software\" IS NOT NULL AND \"entities_id_software\" >= 0)) OR (\"software_entity_mode\" <> 'explicit' AND \"entities_id_software\" IS NULL))",
+                "mode_column": "software_entity_mode",
+                "selected_column": "entities_id_software",
+                "string_selections": {
+                    "software_entity_mode": [
+                        "explicit",
+                        "inherit",
+                        "unchanged"
+                    ]
+                },
+                "integer_types": {
+                    "entities_id_software": "bigint"
+                }
+            },
+            "actual": {
+                "table_name": "glpi_entities",
+                "constraint_name": "glpi_entities_software_entity_mode_selection",
+                "clause": "(((software_entity_mode)::text = ANY ((ARRAY['explicit'::character varying, 'inherit'::character varying, 'unchanged'::character varying])::text[])) AND ((((software_entity_mode)::text = 'explicit'::text) AND ((entities_id_software IS NOT NULL) AND (entities_id_software >= 0))) OR (((software_entity_mode)::text <> 'explicit'::text) AND (entities_id_software IS NULL))))",
+                "validated": true,
+                "enforced": "true",
+                "native_nodes": "{BOOLEXPR :boolop and :args ({SCALARARRAYOPEXPR :opno 98 :opfuncid 67 :hashfuncid 0 :useOr true :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 93} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {ARRAYCOERCEEXPR :arg {ARRAY :array_typeid 1015 :array_collid 100 :element_typeid 1043 :elements ({CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 118 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 130 :constvalue 11 [ 44 0 0 0 105 110 104 101 114 105 116 ]} {CONST :consttype 1043 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 141 :constvalue 13 [ 52 0 0 0 117 110 99 104 97 110 103 101 100 ]}) :multidims false :location -1} :elemexpr {RELABELTYPE :arg {CASETESTEXPR :typeId 1043 :typeMod -1 :collation 0} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} :resulttype 1009 :resulttypmod -1 :resultcollid 100 :coerceformat 2 :location -1}) :location 114} {BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno 98 :opfuncid 67 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 160} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 183 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 181} {BOOLEXPR :boolop and :args ({NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 199} :nulltesttype 1 :argisrow false :location 220} {OPEXPR :opno 430 :opfuncid 479 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 0 :args ({VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 236} {CONST :consttype 23 :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :location 260 :constvalue 4 [ 0 0 0 0 0 0 0 0 ]}) :location 257}) :location 232}) :location 194} {BOOLEXPR :boolop and :args ({OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({RELABELTYPE :arg {VAR :varno 1 :varattno 12 :vartype 1043 :vartypmod 20 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 12 :location 268} :resulttype 25 :resulttypmod -1 :resultcollid 100 :relabelformat 2 :location -1} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 292 :constvalue 12 [ 48 0 0 0 101 120 112 108 105 99 105 116 ]}) :location 289} {NULLTEST :arg {VAR :varno 1 :varattno 11 :vartype 20 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnosyn 1 :varattnosyn 11 :location 307} :nulltesttype 0 :argisrow false :location 328}) :location 303}) :location 264}) :location 154}",
+                "checked_columns": "[\"software_entity_mode\", \"entities_id_software\"]",
+                "integer_ge_oids": "[\"82\", \"415\", \"430\", \"524\", \"525\", \"542\", \"543\", \"1867\", \"1873\"]",
+                "reference_operator_oids": "[\"15\", \"36\", \"76\", \"82\", \"94\", \"96\", \"98\", \"410\", \"411\", \"413\", \"415\", \"416\", \"417\", \"419\", \"430\", \"518\", \"519\", \"520\", \"521\", \"524\", \"525\", \"531\", \"532\", \"533\", \"536\", \"537\", \"538\", \"539\", \"542\", \"543\", \"666\", \"667\", \"1862\", \"1863\", \"1865\", \"1867\", \"1868\", \"1869\", \"1871\", \"1873\"]",
+                "reference_text_coercion": "{\"text\": \"25\", \"binary\": true, \"varchar\": \"1043\", \"text_array\": \"1009\", \"varchar_array\": \"1015\"}"
+            }
+        }
+    ]
+}

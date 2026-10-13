@@ -31,6 +31,9 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronLogRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -59,19 +62,17 @@ class CronTaskLog extends CommonDBTM
     {
         global $DB;
 
-        $secs      = $days * DAY_TIMESTAMP;
-
-        $result = $DB->delete(
-            'glpi_crontasklogs',
-            [
-              'crontasks_id' => $id,
-              new \QueryExpression("UNIX_TIMESTAMP(" . $DB->quoteName("date") . ") < UNIX_TIMESTAMP()-$secs")
-            ]
-        );
-
-        return $result ? $DB->affectedRows() : 0;
+        return (new CronLogRepository(Orm::create($DB)))
+            ->expire((int)$id, (int)$days);
     }
 
+
+    public function cleanDBonPurge()
+    {
+        global $DB;
+        (new CronLogRepository(Orm::create($DB)))
+            ->preserveChildren((int)$this->getID(), $this->fields['crontasklogs_id'] ?: null);
+    }
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {

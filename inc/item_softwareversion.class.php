@@ -31,12 +31,29 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\ConnexityInput;
+use itsmng\Database\Entity\ItemSoftwareVersion;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Orm;
+use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\Repository\RecordRepository;
+use itsmng\Database\Repository\SoftwareInstallationRepository;
+use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Database\SoftwareRenderingReadOperation;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareLifecycleAdmission;
+use itsmng\Domain\SoftwareMutation;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
 class Item_SoftwareVersion extends CommonDBRelation
 {
+    use SoftwareLifecycleAdmission;
+
     // From CommonDBRelation
     public static $itemtype_1 = 'itemtype';
     public static $items_id_1 = 'items_id';
@@ -49,6 +66,122 @@ class Item_SoftwareVersion extends CommonDBRelation
 
     public static $log_history_2_add    = Log::HISTORY_INSTALL_SOFTWARE;
     public static $log_history_2_delete = Log::HISTORY_UNINSTALL_SOFTWARE;
+
+    /** Context of the actual subject read by the last pure endpoint decision. */
+    private ?array $preparedSubjectContext = null;
+
+    protected function retainLifecycleEndpointDecision(CommonDBConnexity $probe): void
+    {
+        if ($probe instanceof self) {
+            $this->preparedSubjectContext = $probe->preparedSubjectContext;
+        }
+    }
+
+    private function matchesPreparedSubjectContext(array $contexts): bool
+    {
+        $key = $this->fields['itemtype'] . ':' . $this->fields['items_id'];
+        return $this->preparedSubjectContext !== null && isset($contexts[$key])
+            && $this->preparedSubjectContext == $contexts[$key];
+    }
+
+    public function canCreateItem()
+    {
+        return $this->hasMappedSubject() && parent::canCreateItem();
+    }
+
+    public function canUpdateItem()
+    {
+        return $this->hasMappedSubject() && parent::canUpdateItem();
+    }
+
+    private function hasMappedSubject(): bool
+    {
+        $kind = $this->fields['itemtype'] ?? null;
+        if (!is_string($kind)) {
+            return false;
+        }
+        try {
+            ItemSoftwareVersion::referenceAssociation($kind);
+            return true;
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    /** Own the prepared installation lifecycle without replaying its context checks. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        $checkpoint = $priorState;
+        $checkpoint['input'] = $this->input;
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add',
+            fn (array $contexts): bool => $this->matchesPreparedSubjectContext($contexts)
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update',
+            function (array $contexts) use ($storedFields): bool {
+                $probe = clone $this;
+                return $this->matchesPreparedSubjectContext($contexts)
+                    && $probe->finalizeLifecycleUpdate($storedFields) && $probe->fields === $this->fields;
+            }
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new SoftwareAssignmentService($DB))->mutateInstallation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        $database = $DB;
+        if (!array_key_exists(static::getIndexName(), $input)
+            || !SoftwareMutation::loadForMutation(
+                $database,
+                $this,
+                $input[static::getIndexName()],
+                fn () => $this->admitSoftwareLifecycle()
+            )) {
+            return false;
+        }
+        return (new SoftwareAssignmentService($database))->mutateInstallation(
+            $this,
+            LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
 
     public function useDeletedToLockIfDynamic()
     {
@@ -111,56 +244,88 @@ class Item_SoftwareVersion extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-
-        if (!isset($input['itemtype']) || !isset($input['items_id'])) {
+        if (!is_array($input)) {
             return false;
         }
-        $itemtype = $input['itemtype'];
-        $item = new $itemtype();
-        if (
-            (!isset($input['is_template_item']) && $item->maybeTemplate())
-            || (!isset($input['is_deleted_item']) && $item->maybeDeleted())
-        ) {
-            if ($item->getFromDB($input['items_id'])) {
-                if ($item->maybeTemplate()) {
-                    $input['is_template_item'] = $item->getField('is_template');
-                }
-                if ($item->maybeDeleted()) {
-                    $input['is_deleted_item']  = $item->getField('is_deleted');
-                }
-            } else {
-                return false;
-            }
-        }
-
-        return parent::prepareInputForAdd($input);
+        $input = $this->prepareInstallationContext($input, false);
+        return $input === false ? false : parent::prepareInputForAdd($input);
     }
 
 
     public function prepareInputForUpdate($input)
     {
+        if (!is_array($input)) {
+            return false;
+        }
+        $input = $this->prepareInstallationContext($input, true);
+        return $input === false ? false : parent::prepareInputForUpdate($input);
+    }
 
-        if (isset($input['itemtype']) && isset($input['items_id'])) {
-            $itemtype = $input['itemtype'];
-            $item = new $itemtype();
-            if (
-                (!isset($input['is_template_item']) && $item->maybeTemplate())
-                || (!isset($input['is_deleted_item']) && $item->maybeDeleted())
-            ) {
-                if ($item->getFromDB($input['items_id'])) {
-                    if ($item->maybeTemplate()) {
-                        $input['is_template_item'] = $item->getField('is_template');
-                    }
-                    if ($item->maybeDeleted()) {
-                        $input['is_deleted_item'] = $item->getField('is_deleted');
-                    }
-                } else {
-                    return false;
-                }
-            }
+
+    /** Bind caches to the final, already normalized and authorized subject. */
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        return $this->prepareInstallationContext($input, true, $this->input);
+    }
+
+
+    /**
+     * Read persisted subject context without replaying preparation or authorization.
+     * Add mode is explicit because massive actions reuse this relation instance.
+     */
+    private function prepareInstallationContext(array $input, bool $updating, ?array $preparedInput = null): array|false
+    {
+        $endpoint = ConnexityInput::endpoints($this)['items_id'] ?? null;
+        $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
+        if (!is_string($kind) || !isset($endpoint['selections'][$kind])) {
+            return false;
+        }
+        $column = $endpoint['selections'][$kind]['column'];
+        $id = array_key_exists($column, $input) ? $input[$column]
+            : (array_key_exists('items_id', $input) ? $input['items_id'] : ($updating ? ($this->fields['items_id'] ?? null) : null));
+        if (is_bool($id) || filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id <= 0) {
+            return false;
+        }
+        $subject = getItemForItemtype($kind);
+        if (!$subject || !$subject->getFromDB($id)) {
+            return false;
         }
 
-        return parent::prepareInputForUpdate($input);
+        $this->preparedSubjectContext = [
+            'id' => (int)$id,
+            'entity' => (int)$subject->getEntityID(),
+            'is_recursive' => (int)$subject->isRecursive(),
+            'is_template' => (int)($subject->maybeTemplate() ? $subject->getField('is_template') : 0),
+            'is_deleted' => (int)($subject->maybeDeleted() ? $subject->getField('is_deleted') : 0),
+        ];
+
+        $retargeted = !$updating || $kind !== ($this->fields['itemtype'] ?? null)
+            || $id != ($this->fields['items_id'] ?? null);
+        if ($preparedInput !== null) {
+            // A late callback may cancel/reset an earlier prepared retarget.
+            // Its derived caches must then describe the actual retained owner.
+            $preparedKind = $preparedInput['itemtype'] ?? ($this->fields['itemtype'] ?? null);
+            $preparedColumn = is_string($preparedKind) ? ($endpoint['selections'][$preparedKind]['column'] ?? null) : null;
+            $preparedId = $preparedColumn !== null && array_key_exists($preparedColumn, $preparedInput)
+                ? $preparedInput[$preparedColumn] : ($preparedInput['items_id'] ?? ($this->fields['items_id'] ?? null));
+            $retargeted = $retargeted || $kind !== $preparedKind || $id != $preparedId;
+        }
+
+        // Entity ownership cannot be chosen independently of the actual asset.
+        $input['entities_id'] = $subject->getEntityID();
+        if (!$updating) {
+            $input['is_recursive'] = (int)$subject->isRecursive();
+        }
+        // Preserve supported explicit same-owner cache synchronization, including
+        // a supplied null for subsequent field validation. Inventory lock state
+        // belongs to is_deleted/is_dynamic and is never changed here.
+        if ($retargeted || !array_key_exists('is_template_item', $input)) {
+            $input['is_template_item'] = $subject->maybeTemplate() ? $subject->getField('is_template') : 0;
+        }
+        if ($retargeted || !array_key_exists('is_deleted_item', $input)) {
+            $input['is_deleted_item'] = $subject->maybeDeleted() ? $subject->getField('is_deleted') : 0;
+        }
+        return $input;
     }
 
 
@@ -336,18 +501,14 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $item = new $itemtype();
         if ($item->getFromDB($items_id)) {
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'is_template_item'  => $item->maybeTemplate() ? $item->getField('is_template') : 0,
-                  'is_deleted_item'   => $item->maybeDeleted() ? $item->getField('is_deleted') : 0
-                ],
-                [
-                  'items_id' => $items_id,
-                  'itemtype' => $itemtype
-                ]
-            );
-            return $result;
+            (new SoftwareRepository(Orm::create($DB)))
+                ->updateAssetFlags(
+                    $itemtype,
+                    (int)$items_id,
+                    $item->maybeTemplate() && (bool)$item->getField('is_template'),
+                    $item->maybeDeleted() && (bool)$item->getField('is_deleted')
+                );
+            return true;
         }
         return false;
     }
@@ -364,24 +525,29 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $item_version_table = self::getTable(__CLASS__);
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => $item_version_table,
-           'WHERE'     => [
-              'softwareversions_id'   => $softwareversions_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $reads = Orm::readSession($DB);
+        $target_types = $reads->readPrepared(
+            static fn (): int => (int)$softwareversions_id,
+            static fn (EntityManager $manager, int $version): array =>
+                (new SoftwareInstallationRepository($manager))->itemTypes(false, $version, false)
+        );
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(EntityRegistry::tables()[$itemtable])) {
+                $count += $reads->readPrepared(
+                    static function () use ($softwareversions_id, $itemtype, $itemtable, $entity): array {
+                        // Preserve argument evaluation and weak conversion before this stage.
+                        $arguments = static fn (int $version, string $kind, string $table, array $scope): array => [$version, $kind, $table, $scope];
+                        return $arguments((int)$softwareversions_id, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
+                    },
+                    static fn (EntityManager $manager, array $arguments): int =>
+                        (new SoftwareInstallationRepository($manager))->count(false, $arguments[0], false, $arguments[1], $arguments[2], $arguments[3])
+                );
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_items_softwareversions',
                'COUNT'        => 'cpt',
@@ -426,31 +592,17 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => 'glpi_softwareversions',
-           'INNER JOIN'   => [
-              'glpi_items_softwareversions'   => [
-                 'FKEY'   => [
-                    'glpi_items_softwareversions' => 'softwareversions_id',
-                    'glpi_softwareversions'       => 'id'
-                 ]
-              ],
-           ],
-           'WHERE'     => [
-              'softwares_id' => $softwares_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $repository = new SoftwareInstallationRepository(Orm::create($DB));
+        $target_types = $repository->itemTypes(false, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(EntityRegistry::tables()[$itemtable])) {
+                $count += $repository->count(false, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', '', true));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_softwareversions',
                'COUNT'        => 'cpt',
@@ -708,8 +860,15 @@ class Item_SoftwareVersion extends CommonDBRelation
         $showEntity = false;
         $linkUser = User::canView();
 
-        // Process first row to get software info
         $allData = iterator_to_array($iterator);
+        $licenses = (new SoftwareInstallationRepository(
+            Orm::create($DB)
+        ))->licensesForInstallations(array_map(static fn (array $row): array => [
+            'itemtype' => $row['item_type'],
+            'items_id' => (int)$row['iID'],
+            'softwareversions_id' => (int)$row['vID'],
+        ], $allData));
+        // Process first row to get software info
         if (count($allData) > 0) {
             $firstData = $allData[0];
             $softwares_id = $firstData['sID'];
@@ -802,11 +961,7 @@ class Item_SoftwareVersion extends CommonDBRelation
             );
 
             // Licenses
-            $lics = Item_SoftwareLicense::getLicenseForInstallation(
-                $data['item_type'],
-                $data['iID'],
-                $data['vID']
-            );
+            $lics = $licenses[$data['item_type']][$data['iID']][$data['vID']] ?? [];
             $licenseHtml = '';
             if (count($lics)) {
                 $licParts = [];
@@ -892,14 +1047,10 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'completename'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
-           'ORDER'  => ['completename']
-        ]);
+        $entities = (new RecordRepository(Orm::create($DB)))
+            ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
 
-        while ($data = $iterator->next()) {
+        foreach ($entities as $data) {
             $nb = self::countForVersion($softwareversions_id, $data['id']);
             if ($nb > 0) {
                 echo "<tr class='tab_bg_2'><td>" . $data["completename"] . "</td>";
@@ -941,72 +1092,38 @@ class Item_SoftwareVersion extends CommonDBRelation
      * @param string     $sort  Field to sort on
      * @param string     $order Sort order
      *
-     * @return DBmysqlIterator
+     * @return array
      */
-    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator
+    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): array
     {
         global $DB;
 
-        $selftable     = self::getTable(__CLASS__);
-
-        $select = [
-           'glpi_softwares.softwarecategories_id',
-           'glpi_softwares.name AS softname',
-           "glpi_items_softwareversions.id",
-           'glpi_states.name as state',
-           'glpi_softwareversions.id AS verid',
-           'glpi_softwareversions.softwares_id',
-           'glpi_softwareversions.name AS version',
-           'glpi_softwares.is_valid AS softvalid',
-           'glpi_items_softwareversions.date_install AS dateinstall'
-        ];
-
-        if (Plugin::haveImport()) {
-            $select[] = "{$selftable}.is_dynamic";
+        $category = (int)Session::getSavedOption(__CLASS__, 'criterion', -1);
+        $database = $DB;
+        $connection = $database->getDoctrineConnection();
+        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+        $rows = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $item, $category): array {
+            $reader = new SoftwareRenderingReadOperation($connection, $manager);
+            try {
+                return $reader->forSubject(
+                    $item->getType(),
+                    (int)$item->getID(),
+                    (new DbUtils())->getEntityRestriction('glpi_softwares', '', '', true),
+                    $item->maybeDeleted(),
+                    $category > -1 ? $category : null
+                );
+            } finally {
+                $reader->close();
+            }
+        });
+        if (!Plugin::haveImport()) {
+            foreach ($rows as &$row) {
+                unset($row['is_dynamic']);
+            }
         }
-
-        $request = [
-           'SELECT'    => $select,
-           'FROM'      => $selftable,
-           'LEFT JOIN' => [
-              'glpi_softwareversions' => [
-                 'FKEY'   => [
-                    $selftable              => 'softwareversions_id',
-                    'glpi_softwareversions' => 'id'
-                 ]
-              ],
-              'glpi_states'  => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ],
-              'glpi_softwares'  => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              "{$selftable}.items_id"  => $item->getField('id'),
-              "{$selftable}.itemtype"    => $item->getType()
-           ] + getEntitiesRestrictCriteria('glpi_softwares', '', '', true),
-           'ORDER'     => ['softname', 'version']
-        ];
-
-        if ($item->maybeDeleted()) {
-            $request['WHERE']["{$selftable}.is_deleted"] = 0;
-        }
-
-        $crit = Session::getSavedOption(__CLASS__, 'criterion', -1);
-        if ($crit > -1) {
-            $request['WHERE']['glpi_softwares.softwarecategories_id'] = (int)$crit;
-        }
-
-        $iterator = $DB->request($request);
-        return $iterator;
+        return $rows;
     }
+
 
     /**
      * Show software installed on a computer
@@ -1149,9 +1266,28 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $values = [];
         $massive_action = [];
-        $datas = iterator_to_array($iterator);
+        $datas = $iterator;
+        // Link permission callbacks may update the next row's assignments.
+        // Keep those reads at their original per-row boundary whenever hooks are registered.
+        $licenseIds = null;
+        $displayData = null;
+        if ($datas && empty($GLOBALS['PLUGIN_HOOKS']['item_can'])) {
+            $database = $DB;
+            $connection = $database->getDoctrineConnection();
+            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+            $rendering = Orm::withReadConnection($connection, static function (?EntityManager $manager) use ($connection, $itemtype, $items_id, $datas): array {
+                $reader = new SoftwareRenderingReadOperation($connection, $manager);
+                try {
+                    return $reader->rendering($itemtype, (int)$items_id, $datas);
+                } finally {
+                    $reader->close();
+                }
+            });
+            $licenseIds = $rendering['licenses'];
+            $displayData = $rendering['display'];
+        }
         foreach ($datas as $data) {
-            $licids = self::softwareByCategory(
+            $licids = $licenseIds !== null ? ($licenseIds[$data['verid']] ?? []) : self::softwareByCategory(
                 $data,
                 $itemtype,
                 $items_id,
@@ -1161,11 +1297,23 @@ class Item_SoftwareVersion extends CommonDBRelation
             );
 
             $category = new SoftwareCategory();
-            $category->getFromDB($data['softwarecategories_id']);
+            if (isset($displayData['categories'][$data['softwarecategories_id']])) {
+                $category->fields = $displayData['categories'][$data['softwarecategories_id']];
+            } elseif ($displayData === null || $data['softwarecategories_id']) {
+                $category->getFromDB($data['softwarecategories_id']);
+            }
             $soft = new Software();
-            $soft->getFromDB($data['softwares_id']);
+            if (isset($displayData['softwares'][$data['softwares_id']])) {
+                $soft->fields = $displayData['softwares'][$data['softwares_id']];
+            } else {
+                $soft->getFromDB($data['softwares_id']);
+            }
             $version = new SoftwareVersion();
-            $version->getFromDB($data['verid']);
+            if (isset($displayData['versions'][$data['verid']])) {
+                $version->fields = $displayData['versions'][$data['verid']];
+            } else {
+                $version->getFromDB($data['verid']);
+            }
             $newValue = [
                $soft->getLink(),
                $data['state'],
@@ -1279,7 +1427,7 @@ class Item_SoftwareVersion extends CommonDBRelation
                     [
                        'AND' => [
                           'glpi_softwarelicenses.softwareversions_id_use' => 0,
-                          'glpi_softwarelicenses.softwareversions_id_buy' => new \QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
+                          'glpi_softwarelicenses.softwareversions_id_buy' => new QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
                        ]
                     ]
                  ]
@@ -1447,7 +1595,7 @@ class Item_SoftwareVersion extends CommonDBRelation
               'OR'                                            => [
                  'glpi_softwarelicenses.softwareversions_id_use' => $verid,
                  [
-                    'glpi_softwarelicenses.softwareversions_id_use' => 0,
+                    'glpi_softwarelicenses.softwareversions_id_use' => null,
                     'glpi_softwarelicenses.softwareversions_id_buy' => $verid
                  ]
               ]
@@ -1639,20 +1787,13 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_items_softwareversions',
-           'WHERE'  => [
-              'items_id' => $oldid,
-              'itemtype' => $itemtype
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $csv                  = new self();
+        $rows = (new SoftwareInstallationRepository(Orm::create($DB)))
+            ->assignmentsForClone(false, $itemtype, (int)$oldid);
+        foreach ($rows as $data) {
+            $csv = new self();
             unset($data['id']);
-            $data['itemtype'] = $itemtype;
-            $data['items_id'] = $newid;
-            $data['_no_history']  = true;
+            $data = ItemSoftwareVersion::withReference($data, $itemtype, (int)$newid);
+            $data['_no_history'] = true;
 
             $csv->add($data);
         }

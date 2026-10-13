@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\ITILTicketLinkRepository;
+use itsmng\Database\Repository\ITILTaskRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -456,14 +461,11 @@ class Problem_Ticket extends CommonDBRelation
             $cell = '';
             $planned_infos = '';
             $tasktype = $ticket->getType() . "Task";
-            $plan = new $tasktype();
             $items = [];
-            $result = $DB->request([
-               'FROM'  => $plan->getTable(),
-               'WHERE' => [
-                  $ticket->getForeignKeyField() => $ticket->fields['id'],
-               ],
-            ]);
+            $value = $ticket->fields['id'];
+            $identifier = $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
+            $result = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTaskRepository($manager))->parentPlanning($tasktype, $identifier));
             foreach ($result as $plan) {
                 if (isset($plan['begin']) && $plan['begin']) {
                     $items[$plan['id']] = $plan['id'];
@@ -683,18 +685,12 @@ class Problem_Ticket extends CommonDBRelation
             $newCell  = '';
             $planned_infos = '';
 
-            $tasktype      = $problem->getType() . "Task";
-            $plan          = new $tasktype();
-            $items         = [];
-
-            $result = $DB->request(
-                [
-                  'FROM'  => $plan->getTable(),
-                  'WHERE' => [
-                     $problem->getForeignKeyField() => $problem->fields['id'],
-                  ],
-                ]
-            );
+            $tasktype = $problem->getType() . "Task";
+            $items = [];
+            $value = $problem->fields['id'];
+            $identifier = $value === null || (is_string($value) && strtolower($value) === 'null') ? null : (int)$value;
+            $result = Orm::read($DB, static fn (EntityManager $manager): array =>
+                (new ITILTaskRepository($manager))->parentPlanning($tasktype, $identifier));
             foreach ($result as $plan) {
                 if (isset($plan['begin']) && $plan['begin']) {
                     $items[$plan['id']] = $plan['id'];
@@ -713,7 +709,7 @@ class Problem_Ticket extends CommonDBRelation
             $newCell = count($items);
             if ($newCell) {
                 $newCell = "<span class='pointer'
-                              id='" . $change->getType() . $change->fields["id"] . "planning$rand'>" .
+                              id='" . $problem->getType() . $problem->fields["id"] . "planning$rand'>" .
                                   $newCell . '</span>';
                 $newCell = sprintf(
                     __('%1$s %2$s'),
@@ -722,8 +718,8 @@ class Problem_Ticket extends CommonDBRelation
                         $planned_infos,
                         [
                           'display' => false,
-                          'applyto' => $change->getType() .
-                          $change->fields["id"] .
+                          'applyto' => $problem->getType() .
+                          $problem->fields["id"] .
                           "planning" . $rand
                         ]
                     )
@@ -744,7 +740,7 @@ class Problem_Ticket extends CommonDBRelation
 
     /**
      * Returns problems data for given ticket.
-     * Returned data is usable by `Problem::showShort()` method.
+     * Returned scalars serve this class's ticket tab count and display.
      *
      * @param integer $tickets_id
      *
@@ -753,12 +749,16 @@ class Problem_Ticket extends CommonDBRelation
     private static function getTicketProblemsData($tickets_id)
     {
 
-        $ticket = new Ticket();
-        $ticket->fields['id'] = $tickets_id;
-        $iterator = self::getListForItem($ticket);
+        global $DB;
+
+        $scope = Session::isCron() ? null
+            : (new DbUtils())->getEntityRestriction('glpi_problems', '', '', 'auto');
+        $identifier = $tickets_id === null || (is_string($tickets_id) && strtolower($tickets_id) === 'null') ? null : (int)$tickets_id;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->problemsForTicket($identifier, $scope));
 
         $problems = [];
-        foreach ($iterator as $data) {
+        foreach ($rows as $data) {
             $problem = new Problem();
             $problem->getFromDB($data['id']);
             if ($problem->canViewItem()) {
@@ -771,7 +771,7 @@ class Problem_Ticket extends CommonDBRelation
 
     /**
      * Returns tickets data for given problem.
-     * Returned data is usable by `Ticket::showShort()` method.
+     * Returned scalars serve this class's problem tab count and display.
      *
      * @param integer $problems_id
      *
@@ -780,12 +780,16 @@ class Problem_Ticket extends CommonDBRelation
     private static function getProblemTicketsData($problems_id)
     {
 
-        $problem = new Problem();
-        $problem->fields['id'] = $problems_id;
-        $iterator = self::getListForItem($problem);
+        global $DB;
+
+        $scope = Session::isCron() ? null
+            : (new DbUtils())->getEntityRestriction('glpi_tickets', '', '', 'auto');
+        $identifier = $problems_id === null || (is_string($problems_id) && strtolower($problems_id) === 'null') ? null : (int)$problems_id;
+        $rows = Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new ITILTicketLinkRepository($manager))->ticketsForProblem($identifier, $scope));
 
         $tickets = [];
-        foreach ($iterator as $data) {
+        foreach ($rows as $data) {
             $ticket = new Ticket();
             $ticket->getFromDB($data['id']);
             if ($ticket->canViewItem()) {

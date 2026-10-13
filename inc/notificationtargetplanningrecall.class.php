@@ -31,6 +31,8 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Repository\NotificationRecipientRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -110,7 +112,6 @@ class NotificationTargetPlanningRecall extends NotificationTarget
     {
         $item = new $this->obj->fields['itemtype']();
         if ($item->getFromDB($this->obj->fields['items_id'])) {
-            $user = new User();
             $field = '';
             if ($item->isField('users_id_tech')) {
                 $field = 'users_id_tech';
@@ -121,11 +122,15 @@ class NotificationTargetPlanningRecall extends NotificationTarget
                 $field = 'users_id';
             }
 
-            if ($field != "" && $user->getFromDB($item->fields[$field])) {
-                $this->addToRecipientsList([
-                   'language' => $user->fields['language'],
-                   'users_id' => $user->fields['id']
-                ]);
+            if ($field !== '' && $item->fields[$field] !== null && strlen($item->fields[$field]) > 0) {
+                $user = $this->readRecipients(
+                    fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                        (int)Toolbox::cleanInteger($item->fields[$field])
+                    )
+                );
+                if ($user !== null) {
+                    $this->addToRecipientsList($user);
+                }
             }
         }
     }
@@ -138,14 +143,20 @@ class NotificationTargetPlanningRecall extends NotificationTarget
     {
         $item = new $this->obj->fields['itemtype']();
         if ($item->getFromDB($this->obj->fields['items_id'])) {
-            $user = new User();
             if ($item->isField('users_id_guests')) {
                 foreach ($item->fields['users_id_guests'] as $users_id) {
-                    if ($user->getFromDB($users_id)) {
-                        $this->addToRecipientsList([
-                           'language' => $user->fields['language'],
-                           'users_id' => $user->fields['id']
-                        ]);
+                    // Recipient callbacks can change later guests or read routing.
+                    // Resolve each locale immediately before its delivery checks.
+                    if ($users_id === null || strlen($users_id) == 0) {
+                        continue;
+                    }
+                    $guest = $this->readRecipients(
+                        fn (NotificationRecipientRepository $recipients): ?array => $recipients->guestLanguage(
+                            (int)Toolbox::cleanInteger($users_id)
+                        )
+                    );
+                    if ($guest !== null) {
+                        $this->addToRecipientsList($guest);
                     }
                 }
             }

@@ -4,14 +4,29 @@
 <h3>{{'Database connection setup'|trans}}</h3>
     <form aria-label="Database connection Setup" action='install.php?step=5' method='post'>
         <div class="fields">
-            <label class="mt-3" for="server">{{"SQL server (MariaDB or MySQL)"|trans}}</label>
-            <input name="db_host" type="text" class="form-control w-50 mx-auto" value="">
+            <label class="mt-3" for="db_type">{{'Database provider'|trans}}</label>
+            <select id="db_type" name="db_type" class="form-select w-50 mx-auto">
+                <option value="mysql" {% if provider == 'mysql' %}selected{% endif %}>MySQL / MariaDB</option>
+                <option value="pgsql" {% if provider == 'pgsql' %}selected{% endif %}>PostgreSQL ({{'experimental'|trans}})</option>
+            </select>
+            <label class="mt-3" for="server">{{"SQL server"|trans}}</label>
+            <input id="server" name="db_host" type="text" class="form-control w-50 mx-auto" value="{{host}}" required>
+            <div id="postgres-database" {% if provider != 'pgsql' %}hidden{% endif %}>
+                <label class="mt-3" for="db_name">{{'Existing empty database'|trans}}</label>
+                <input id="db_name" name="db_name" type="text" class="form-control w-50 mx-auto" value="{{database_name}}">
+            </div>
             <label class="mt-3" for="user">{{"SQL User"|trans}}</label>
-            <input name="db_user" type="text" class="form-control w-50 mx-auto" value="">
+            <input id="user" name="db_user" type="text" class="form-control w-50 mx-auto" value="{{user}}" required>
             <label class="mt-3" for="password">{{"Password"|trans}}</label>
-            <input name="db_pass" type="password" class="form-control w-50 mx-auto" value="">
+            <input id="password" name="db_pass" type="password" class="form-control w-50 mx-auto" value="" autocomplete="new-password">
         </div>
         <div class="buttons my-3">
             {{button('submit', 'Continue'|trans)}}
         </div>
     </form>
+    <script>
+        document.getElementById('db_type').addEventListener('change', function () {
+            document.getElementById('postgres-database').hidden = this.value !== 'pgsql';
+            document.getElementById('db_name').required = this.value === 'pgsql';
+        });
+    </script>

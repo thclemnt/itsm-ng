@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use LDAP\Result;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\LdapRepository;
+
 /**
  *  Class used to manage Auth LDAP config
  */
@@ -637,7 +642,7 @@ class AuthLDAP extends CommonDBTM
     /**
      * Show config replicates form
      *
-     * @var DBmysql $DB
+     * @var DBAdapter $DB
      *
      * @return void
      */
@@ -651,15 +656,14 @@ class AuthLDAP extends CommonDBTM
 
         AuthLdapReplicate::addNewReplicateForm($target, $ID);
 
-        $iterator = $DB->request([
-            'FROM' => 'glpi_authldapreplicates',
-            'WHERE' => [
-                'authldaps_id' => $ID
-            ],
-            'ORDER' => ['name']
-        ]);
+        $replicas = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$ID,
+            static fn (EntityManager $manager, int $master): array =>
+                (new LdapRepository($manager))->replicas($master, byName: true)
+        );
 
-        if (($nb = count($iterator)) > 0) {
+        if (($nb = count($replicas)) > 0) {
             echo "<br>";
 
             echo "<div class='center'>";
@@ -689,7 +693,7 @@ class AuthLDAP extends CommonDBTM
                 "<th class='center'></th></tr>";
             echo $header_begin . $header_top . $header_end;
 
-            while ($ldap_replicate = $iterator->next()) {
+            foreach ($replicas as $ldap_replicate) {
                 echo "<tr class='tab_bg_1'><td class='center' width='10'>";
                 Html::showMassiveActionCheckBox('AuthLdapReplicate', $ldap_replicate["id"]);
                 echo "</td>";
@@ -1458,7 +1462,7 @@ class AuthLDAP extends CommonDBTM
 
         $config_ldap = new self();
         if (!isset($_SESSION['ldap_server'])) {
-            throw new \RuntimeException('LDAP server must be set!');
+            throw new RuntimeException('LDAP server must be set!');
         }
         $config_ldap->getFromDB($_SESSION['ldap_server']);
 
@@ -2091,21 +2095,8 @@ class AuthLDAP extends CommonDBTM
 
         $glpi_users = [];
 
-        $select = [
-            'FROM' => User::getTable(),
-            'ORDER' => ['name ' . $values['order']]
-        ];
-
-        if ($values['mode'] != self::ACTION_IMPORT) {
-            $select['WHERE'] = [
-                'authtype' => [-1, Auth::NOT_YET_AUTHENTIFIED, Auth::LDAP, Auth::EXTERNAL, Auth::CAS],
-                'auths_id' => $options['authldaps_id']
-            ];
-        }
-
-        $iterator = $DB->request($select);
-
-        while ($user = $iterator->next()) {
+        $server = $values['mode'] == self::ACTION_IMPORT ? null : (int)$options['authldaps_id'];
+        foreach ((new LdapRepository(Orm::create($DB)))->userCandidates($server, $values['order']) as $user) {
             $tmpuser = new User();
 
             //Ldap add : fill the array with the login of the user
@@ -2466,14 +2457,10 @@ class AuthLDAP extends CommonDBTM
                 $glpi_groups = [];
 
                 //Get all groups from GLPI DB for the current entity and the subentities
-                $iterator = $DB->request([
-                    'SELECT' => ['ldap_group_dn', 'ldap_value'],
-                    'FROM' => 'glpi_groups',
-                    'WHERE' => getEntitiesRestrictCriteria('glpi_groups')
-                ]);
+                $groupsInScope = (new LdapRepository(Orm::create($DB)))->groupIdentifiers(getEntitiesRestrictCriteria('glpi_groups'));
 
                 //If the group exists in DB -> unset it from the LDAP groups
-                while ($group = $iterator->next()) {
+                foreach ($groupsInScope as $group) {
                     //use DN for next step
                     //depending on the type of search when groups are imported
                     //the DN may be in two separate fields
@@ -2659,15 +2646,7 @@ class AuthLDAP extends CommonDBTM
                                     ($config_ldap->fields["group_field"] == 'dn')
                                     && (count($ou) > 0)
                                 ) {
-                                    $iterator = $DB->request([
-                                        'SELECT' => ['ldap_value'],
-                                        'FROM' => 'glpi_groups',
-                                        'WHERE' => [
-                                            'ldap_group_dn' => Toolbox::addslashes_deep($ou)
-                                        ]
-                                    ]);
-
-                                    while ($group = $iterator->next()) {
+                                    foreach ((new LdapRepository(Orm::create($DB)))->groupValuesForDns($ou) as $group) {
                                         $groups[$group['ldap_value']] = [
                                             "cn" => $group['ldap_value'],
                                             "search_type" => "users"
@@ -2716,18 +2695,11 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                'is_active' => 1
-            ],
-            'ORDER' => 'name ASC'
-        ]);
+        $directories = (new LdapRepository(Orm::create($DB)))->directories(activeOnly: true);
 
-        if (count($iterator) == 1) {
+        if (count($directories) == 1) {
             //If only one server, do not show the choose ldap server window
-            $ldap = $iterator->next();
-            $_SESSION["ldap_server"] = $ldap["id"];
+            $_SESSION["ldap_server"] = $directories[0]['id'];
             Html::redirect($_SERVER['PHP_SELF']);
         }
 
@@ -2738,7 +2710,7 @@ class AuthLDAP extends CommonDBTM
         echo "<tr class='tab_bg_2'><th colspan='2'>" . __('LDAP directory choice') . "</th></tr>";
 
         //If more than one ldap server
-        if (count($iterator) > 1) {
+        if (count($directories) > 1) {
             echo "<tr class='tab_bg_2'><td class='center'>" . __('Name') . "</td>";
             echo "<td class='center'>";
             AuthLDAP::Dropdown([
@@ -2928,7 +2900,7 @@ class AuthLDAP extends CommonDBTM
                         'id' => $users_id
                     ];
                 }
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 Toolbox::logError($e->getMessage());
                 return false;
             }
@@ -3152,7 +3124,12 @@ class AuthLDAP extends CommonDBTM
      */
     public static function getLdapServers()
     {
-        return getAllDataFromTable('glpi_authldaps', ['ORDER' => 'is_default DESC']);
+        global $DB;
+        return array_column(Orm::readPrepared(
+            $DB,
+            static fn (): null => null,
+            static fn (EntityManager $manager): array => (new LdapRepository($manager))->directories()
+        ), null, 'id');
     }
 
 
@@ -3163,7 +3140,7 @@ class AuthLDAP extends CommonDBTM
      */
     public static function useAuthLdap()
     {
-        return (countElementsInTable('glpi_authldaps', ['is_active' => 1]) > 0);
+        return self::getNumberOfServers() > 0;
     }
 
 
@@ -3307,14 +3284,7 @@ class AuthLDAP extends CommonDBTM
             //  - there are multiple users having same login on different LDAP servers,
             //  - a user has been migrated from a LDAP server to another one, but GLPI is not yet aware of this.
             // Caveat: if user uses a wrong password, a login attempt will still be done on all active LDAP servers.
-            $known_servers = $DB->request(
-                [
-                    'SELECT' => 'auths_id',
-                    'FROM' => User::getTable(),
-                    'WHERE' => ['name' => addslashes($login)],
-                ]
-            );
-            $known_servers_id = array_column(iterator_to_array($known_servers), 'auths_id');
+            $known_servers_id = (new LdapRepository(Orm::create($DB)))->knownServerIds($login);
             usort(
                 $ldap_methods,
                 function (array $a, array $b) use ($known_servers_id) {
@@ -3445,7 +3415,7 @@ class AuthLDAP extends CommonDBTM
             }
             return false;
         }
-        throw new \RuntimeException('Something went wrong searching in LDAP directory');
+        throw new RuntimeException('Something went wrong searching in LDAP directory');
     }
 
 
@@ -3893,13 +3863,15 @@ class AuthLDAP extends CommonDBTM
     /**
      * Get number of servers
      *
-     * @var DBmysql $DB
+     * @var DBAdapter $DB
      *
      * @return integer
      */
     public static function getNumberOfServers()
     {
-        return countElementsInTable('glpi_authldaps', ['is_active' => 1]);
+        global $DB;
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->activeCount());
     }
 
 
@@ -4016,7 +3988,7 @@ class AuthLDAP extends CommonDBTM
     /**
      * Get default ldap
      *
-     * @var DBmysql $DB DB instance
+     * @var DBAdapter $DB DB instance
      *
      * @return integer
      */
@@ -4024,10 +3996,8 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        foreach ($DB->request('glpi_authldaps', ['is_default' => 1, 'is_active' => 1]) as $data) {
-            return $data['id'];
-        }
-        return 0;
+        return Orm::read($DB, static fn (EntityManager $manager): int =>
+            (new LdapRepository($manager))->defaultId());
     }
 
     public function post_updateItem($history = 1)
@@ -4035,11 +4005,7 @@ class AuthLDAP extends CommonDBTM
         global $DB;
 
         if (in_array('is_default', $this->updates) && $this->input["is_default"] == 1) {
-            $DB->update(
-                $this->getTable(),
-                ['is_default' => 0],
-                ['id' => ['<>', $this->input['id']]]
-            );
+            (new LdapRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
         }
     }
 
@@ -4048,11 +4014,7 @@ class AuthLDAP extends CommonDBTM
         global $DB;
 
         if (isset($this->fields['is_default']) && $this->fields["is_default"] == 1) {
-            $DB->update(
-                $this->getTable(),
-                ['is_default' => 0],
-                ['id' => ['<>', $this->fields['id']]]
-            );
+            (new LdapRepository(Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
         }
     }
 
@@ -4121,27 +4083,8 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $ldaps = [];
-        // Always get default first
-
-        $iterator = $DB->request([
-            'SELECT' => ['id'],
-            'FROM' => 'glpi_authldaps',
-            'WHERE' => [
-                'is_active' => 1,
-                'OR' => [
-                    'email1_field' => ['<>', ''],
-                    'email2_field' => ['<>', ''],
-                    'email3_field' => ['<>', ''],
-                    'email4_field' => ['<>', '']
-                ]
-            ],
-            'ORDER' => ['is_default DESC']
-        ]);
-        while ($data = $iterator->next()) {
-            $ldaps[] = $data['id'];
-        }
-        return $ldaps;
+        return Orm::read($DB, static fn (EntityManager $manager): array =>
+            (new LdapRepository($manager))->emailImportDirectoryIds());
     }
 
 
@@ -4188,7 +4131,19 @@ class AuthLDAP extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
         Rule::cleanForItemCriteria($this, 'LDAP_SERVER');
+        (new LdapRepository(Orm::create($DB)))
+            ->reassignUsers((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
+        $replica = new AuthLdapReplicate();
+        foreach ($replica->findIds(['authldaps_id' => $this->getID()]) as $id) {
+            $child = new AuthLdapReplicate();
+            if (empty($this->input['_replace_by'])) {
+                $child->delete(['id' => $id], true);
+            } else {
+                $child->update(['id' => $id, 'authldaps_id' => (int)$this->input['_replace_by']]);
+            }
+        }
     }
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
@@ -4269,7 +4224,7 @@ class AuthLDAP extends CommonDBTM
     {
         if (
             !is_resource($result)
-            && (!class_exists(\LDAP\Result::class) || !$result instanceof \LDAP\Result)
+            && (!class_exists(Result::class) || !$result instanceof Result)
         ) {
             return [];
         }
@@ -4290,20 +4245,16 @@ class AuthLDAP extends CommonDBTM
     {
         global $DB;
 
-        $replicates = [];
-        $criteria = [
-            'FIELDS' => ['id', 'host', 'port'],
-            'FROM' => 'glpi_authldapreplicates',
-            'WHERE' => ['authldaps_id' => $master_id]
-        ];
-        foreach ($DB->request($criteria) as $replicate) {
-            $replicates[] = [
-                "id" => $replicate["id"],
-                "host" => $replicate["host"],
-                "port" => $replicate["port"]
-            ];
-        }
-        return $replicates;
+        $replicas = Orm::readPrepared(
+            $DB,
+            static fn (): int => (int)$master_id,
+            static fn (EntityManager $manager, int $master): array => (new LdapRepository($manager))->replicas($master)
+        );
+        return array_map(static fn (array $replica): array => [
+            'id' => $replica['id'],
+            'host' => $replica['host'],
+            'port' => $replica['port'],
+        ], $replicas);
     }
 
     /**
@@ -4355,14 +4306,12 @@ class AuthLDAP extends CommonDBTM
      */
     public function isSyncFieldUsed()
     {
-        $count = countElementsInTable(
-            'glpi_users',
-            [
-                'auths_id' => $this->getID(),
-                'NOT' => ['sync_field' => null]
-            ]
+        global $DB;
+        return Orm::readPrepared(
+            $DB,
+            fn (): int => (int)$this->getID(),
+            static fn (EntityManager $manager, int $server): bool => (new LdapRepository($manager))->usesSyncField($server)
         );
-        return $count > 0;
     }
 
     /**
@@ -4391,10 +4340,10 @@ class AuthLDAP extends CommonDBTM
             if (!self::isValidGuid($value)) {
                 $value = self::guidToString($value);
                 if (!self::isValidGuid($value)) {
-                    throw new \RuntimeException('Not an objectguid!');
+                    throw new RuntimeException('Not an objectguid!');
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //well... this is not an objectguid apparently
             $value = $infos[$field];
         }

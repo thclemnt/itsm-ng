@@ -31,6 +31,11 @@
  * ---------------------------------------------------------------------
  */
 
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\LegacyValues;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\KnowledgeBaseRepository;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
@@ -111,6 +116,8 @@ class KnowbaseItem_Comment extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
+
         if (!$item->canUpdateItem()) {
             return '';
         }
@@ -130,9 +137,14 @@ class KnowbaseItem_Comment extends CommonDBTM
                 ];
             }
 
-            $nb = countElementsInTable(
-                'glpi_knowbaseitems_comments',
-                $where
+            $nb = Orm::readPrepared(
+                $DB,
+                static fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                    (int)$where['knowbaseitems_id'],
+                    $where['language']
+                ),
+                static fn (EntityManager $manager, array $arguments): int =>
+                    (new KnowledgeBaseRepository($manager))->commentCount(...$arguments)
             );
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
@@ -152,7 +164,7 @@ class KnowbaseItem_Comment extends CommonDBTM
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $DB, $CFG_GLPI;
 
         // Total Number of comments
         if ($item->getType() == KnowbaseItem::getType()) {
@@ -171,9 +183,14 @@ class KnowbaseItem_Comment extends CommonDBTM
         $kbitem = new KnowbaseItem();
         $kbitem->getFromDB($kbitem_id);
 
-        $number = countElementsInTable(
-            'glpi_knowbaseitems_comments',
-            $where
+        $number = Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (int $article, ?string $language): array => [$article, $language])(
+                (int)$where['knowbaseitems_id'],
+                $where['language']
+            ),
+            static fn (EntityManager $manager, array $arguments): int =>
+                (new KnowledgeBaseRepository($manager))->commentCount(...$arguments)
         );
 
         $cancomment = $kbitem->canComment();
@@ -303,24 +320,25 @@ class KnowbaseItem_Comment extends CommonDBTM
     {
         global $DB;
 
-        $where = [
-           'knowbaseitems_id'  => $kbitem_id,
-           'language'          => $lang,
-           'parent_comment_id' => $parent
-        ];
-
-        $db_comments = $DB->request(
-            'glpi_knowbaseitems_comments',
-            $where + ['ORDER' => 'id ASC']
+        return Orm::readPrepared(
+            $DB,
+            static fn (): array => (static fn (int $article, ?string $language, ?int $parent): array => [$article, $language, $parent])(
+                (int)$kbitem_id,
+                LegacyValues::decode($lang),
+                $parent === null ? null : (int)$parent
+            ),
+            static fn (EntityManager $manager, array $arguments): array =>
+                (new KnowledgeBaseRepository($manager))->comments(...$arguments)
         );
+    }
 
-        $comments = [];
-        foreach ($db_comments as $db_comment) {
-            $db_comment['answers'] = self::getCommentsForKbItem($kbitem_id, $lang, $db_comment['id']);
-            $comments[] = $db_comment;
-        }
+    public function cleanDBonPurge()
+    {
+        global $DB;
 
-        return $comments;
+        // Keep other authors' replies visible at the deleted comment's level.
+        (new KnowledgeBaseRepository(Orm::create($DB)))
+            ->preserveReplies((int)$this->getID(), $this->fields['parent_comment_id']);
     }
 
     /**
@@ -337,7 +355,7 @@ class KnowbaseItem_Comment extends CommonDBTM
         $html = '';
         foreach ($comments as $comment) {
             $user = new User();
-            $user->getFromDB($comment['users_id']);
+            $hasUser = $user->getFromDB($comment['users_id']);
 
             $html .= "<li class='comment" . ($level > 0 ? ' subcomment' : '') . "' id='kbcomment{$comment['id']}'>";
             $html .= "<div class='h_item left'>";
@@ -353,7 +371,7 @@ class KnowbaseItem_Comment extends CommonDBTM
             $html .= "</div>";
             $html .= "<span class='h_user_name'>";
             $userdata = getUserName($user->getID(), 2);
-            $html .= $user->getLink() . "&nbsp;";
+            $html .= ($hasUser ? $user->getLink() : __('Unknown user')) . "&nbsp;";
             $html .= Html::showToolTip(
                 $userdata["comment"],
                 ['link' => $userdata['link'], 'display' => false]

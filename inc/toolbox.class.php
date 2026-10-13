@@ -31,15 +31,20 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Toolbox\URL;
 use Glpi\Console\Application;
 use Glpi\Event;
 use Glpi\Mail\Protocol\ProtocolInterface;
 use Glpi\System\RequirementsManager;
+use Laminas\Mail\Protocol\Imap;
+use Laminas\Mail\Protocol\Pop3;
 use Laminas\Mail\Storage\AbstractStorage;
 use Monolog\Logger;
 use Mexitek\PHPColors\Color;
 use Psr\Log\InvalidArgumentException;
 use Symfony\Component\Console\Output\OutputInterface;
+use itsmng\Database\Installer;
+use itsmng\Database\Migration\History;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -270,7 +275,7 @@ class Toolbox
         for ($i = 0; $i < $strlen; $i++) {
             $char    = substr($string, $i, 1);
             $keychar = substr($key, ($i % strlen($key)) - 1, 1);
-            $char    = chr(ord($char) + ord($keychar));
+            $char    = chr((ord($char) + ord($keychar)) & 0xff);
             $result .= $char;
         }
         return base64_encode($result);
@@ -543,7 +548,7 @@ class Toolbox
         }
 
         if (defined('TU_USER') && $level >= Logger::NOTICE) {
-            throw new \RuntimeException($msg);
+            throw new RuntimeException($msg);
         }
 
         $tps = microtime(true);
@@ -555,7 +560,7 @@ class Toolbox
 
         try {
             $logger->addRecord($level, $msg, $extra);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //something went wrong, make sure logging does not cause fatal
             error_log($e);
         }
@@ -617,11 +622,11 @@ class Toolbox
         $msg = $args[0];
         try {
             self::log($SQLLOGGER, Logger::ERROR, $args);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $msg = $e->getMessage();
         } finally {
             if (class_exists('GlpitestSQLError')) { // For unit test
-                throw new \GlpitestSQLError($msg);
+                throw new GlpitestSQLError($msg);
             }
         }
     }
@@ -911,7 +916,7 @@ class Toolbox
         if ($mime === null && preg_match('/\.(...)$/', $file)) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime = finfo_file($finfo, $file);
-            finfo_close($finfo);
+            unset($finfo);
         }
 
         // don't download picture files, see them inline
@@ -968,52 +973,48 @@ class Toolbox
 
 
     /**
-     *  Add slash for variable & array
+     * Escape string leaves without changing typed values in nested input arrays.
      *
-     * @param string|string[] $value value to add slashes
+     * @param mixed $value input to escape
      *
-     * @return string|string[]
+     * @return mixed input with escaped strings and preserved scalar types
     **/
     public static function addslashes_deep($value)
     {
         global $DB;
 
-        $value = ((array) $value === $value)
-                    ? array_map([__CLASS__, 'addslashes_deep'], $value)
-                    : (
-                        is_null($value)
-                         ? null : (is_resource($value) || is_object($value)
-                         ? $value : $DB->escape(
-                             str_replace(
-                                 ['&#039;', '&#39;', '&#x27;', '&apos;', '&quot;'],
-                                 ["'", "'", "'", "'", "\""],
-                                 $value
-                             )
-                         ))
-                    );
-
-        return $value;
+        if (is_array($value)) {
+            return array_map([__CLASS__, 'addslashes_deep'], $value);
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+        return $DB->escape(str_replace(
+            ['&#039;', '&#39;', '&#x27;', '&apos;', '&quot;'],
+            ["'", "'", "'", "'", "\""],
+            $value
+        ));
     }
 
 
     /**
-     * Strip slash  for variable & array
+     * Strip string escapes without changing typed values in nested input arrays.
      *
-     * @param array|string $value  item to stripslashes
+     * @param mixed $value input to decode
      *
-     * @return array|string stripslashes item
+     * @return mixed input with decoded strings and preserved scalar types
     **/
     public static function stripslashes_deep($value)
     {
-
-        $value = ((array) $value === $value)
-                    ? array_map([__CLASS__, 'stripslashes_deep'], $value)
-                    : (is_null($value)
-                          ? null : (is_resource($value) || is_object($value)
-                                      ? $value : stripslashes($value)));
-
-        return $value;
+        if (is_array($value)) {
+            return array_map([__CLASS__, 'stripslashes_deep'], $value);
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+        return stripslashes($value);
     }
+
 
     /** Converts an array of parameters into a query string to be appended to a URL.
      *
@@ -1593,8 +1594,8 @@ class Toolbox
             $item = str_replace('\\', '/', strtolower((string) $plug['class']));
         } else { // Standard case
             $item = strtolower($itemtype);
-            if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+            if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
             }
         }
 
@@ -1627,8 +1628,8 @@ class Toolbox
                 $itemtype = 'ConsumableItem';
             }
             $item = strtolower($itemtype);
-            if (substr($itemtype, 0, \strlen(NS_GLPI)) === NS_GLPI) {
-                $item = str_replace('\\', '/', substr($item, \strlen(NS_GLPI)));
+            if (substr($itemtype, 0, strlen(NS_GLPI)) === NS_GLPI) {
+                $item = str_replace('\\', '/', substr($item, strlen(NS_GLPI)));
             }
         }
 
@@ -1836,7 +1837,7 @@ class Toolbox
         curl_setopt_array($ch, $opts);
         $content = curl_exec($ch);
         $curl_error = curl_error($ch) ?: null;
-        curl_close($ch);
+        unset($ch);
 
         if ($curl_error !== null) {
             if (empty($CFG_GLPI["proxy_name"])) {
@@ -1987,7 +1988,7 @@ class Toolbox
                 }
             }
             if (array_key_exists('path', $parsed_url) && $parsed_url['path'][0] == '/') {
-                return Glpi\Toolbox\URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
+                return URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
             }
         }
 
@@ -2497,12 +2498,12 @@ class Toolbox
      * Returns protocol instance for given mail server type.
      *
      * Class should implements Glpi\Mail\Protocol\ProtocolInterface
-     * or should be \Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3 for native protocols.
+     * or should be Imap|Pop3 for native protocols.
      *
      * @param string $protocol_type
      * @param boolean $allow_plugins_protocols allow plugins protocols
      *
-     * @return null|\Glpi\Mail\Protocol\ProtocolInterface|\Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3
+     * @return null|ProtocolInterface|Imap|Pop3
      */
     public static function getMailServerProtocolInstance(string $protocol_type, $allow_plugins_protocols = true)
     {
@@ -2514,8 +2515,8 @@ class Toolbox
             } elseif (
                 class_exists($protocol)
                 && (is_a($protocol, ProtocolInterface::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Imap::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Pop3::class, true))
+                    || is_a($protocol, Imap::class, true)
+                    || is_a($protocol, Pop3::class, true))
             ) {
                 return new $protocol();
             } else {
@@ -2531,7 +2532,7 @@ class Toolbox
     /**
      * Returns storage instance for given mail server type.
      *
-     * Class should extends \Laminas\Mail\Storage\AbstractStorage.
+     * Class should extends AbstractStorage.
      *
      * @param string $protocol_type
      * @param array  $params         Storage constructor params, as defined in AbstractStorage
@@ -2686,7 +2687,7 @@ class Toolbox
      * @since 9.1
      * @since 9.4.7 Added $db parameter
     **/
-    public static function createSchema($lang = 'en_GB', ?DBmysql $database = null)
+    public static function createSchema($lang = 'en_GB', ?DBAdapter $database = null, bool $replace = false)
     {
         global $DB;
 
@@ -2696,92 +2697,21 @@ class Toolbox
             $database = new DB();
         }
 
-        // Set global $DB as it is used in "Config::setConfigurationValues()" just after schema creation
+        // Config lifecycle callbacks use the selected writer inside History publication.
         $DB = $database;
 
-        if (!$DB->runFile(GLPI_ROOT . "/install/mysql/glpi-empty.sql")) {
-            echo "Errors occurred inserting default database";
-        } else {
-            //dataset
-            Session::loadLanguage($lang, false); // Load default language locales to translate empty data
-            $tables = require_once(__DIR__ . '/../install/empty_data.php');
-            Session::loadLanguage('', false); // Load back session language
-
-            foreach ($tables as $table => $data) {
-                $reference = array_replace(
-                    $data[0],
-                    array_fill_keys(
-                        array_keys($data[0]),
-                        new QueryParam()
-                    )
-                );
-
-                $stmt = $DB->prepare($DB->buildInsert($table, $reference));
-                if (false === $stmt) {
-                    $msg = "Error preparing statement in table $table";
-                    throw new \RuntimeException($msg);
-                }
-
-                $types = str_repeat('s', count($data[0]));
-                foreach ($data as $row) {
-                    $res = $stmt->bind_param($types, ...array_values($row));
-                    if (false === $res) {
-                        $msg = "Error binding params in table $table\n";
-                        $msg .= print_r($row, true);
-                        throw new \RuntimeException($msg);
-                    }
-                    $res = $stmt->execute();
-                    if (false === $res) {
-                        $msg = $stmt->error;
-                        $msg .= "\nError execution statement in table $table\n";
-                        $msg .= print_r($row, true);
-                        throw new \RuntimeException($msg);
-                    }
-                    if (!isCommandLine()) {
-                        // Flush will prevent proxy to timeout as it will receive data.
-                        // Flush requires a content to be sent, so we sent spaces as multiple spaces
-                        // will be shown as a single one on browser.
-                        echo ' ';
-                        Html::glpi_flush();
-                    }
-                }
-            }
-
-            // update default language
-            Config::setConfigurationValues(
-                'core',
-                [
-                  'language'      => $lang,
-                  'version'       => ITSM_VERSION,
-                  'dbversion'     => ITSM_SCHEMA_VERSION,
-                  'use_timezones' => $DB->areTimezonesAvailable()
-                ]
-            );
-
-            // set ITSM-NG version
-            Config::setConfigurationValues(
-                'core',
-                [
-                  'itsmversion'       => ITSM_VERSION,
-                  'itsmdbversion'     => ITSM_SCHEMA_VERSION
-                ]
-            );
-
-            if (defined('GLPI_SYSTEM_CRON')) {
-                // Downstream packages may provide a good system cron
-                $DB->updateOrDie(
-                    'glpi_crontasks',
-                    [
-                      'mode'   => 2
-                    ],
-                    [
-                      'name'      => ['!=', 'watcher'],
-                      'allowmode' => ['&', 2]
-                    ],
-                    '4203'
-                );
-            }
+        if ($replace && $DB->getProvider() === 'mysql' && !History::isInstalling($DB->getDoctrineConnection())) {
+            Installer::resetMysqlCore($DB->getDoctrineConnection());
         }
+        (new History())->install(
+            $DB,
+            $lang,
+            isCommandLine() ? null : static function (string $step): void {
+                // Keep long-running web installation requests active through proxies.
+                echo ' ';
+                Html::glpi_flush();
+            }
+        );
     }
 
 
@@ -3330,7 +3260,7 @@ class Toolbox
                 ];
                 break;
             default:
-                throw new \RuntimeException("Unknown type $type to get date formats.");
+                throw new RuntimeException("Unknown type $type to get date formats.");
         }
         return $formats;
     }
@@ -3520,15 +3450,14 @@ class Toolbox
      */
     public static function deletePicture($path)
     {
-
-        $fullpath = GLPI_PICTURE_DIR . '/' . $path;
-
-        if (!file_exists($fullpath)) {
+        if (!is_string($path) || $path === '') {
             return false;
         }
 
-        $fullpath = realpath($fullpath);
-        if (!Toolbox::startsWith($fullpath, realpath(GLPI_PICTURE_DIR))) {
+        $fullpath = realpath(GLPI_PICTURE_DIR . '/' . $path);
+        $directory = realpath(GLPI_PICTURE_DIR);
+        if ($fullpath === false || $directory === false || is_dir($fullpath)
+            || !Toolbox::startsWith($fullpath, $directory . DIRECTORY_SEPARATOR)) {
             // Prevent deletion of a file ouside pictures directory
             return false;
         }
