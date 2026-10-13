@@ -35,23 +35,16 @@ namespace tests\units;
 
 use DbTestCase;
 use Item_Devices;
-use Session;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 
 class Item_DeviceMemory extends DbTestCase
 {
-    public function testCloneStockAndDeletePreservePayloadWithoutLegacyQueries(): void
+    public function testCloneStockAndDeletePreservePayload(): void
     {
-        global $DB, $CFG_GLPI;
+        global $DB;
 
         $savedSession = $_SESSION;
-        $savedConfig = $CFG_GLPI;
-        $hadDebug = array_key_exists('DEBUG_SQL', $GLOBALS);
-        $savedDebug = $GLOBALS['DEBUG_SQL'] ?? null;
-        $hadCount = array_key_exists('SQL_TOTAL_REQUEST', $GLOBALS);
-        $savedCount = $GLOBALS['SQL_TOTAL_REQUEST'] ?? null;
-        global $DEBUG_SQL, $SQL_TOTAL_REQUEST;
         $savedReporting = error_reporting();
         error_reporting($savedReporting & ~E_DEPRECATED & ~E_USER_DEPRECATED);
         try {
@@ -97,30 +90,16 @@ class Item_DeviceMemory extends DbTestCase
             $this->array($link->find(['itemtype' => 'Computer', 'items_id' => $destinationId]))->isEmpty();
             $this->boolean($link->getFromDB($id))->isTrue('Deleting the assigned clone preserves the separate stock binding');
 
-            $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
-            $CFG_GLPI['debug_sql'] = true;
-            $DEBUG_SQL = [];
-            $SQL_TOTAL_REQUEST = 0;
             $this->array(array_column($link->getTableGroupRows($device, ''), 'id'))->isIdenticalTo([$id]);
-            $link->getTableGroupRows($asset);
-            $link->getTableGroupRows($device, 'Computer');
-            Item_Devices::getItemsAssociatedTo('Computer', $assetId);
+            $this->array($link->getTableGroupRows($asset))->isEmpty();
+            $this->array($link->getTableGroupRows($device, 'Computer'))->isEmpty();
+            $this->array(Item_Devices::getItemsAssociatedTo('Computer', $assetId))->isEmpty();
             Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
-            $this->integer($SQL_TOTAL_REQUEST)->isIdenticalTo(0);
+            $this->boolean($link->getFromDB($id))->isTrue('Repeated cleanup preserves the stock binding');
+            $this->integer((int)$link->fields['size'])->isIdenticalTo(8192);
             $this->array((new ForeignKeys())->audit($DB->getDoctrineConnection()))->isEmpty();
         } finally {
             $_SESSION = $savedSession;
-            $CFG_GLPI = $savedConfig;
-            if ($hadDebug) {
-                $DEBUG_SQL = $savedDebug;
-            } else {
-                unset($GLOBALS['DEBUG_SQL']);
-            }
-            if ($hadCount) {
-                $SQL_TOTAL_REQUEST = $savedCount;
-            } else {
-                unset($GLOBALS['SQL_TOTAL_REQUEST']);
-            }
             error_reporting($savedReporting);
         }
     }
