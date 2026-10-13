@@ -309,7 +309,7 @@ abstract class CommonITILActor extends CommonDBRelation
 
                 if ($donotif) {
                     $options = [];
-                    if (isset($this->fields['users_id'])) {
+                    if ($this->isField('users_id')) {
                         $options = ['_old_user' => $this->fields];
                     }
                     NotificationEvent::raiseEvent("update", $item, $options);

@@ -453,7 +453,7 @@ class Log extends DbTestCase
             $this->createLogEntry($computer, []);
             $this->string($history->getTabNameForItem($computer))
                 ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $connection = $DB->getDoctrineConnection();
             for ($repeat = 0; $repeat < 3; ++$repeat) {
                 $this->string($history->getTabNameForItem($computer))
@@ -589,7 +589,7 @@ class Log extends DbTestCase
         $readPreference = $GLOBALS['CFG_GLPI']['use_slave_for_search'];
         $connection = $DB->getDoctrineConnection();
         $this->integer($connection->getTransactionNestingLevel())->isGreaterThan(0);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         try {
             $GLOBALS['CFG_GLPI']['use_slave_for_search'] = false;
             $_SESSION['glpinames_format'] = User::FIRSTNAME_BEFORE;

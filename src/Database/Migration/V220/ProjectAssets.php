@@ -13,7 +13,7 @@ use RuntimeException;
 /** Frozen 20261003 project asset upgrade; container and Project subject have separate ownership. */
 final class ProjectAssets extends TypedItemMigration
 {
-    public const PHASE = '20261003_project_assets';
+    public const PHASE = '2.2.0.project_assets';
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {

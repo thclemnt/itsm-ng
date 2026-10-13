@@ -134,7 +134,7 @@ class Planning extends \DbTestCase
             }
             $single = $options([LegacyPlanning::class, 'showAddGroupForm']);
             $all = $options([LegacyPlanning::class, 'showAddGroupUsersForm']);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             for ($repeat = 0; $repeat < 16; ++$repeat) {
                 $this->array($options([LegacyPlanning::class, 'showAddGroupForm']))->isIdenticalTo($single);
@@ -209,7 +209,7 @@ class Planning extends \DbTestCase
             $this->string($repository->tokenValue((int)$actor->getID(), 'personal_token'))->isIdenticalTo($actorToken);
             $_SESSION['glpiID'] = $id;
             $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             for ($repeat = 0; $repeat < 16; ++$repeat) {
                 $this->array($tokens($render()))->isIdenticalTo([$stored, $stored]);
@@ -318,7 +318,7 @@ class Planning extends \DbTestCase
                 $this->integer($CFG_GLPI['is_ids_visible'])->isIdenticalTo(1);
             }
             $warmResources = LegacyPlanning::getTimelineResources();
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             for ($repeat = 0; $repeat < 16; ++$repeat) {
                 $this->array(LegacyPlanning::getTimelineResources())->isIdenticalTo($warmResources);
@@ -371,6 +371,50 @@ class Planning extends \DbTestCase
            ->string['end']->isEqualTo($new_end)
            ->string['rrule']->isEqualTo($input['rrule']);
         $this->string($event->fields['name'])->contains(sprintf(__('Copy of %s'), $input['name']));
+    }
+
+    public function testGroupTaskCanMoveAndCloneToUserPlanning(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)Session::getActiveEntity();
+        $author = (int)Session::getLoginUserID();
+        $technician = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+        $group = $this->createItem(Group::class, ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+        $ticket = $this->createItem(\Ticket::class, [
+            'name' => $this->getUniqueString(), 'content' => 'Planning assignment', 'entities_id' => $entity,
+        ]);
+        $task = new \TicketTask();
+        $this->integer($taskId = $task->add([
+            'tickets_id' => $ticket->getID(), 'content' => 'Group task', 'users_id' => $author,
+            'groups_id_tech' => $group->getID(), 'users_id_tech' => null,
+            'plan' => ['begin' => '2026-10-13 09:00:00', 'end' => '2026-10-13 10:00:00'],
+        ]))->isGreaterThan(0);
+        $this->boolean($task->getFromDB($taskId))->isTrue();
+        $this->variable($task->fields['users_id_tech'])->isNull();
+
+        $cloneId = LegacyPlanning::cloneEvent([
+            'old_itemtype' => 'TicketTask', 'old_items_id' => $task->getID(),
+            'start' => '2026-10-14 09:00:00', 'end' => '2026-10-14 10:00:00',
+            'actor' => ['itemtype' => 'user', 'items_id' => $technician->getID()],
+        ]);
+        $this->integer($cloneId)->isGreaterThan(0);
+        $clone = new \TicketTask();
+        $this->boolean($clone->getFromDB($cloneId))->isTrue();
+        $this->integer($clone->fields['users_id_tech'])->isIdenticalTo((int)$technician->getID());
+        $this->variable($clone->fields['groups_id_tech'])->isNull();
+        $this->integer($clone->fields['users_id'])->isIdenticalTo($author);
+
+        $this->boolean(LegacyPlanning::updateEventTimes([
+            'itemtype' => 'TicketTask', 'items_id' => $task->getID(),
+            'start' => '2026-10-15 09:00:00', 'end' => '2026-10-15 10:00:00',
+            'old_actor_itemtype' => 'Group', 'old_actor_items_id' => $group->getID(),
+            'new_actor_itemtype' => 'User', 'new_actor_items_id' => $technician->getID(),
+        ]))->isTrue();
+        $this->boolean($task->getFromDB($task->getID()))->isTrue();
+        $this->integer($task->fields['users_id_tech'])->isIdenticalTo((int)$technician->getID());
+        $this->variable($task->fields['groups_id_tech'])->isNull();
+        $this->integer($task->fields['users_id'])->isIdenticalTo($author);
     }
 
     public function testGetExternalCalendarEvents()

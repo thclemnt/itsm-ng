@@ -596,7 +596,7 @@ class Item_SoftwareVersion extends DbTestCase
             unset($row);
             // The ordinary public path reuses its owner after the first read.
             $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeRead = $factories->getValue();
             $this->array(ItemSoftwareVersionModel::getFromItem($computer))->isIdenticalTo($publicExpected);
             $this->integer($factories->getValue() - $beforeRead)->isIdenticalTo(0);

@@ -257,7 +257,7 @@ class Profile extends DbTestCase
                 $manager->getClassMetadata(ProfileRightEntity::class);
                 $manager->getClassMetadata(ProfileEntity::class);
             });
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             ProfileRight::cleanAllPossibleRights();
             $this->array(ProfileRight::getAllPossibleRights())->isIdenticalTo($expected);

@@ -35,6 +35,16 @@ final class CalendarSchedule
         return $sum;
     }
 
+    public function isHoliday(DateTimeImmutable $day): bool
+    {
+        foreach ($this->holidays as $holiday) {
+            if ($holiday->containsDay($day)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function addDelay(int $day, string $begin, int $delay): string|false
     {
         $start = self::seconds($begin);
@@ -86,14 +96,7 @@ final class CalendarSchedule
         while (true) {
             $day = (int)date('w', $time);
             $date = new DateTimeImmutable(date('Y-m-d', $time));
-            $closed = false;
-            foreach ($this->holidays as $holiday) {
-                if ($holiday->containsDay($date)) {
-                    $closed = true;
-                    break;
-                }
-            }
-            if (!$closed && $this->activeSeconds($day, '00:00:00', '24:00:00') > 0) {
+            if (!$this->isHoliday($date) && $this->activeSeconds($day, '00:00:00', '24:00:00') > 0) {
                 $occurrence = $this->contains($day, date('H:i:s', $time)) ? $time
                     : strtotime($date->format('Y-m-d') . ' ' . $this->addDelay($day, '00:00:00', 0));
                 return $end === null || $occurrence <= $end ? $occurrence : false;

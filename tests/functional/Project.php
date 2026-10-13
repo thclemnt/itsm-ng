@@ -45,6 +45,7 @@ use Doctrine\ORM\Events;
 use Project as LegacyProject;
 use ProjectState;
 use ProjectTask;
+use ProjectTaskType;
 use ProjectTeam;
 use Session;
 use User;
@@ -57,6 +58,45 @@ use itsmng\Database\Repository\ProjectRepository;
 /* Test for inc/project.class.php */
 class Project extends DbTestCase
 {
+    public function testKanbanGroupsUnclassifiedCardsInNoStatusColumn(): void
+    {
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $project = $this->createItem(LegacyProject::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity,
+            ]);
+            $child = $this->createItem(LegacyProject::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity,
+                'projects_id' => $project->getID(), 'projectstates_id' => 0,
+            ]);
+            $task = $this->createItem(ProjectTask::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity,
+                'projects_id' => $project->getID(), 'projectstates_id' => 0, 'projecttasktypes_id' => 0,
+            ]);
+            $state = $this->createItem(ProjectState::class, ['name' => $this->getUniqueString()]);
+            $type = $this->createItem(ProjectTaskType::class, ['name' => $this->getUniqueString()]);
+            $classified = $this->createItem(ProjectTask::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity,
+                'projects_id' => $project->getID(),
+                'projectstates_id' => $state->getID(), 'projecttasktypes_id' => $type->getID(),
+            ]);
+
+            $columns = LegacyProject::getKanbanColumns($project->getID(), 'projectstates_id');
+            $this->array($columns)->hasKey(0)->notHasKey('');
+            $this->array(array_column($columns[0]['items'], 'id'))->isIdenticalTo([
+                'Project-' . $child->getID(), 'ProjectTask-' . $task->getID(),
+            ]);
+            $this->array(array_column($columns[$state->getID()]['items'], 'id'))
+                ->isIdenticalTo(['ProjectTask-' . $classified->getID()]);
+            $this->string($columns[$state->getID()]['items'][0]['content'])->contains($type->fields['name']);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     public function testNotificationDocumentAndAssetSnapshotsRetainLiveOwners(): void
     {
         global $DB;

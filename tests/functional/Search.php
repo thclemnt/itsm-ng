@@ -129,6 +129,83 @@ class Search extends DbTestCase
         return $data;
     }
 
+    public function testIpRangesAndFallbackSortingUseNumericAddresses(): void
+    {
+        global $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $CFG_GLPI['allow_search_all'] = $CFG_GLPI['allow_search_view'] = true;
+            $prefix = 'ip-search-' . $this->getUniqueString();
+            $ids = [];
+            foreach (['192.0.2.100', '192.0.2.9', '192.0.2.20', '2001:db8::1'] as $address) {
+                $computer = $this->createItem(Computer::class, ['name' => $prefix . $address, 'entities_id' => Session::getActiveEntity()]);
+                $port = $this->createItem(\NetworkPort::class, ['itemtype' => Computer::class, 'items_id' => $computer->getID(), 'instantiation_type' => \NetworkPortEthernet::class, 'name' => $prefix]);
+                $name = $this->createItem(\NetworkName::class, ['itemtype' => \NetworkPort::class, 'items_id' => $port->getID(), 'name' => $prefix]);
+                $this->createItem(\IPAddress::class, ['itemtype' => \NetworkName::class, 'items_id' => $name->getID(), 'name' => $address]);
+                $ids[$address] = (int)$computer->getID();
+            }
+            $withoutAddress = $this->createItem(Computer::class, ['name' => $prefix . ' unassigned', 'entities_id' => Session::getActiveEntity()]);
+            $options = SearchOption::getOptions(Computer::class);
+            $ip = array_key_first(array_filter($options, static fn ($option) => is_array($option)
+                && ($option['table'] ?? '') === 'glpi_ipaddresses' && ($option['field'] ?? '') === 'name'));
+            $this->variable($ip)->isNotNull();
+            foreach ([false, true] as $fallback) {
+                foreach (['>192.0.2.9', '>3221225993', '>192.0.521'] as $comparison) {
+                    $data = $this->doSearch(Computer::class, [
+                        'disable_two_phase_search' => $fallback, 'sort' => $ip, 'order' => 'ASC',
+                        'criteria' => [
+                            ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                            ['link' => 'AND', 'field' => $ip, 'searchtype' => 'contains', 'value' => $comparison],
+                        ],
+                    ], [1, $ip]);
+                    $this->array(array_map('intval', array_column($data['data']['rows'], 'id')))
+                        ->isIdenticalTo([$ids['192.0.2.20'], $ids['192.0.2.100']]);
+                }
+            }
+            foreach (['all', 'view'] as $field) {
+                $data = $this->doSearch(Computer::class, [
+                    'sort' => $ip, 'order' => 'ASC',
+                    'criteria' => [['field' => $field, 'searchtype' => 'contains', 'value' => $prefix]],
+                ], [1, $ip]);
+                $this->boolean(empty($data['sql']['two_phase']))->isTrue();
+                $this->array(array_map('intval', array_column($data['data']['rows'], 'id')))
+                    ->isIdenticalTo([(int)$withoutAddress->getID(), $ids['192.0.2.9'], $ids['192.0.2.20'], $ids['192.0.2.100'], $ids['2001:db8::1']]);
+            }
+        } finally {
+            $CFG_GLPI = $configuration;
+        }
+    }
+
+    public function testFallbackContractSortingUsesComputedEndDate(): void
+    {
+        global $CFG_GLPI;
+        $configuration = $CFG_GLPI;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $CFG_GLPI['allow_search_all'] = $CFG_GLPI['allow_search_view'] = true;
+            $prefix = 'contract-sort-' . $this->getUniqueString();
+            $later = $this->createItem(\Contract::class, ['name' => $prefix . ' later', 'entities_id' => Session::getActiveEntity(), 'begin_date' => '2026-01-01', 'duration' => 12]);
+            $earlier = $this->createItem(\Contract::class, ['name' => $prefix . ' earlier', 'entities_id' => Session::getActiveEntity(), 'begin_date' => '2026-06-01', 'duration' => 1]);
+            $undated = $this->createItem(\Contract::class, ['name' => $prefix . ' undated', 'entities_id' => Session::getActiveEntity()]);
+            foreach (['all', 'view'] as $field) {
+                foreach (['ASC', 'DESC'] as $order) {
+                    $data = $this->doSearch(\Contract::class, [
+                        'sort' => 20, 'order' => $order,
+                        'criteria' => [['field' => $field, 'searchtype' => 'contains', 'value' => $prefix]],
+                    ], [1, 20]);
+                    $expected = [(int)$undated->getID(), (int)$earlier->getID(), (int)$later->getID()];
+                    $this->array(array_map('intval', array_column($data['data']['rows'], 'id')))
+                        ->isIdenticalTo($order === 'ASC' ? $expected : array_reverse($expected));
+                }
+            }
+        } finally {
+            $CFG_GLPI = $configuration;
+        }
+    }
+
     public function testPluginColumnRetainsItsSortAndJoinHooks(): void
     {
         global $DB, $CFG_GLPI;
@@ -2449,7 +2526,7 @@ class Search extends DbTestCase
         };
         $this->array(DisplayPreference::getForTypeUser($type, $owner))->isIdenticalTo($columns);
         $this->integer($displaypref->prepareInputForAdd(['itemtype' => $type, 'users_id' => $owner])['rank'])->isIdenticalTo($rank + 1);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->array(DisplayPreference::getForTypeUser('Computer', $owner))->isIdenticalTo($columns);

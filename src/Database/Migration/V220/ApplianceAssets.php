@@ -7,7 +7,7 @@ namespace itsmng\Database\Migration\V220;
 /** Frozen 20261005 appliance relationship upgrade; historical targets never follow current metadata. */
 final class ApplianceAssets extends StagedTypedItemMigration
 {
-    public const PHASE = '20261005_appliance_assets';
+    public const PHASE = '2.2.0.appliance_assets';
 
     protected function phase(): string
     {

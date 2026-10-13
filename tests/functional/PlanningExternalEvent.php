@@ -49,6 +49,22 @@ class PlanningExternalEvent extends \AbstractPlanningEvent
 {
     public $myclass = "\PlanningExternalEvent";
 
+    public function testEditingAnEventWithoutAnAuthorAdoptsTheCurrentUser(): void
+    {
+        global $DB;
+        $this->login();
+        $event = new LegacyPlanningExternalEvent();
+        $this->integer($eventId = $event->add($this->input))->isGreaterThan(0);
+        $this->boolean($event->getFromDB($eventId))->isTrue();
+        $this->boolean($DB->update($event->getTable(), ['users_id' => null], ['id' => $event->getID()]))->isTrue();
+        $this->boolean($event->getFromDB($event->getID()))->isTrue();
+        $this->variable($event->fields['users_id'])->isNull();
+
+        $this->boolean($event->update(['id' => $event->getID(), 'name' => 'Adopted event']))->isTrue();
+        $this->boolean($event->getFromDB($event->getID()))->isTrue();
+        $this->integer($event->fields['users_id'])->isIdenticalTo((int)\Session::getLoginUserID());
+    }
+
 
     public function testGuestValidationUsesScalarReadsAndPreservesAtomicOrder(): void
     {

@@ -268,7 +268,7 @@ class Item_DeviceGeneric extends DbTestCase
             $criteria = ['items_id' => $asset->getID(), 'itemtype' => 'Computer', 'is_deleted' => 0];
             // Observe actual factory invocations without changing production factory behavior.
             countElementsInTable($tables[0], $criteria); // Warm the selected canonical scope.
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $legacy = 0;
             foreach ($tables as $table) {

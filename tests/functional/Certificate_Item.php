@@ -166,7 +166,7 @@ class Certificate_Item extends DbTestCase
             $_SESSION['glpiactiveentities'] = [];
             $this->array(iterator_to_array($this->testedInstance->getDistinctTypes($cid1)))
                 ->isIdenticalTo($expected);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->array(iterator_to_array($this->testedInstance->getDistinctTypes((string)$cid1)))
                 ->isIdenticalTo($expected);

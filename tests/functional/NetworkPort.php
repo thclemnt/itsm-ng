@@ -1661,7 +1661,7 @@ class NetworkPort extends DbTestCase
         $connection = $GLOBALS['DB']->getDoctrineConnection();
         $connection->update('glpi_networkports', ['name' => 'fresh-virtual-port'], ['id' => $alias_port_id]);
         $connection->update('glpi_networkports', ['name' => 'fresh-origin-port', 'mac' => '00:24:81:eb:c7:20'], ['id' => $origin_port_id]);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         $fresh = $render();
         $this->string($fresh)->contains('fresh-virtual-port')->contains('fresh-origin-port')->contains('00:24:81:eb:c7:20');
@@ -1752,7 +1752,7 @@ class NetworkPort extends DbTestCase
         $foreign = Orm::create($DB);
         try {
             $sentinel = $foreign->getReference(NetworkPortEntity::class, $port3);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->boolean($aggregate->getFromDB($agg_parent_port))->isTrue();
             $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))->isIdenticalTo([$port3]);
@@ -1942,7 +1942,7 @@ class NetworkPort extends DbTestCase
             $this->object($live)->isInstanceOf(VlanEntity::class);
             $service = new VlanMembershipService($writer);
             $this->array($service->membershipsForPort($portId))->isIdenticalTo([$expected]);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeReads = $factories->getValue();
             $portRows = $service->forPort($portId);
             $vlanRows = $service->forVlan($vlanId);

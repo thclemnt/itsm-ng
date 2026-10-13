@@ -11,10 +11,10 @@ use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\Ledger;
 use RuntimeException;
 
-/** Internal reference conversion for Version220, including captured experimental retries. */
+/** Reference conversion for the released 2.1.3 schema and this transition's own retries. */
 final class References
 {
-    public const PHASE = '20261001_legacy_to_orm_bigint';
+    public const PHASE = '2.2.0.legacy_to_orm_bigint';
 
     private static function stages(): array
     {
@@ -150,7 +150,6 @@ final class References
             return ['complete' => true, 'identifiers' => [], 'stages' => []];
         }
         if ($state !== null) {
-            $state = $this->appendOwnedSequenceRepairs($connection, $state);
             return ['complete' => false, 'identifiers' => array_slice($state['identifiers'], $state['next']), 'stages' => array_keys(self::stages())];
         }
         $this->auditRequiredReferences($connection);
@@ -171,22 +170,6 @@ final class References
             }
         }
         return ['complete' => false, 'identifiers' => $identifiers, 'stages' => $stages];
-    }
-
-    /** Extend an older journal without replacing its captured prefix or progress. */
-    private function appendOwnedSequenceRepairs(Connection $connection, array $state): array
-    {
-        if (!$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            return $state;
-        }
-        $captured = array_column($state['identifiers'], 'sql');
-        foreach (WideIdentifiers::planOwnedSequences($connection, IdentifierColumns::history()['identifiers']) as $sql) {
-            if (!in_array($sql, $captured, true)) {
-                $state['identifiers'][] = ['sql' => $sql, 'kind' => 'sql', 'table' => '', 'name' => ''];
-                $captured[] = $sql;
-            }
-        }
-        return $state;
     }
 
     /** Every owner inspects actual definitions/data, without this phase's receipt shortcut. */
@@ -251,11 +234,6 @@ final class References
             if ($state === null) {
                 $plan = $this->plan($connection);
                 $state = ['complete' => false, 'identifiers' => $plan['identifiers'], 'next' => 0];
-                Ledger::save($connection, self::PHASE, $state);
-            }
-            $extended = $this->appendOwnedSequenceRepairs($connection, $state);
-            if ($extended !== $state) {
-                $state = $extended;
                 Ledger::save($connection, self::PHASE, $state);
             }
             $save = static function () use ($connection, &$state): void {

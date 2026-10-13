@@ -36,80 +36,18 @@ use itsmng\Database\Entity\Notepad as NoteRecord;
 use itsmng\Database\Migration\NotepadParents\Definition as NoteParentDefinition;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\CurrentSchema as Projection;
-use itsmng\Database\Entity\BudgetType;
 use itsmng\Database\Entity\Calendar;
-use itsmng\Database\Entity\CalendarHoliday;
-use itsmng\Database\Entity\CalendarSegment;
 use itsmng\Database\Entity\ComputerModel;
-use itsmng\Database\Entity\ComputerType;
 use itsmng\Database\Entity\Config;
-use itsmng\Database\Entity\ContactType;
-use itsmng\Database\Entity\ContractType;
 use itsmng\Database\Entity\CronTask;
 use itsmng\Database\Entity\CronTaskLog;
-use itsmng\Database\Entity\DeviceBatteryModel;
-use itsmng\Database\Entity\DeviceBatteryType;
-use itsmng\Database\Entity\DeviceCaseModel;
-use itsmng\Database\Entity\DeviceCaseType;
-use itsmng\Database\Entity\DeviceControlModel;
-use itsmng\Database\Entity\DeviceDriveModel;
-use itsmng\Database\Entity\DeviceFirmwareModel;
-use itsmng\Database\Entity\DeviceFirmwareType;
-use itsmng\Database\Entity\DeviceGenericModel;
-use itsmng\Database\Entity\DeviceGenericType;
-use itsmng\Database\Entity\DeviceGraphicCardModel;
-use itsmng\Database\Entity\DeviceHardDriveModel;
-use itsmng\Database\Entity\DeviceMemoryModel;
-use itsmng\Database\Entity\DeviceMemoryType;
-use itsmng\Database\Entity\DeviceMotherBoardModel;
-use itsmng\Database\Entity\DeviceNetworkCardModel;
-use itsmng\Database\Entity\DevicePciModel;
-use itsmng\Database\Entity\DevicePowerSupplyModel;
-use itsmng\Database\Entity\DeviceProcessorModel;
-use itsmng\Database\Entity\DeviceSensorModel;
-use itsmng\Database\Entity\DeviceSensorType;
-use itsmng\Database\Entity\DeviceSimcardType;
-use itsmng\Database\Entity\DeviceSoundCardModel;
-use itsmng\Database\Entity\DomainRecordType;
-use itsmng\Database\Entity\DomainRelation;
-use itsmng\Database\Entity\DomainType;
-use itsmng\Database\Entity\EnclosureModel;
-use itsmng\Database\Entity\Holiday;
 use itsmng\Database\Entity\IPAddress;
-use itsmng\Database\Entity\MonitorModel;
-use itsmng\Database\Entity\MonitorType;
-use itsmng\Database\Entity\NetworkEquipmentModel;
-use itsmng\Database\Entity\NetworkEquipmentType;
-use itsmng\Database\Entity\Notification;
-use itsmng\Database\Entity\NotificationChatConfig;
-use itsmng\Database\Entity\NotificationNotificationTemplate;
-use itsmng\Database\Entity\NotificationTarget;
-use itsmng\Database\Entity\NotificationTemplate;
-use itsmng\Database\Entity\NotificationTemplateTranslation;
-use itsmng\Database\Entity\OidcConfig;
-use itsmng\Database\Entity\OidcMapping;
-use itsmng\Database\Entity\OidcUser;
-use itsmng\Database\Entity\PDUModel;
-use itsmng\Database\Entity\PassiveDCEquipmentModel;
-use itsmng\Database\Entity\PeripheralModel;
-use itsmng\Database\Entity\PeripheralType;
-use itsmng\Database\Entity\PhoneModel;
-use itsmng\Database\Entity\PhoneType;
-use itsmng\Database\Entity\PrinterModel;
-use itsmng\Database\Entity\PrinterType;
 use itsmng\Database\Entity\Profile;
-use itsmng\Database\Entity\ProfileRight;
-use itsmng\Database\Entity\ProfileUser;
-use itsmng\Database\Entity\ProjectTaskType;
-use itsmng\Database\Entity\ProjectType;
-use itsmng\Database\Entity\RackModel;
-use itsmng\Database\Entity\SupplierType;
 use itsmng\Database\Entity\User as UserEntity;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\BooleanStorage;
 use itsmng\Database\Mapping\DiscriminatorKey;
-use itsmng\Database\Mapping\NativeTimestamp;
 use itsmng\Database\Mapping\NonNegative;
 use itsmng\Database\Mapping\PlatformOptions;
 use itsmng\Database\Mapping\SchemaOwner;
@@ -132,9 +70,9 @@ use itsmng\Database\Entity\ItemDeviceGraphicCard;
 use itsmng\Database\Entity\ItemDeviceFirmware;
 use itsmng\Database\Entity\ItemDeviceNetworkCard;
 use itsmng\Database\Entity\ItemDeviceSimcard;
-use itsmng\Database\Migration\ComponentParentExpansions\FirmwareDefinition as ExpandedFirmwareDefinition;
-use itsmng\Database\Migration\ComponentParentExpansions\NetworkCardDefinition as ExpandedNetworkCardDefinition;
-use itsmng\Database\Migration\ComponentParentExpansions\SimcardDefinition as ExpandedSimcardDefinition;
+use itsmng\Database\Migration\ComponentParents\FirmwareDefinition as ExpandedFirmwareDefinition;
+use itsmng\Database\Migration\ComponentParents\NetworkCardDefinition as ExpandedNetworkCardDefinition;
+use itsmng\Database\Migration\ComponentParents\SimcardDefinition as ExpandedSimcardDefinition;
 use itsmng\Database\Entity\SLM as SLMRecord;
 use itsmng\Database\Migration\V220\EntityParents;
 use itsmng\Database\Migration\V220\ServiceLevelCalendars;
@@ -1539,283 +1477,26 @@ class CurrentSchema extends test
         }
     }
 
-    public function testNotificationDeclarationsOwnCurrentSchemaWithoutChangingHistory(): void
+    public function metadataEditProvider(): array
     {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $notification = $manager->getClassMetadata(Notification::class);
-            $notification->fieldMappings['event']->length = 173;
-            $notification->fieldMappings['is_active']->options['default'] = true;
-            $notification->associationMappings['entities']->joinColumns[0]->nullable = true;
-            $notification->associationMappings['entities']->joinColumns[0]->options['default'] = null;
-            $template = $manager->getClassMetadata(NotificationTemplate::class);
-            $template->fieldMappings['name']->length = 171;
-            unset($template->fieldMappings['css']);
-            $translation = $manager->getClassMetadata(NotificationTemplateTranslation::class);
-            $translation->fieldMappings['subject']->length = 177;
-            $translation->fieldMappings['subject']->nullable = true;
-            $translation->fieldMappings['subject']->options['default'] = null;
-            $binding = $manager->getClassMetadata(NotificationNotificationTemplate::class);
-            $binding->associationMappings['notificationtemplates']->joinColumns[0]->nullable = true;
-            $binding->associationMappings['notificationtemplates']->joinColumns[0]->options['default'] = null;
-            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_notifications_notificationtemplates_unicity' : 'unicity';
-            unset($binding->table['uniqueConstraints'][$unique]);
-
-            $chat = $manager->getClassMetadata(NotificationChatConfig::class);
-            $chat->fieldMappings['hookurl']->length = 181;
-            unset($chat->fieldMappings['value']);
-            $target = $manager->getClassMetadata(NotificationTarget::class);
-            $target->fieldMappings['recipient_code']->options['default'] = 7;
-            $target->associationMappings['notifications']->joinColumns[0]->nullable = true;
-            $target->associationMappings['notifications']->joinColumns[0]->options['default'] = null;
-            $itemsIndex = $platform instanceof PostgreSQLPlatform ? 'glpi_notificationtargets_items' : 'items';
-            unset($target->table['indexes'][$itemsIndex]);
-
-            $changed = (new BaselineSchema($manager))->build($platform);
-            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
-            $table = $changed->getTable('glpi_notificationchatconfigs');
-            $this->integer($table->getColumn('hookurl')->getLength())->isIdenticalTo(181);
-            $this->boolean($table->hasColumn('value'))->isFalse();
-            $table = $changed->getTable('glpi_notificationtargets');
-            $this->variable($table->getColumn('recipient_code')->getDefault())->isEqualTo(7);
-            $this->boolean($table->getColumn('notifications_id')->getNotnull())->isFalse();
-            $this->variable($table->getColumn('notifications_id')->getDefault())->isNull();
-            $this->boolean($table->hasIndex($itemsIndex))->isFalse();
-            $this->string($table->getColumn('items_id')->getColumnDefinition())
-                ->isIdenticalTo($target->fieldMappings['items_id']->columnDefinition);
-            $table = $changed->getTable('glpi_notifications');
-            $this->integer($table->getColumn('event')->getLength())->isIdenticalTo(173);
-            $this->boolean($table->getColumn('entities_id')->getNotnull())->isFalse();
-            $this->variable($table->getColumn('entities_id')->getDefault())->isNull();
-            $this->variable($table->getColumn('is_active')->getDefault())
-                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
-            $this->string(Type::lookupName($table->getColumn('is_active')->getType()))
-                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
-            $table = $changed->getTable('glpi_notificationtemplates');
-            $this->integer($table->getColumn('name')->getLength())->isIdenticalTo(171);
-            $this->boolean($table->hasColumn('css'))->isFalse();
-            $subject = $changed->getTable('glpi_notificationtemplatetranslations')->getColumn('subject');
-            $this->integer($subject->getLength())->isIdenticalTo(177);
-            $this->boolean($subject->getNotnull())->isFalse();
-            $this->variable($subject->getDefault())->isNull();
-            $table = $changed->getTable('glpi_notifications_notificationtemplates');
-            $this->boolean($table->getColumn('notificationtemplates_id')->getNotnull())->isFalse();
-            $this->variable($table->getColumn('notificationtemplates_id')->getDefault())->isNull();
-            $this->boolean($table->hasIndex($unique))->isFalse();
-            foreach ([Notification::class, NotificationTemplate::class, NotificationTemplateTranslation::class,
-                NotificationNotificationTemplate::class, NotificationChatConfig::class, NotificationTarget::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
-                $owning = array_filter($metadata->associationMappings, static fn ($mapping): bool => $mapping->isToOneOwningSide());
-                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
-                    ->isIdenticalTo(count($owning));
-                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
+        $cases = [];
+        foreach (['assertConfigMetadataEdits', 'assertCronLogMetadataEdits'] as $assertion) {
+            foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+                $cases[$assertion . '-' . $platform::class] = [$assertion, $platform];
             }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
         }
+        return $cases;
     }
 
-    public function testOidcPropertiesAndAssociationsOwnCurrentSchemaWithoutChangingHistory(): void
+    /** @dataProvider metadataEditProvider */
+    public function testMetadataEditsLeaveFrozenHistoryAndOtherManagersUnchanged(string $assertion, AbstractPlatform $platform): void
     {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $postgres = $platform instanceof PostgreSQLPlatform;
-            $manager = $this->manager($platform);
-            $builder = new BaselineSchema($manager);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $original = $builder->build($platform);
-            $config = $manager->getClassMetadata(OidcConfig::class);
-            $mapping = $manager->getClassMetadata(OidcMapping::class);
-            $user = $manager->getClassMetadata(OidcUser::class);
-            $config->fieldMappings['Provider']->length = 173;
-            $config->fieldMappings['Provider']->nullable = false;
-            $config->fieldMappings['Provider']->options['default'] = 'Current provider';
-            foreach (['is_activate' => true, 'is_forced' => true, 'sso_link_users' => false] as $property => $default) {
-                $config->fieldMappings[$property]->nullable = true;
-                $config->fieldMappings[$property]->options['default'] = $default;
-            }
-            $mapping->fieldMappings['name']->options['default'] = 'preferred_username';
-            $instant = $mapping->fieldMappings['date_mod'];
-            $instant->nullable = false;
-            $instant->options['default'] = '2001-01-01 00:00:00';
-            // The driver resolves NativeTimestamp when metadata loads. Simulate
-            // the resolved declaration after editing its property-owned inputs.
-            $timestamp = (new ReflectionClass(OidcMapping::class))->getProperty('date_mod')
-                ->getAttributes(NativeTimestamp::class)[0]->newInstance();
-            $instant->columnDefinition = $timestamp->declaration($platform, $instant);
-            unset($user->table['uniqueConstraints']['oidc_users_user']);
-            $join = $user->associationMappings['users']->joinColumns[0];
-            $join->nullable = true;
-            $join->options['default'] = null;
-            $user->fieldMappings['update']->options['default'] = true;
-            // A supplied manager's pending work must survive read-only inspection.
-            $pending = new OidcConfig();
-            $manager->persist($pending);
-            $changed = $builder->build($platform);
-            $withoutKeys = $builder->build($platform, false);
-            $freshManager = $this->manager($platform);
-            $fresh = (new BaselineSchema($freshManager))->build($platform);
-            foreach ([OidcConfig::class, OidcMapping::class, OidcUser::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $name = $metadata->getTableName();
-                $this->array($withoutKeys->getTable($name)->getForeignKeys())->isEmpty();
-                $this->boolean((new Comparator($platform))->compareTables($original->getTable($name), $fresh->getTable($name))->isEmpty())
-                    ->isTrue($name . ' must restore from fresh metadata');
-            }
-            $declaration = $changed->getTable('glpi_oidc_config');
-            $this->integer($declaration->getColumn('Provider')->getLength())->isIdenticalTo(173);
-            $this->boolean($declaration->getColumn('Provider')->getNotnull())->isTrue();
-            $this->string($declaration->getColumn('Provider')->getDefault())->isIdenticalTo('Current provider');
-            foreach (['is_activate' => true, 'is_forced' => true, 'sso_link_users' => false] as $property => $default) {
-                $field = $config->fieldMappings[$property];
-                $column = $declaration->getColumn($property);
-                $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
-                $this->variable($column->getDefault())->isIdenticalTo($postgres ? $default : (string)(int)$default);
-                $this->boolean($column->getNotnull())->isFalse();
-            }
-            $declaration = $changed->getTable('glpi_oidc_mapping');
-            $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('preferred_username');
-            $this->boolean($declaration->getColumn('date_mod')->getNotnull())->isTrue();
-            $this->string($declaration->getColumn('date_mod')->getDefault())->isIdenticalTo('2001-01-01 00:00:00');
-            $this->variable($declaration->getColumn('date_mod')->getColumnDefinition())
-                ->isIdenticalTo($postgres ? null : "TIMESTAMP NOT NULL DEFAULT '2001-01-01 00:00:00'");
-            $declaration = $changed->getTable('glpi_oidc_users');
-            $this->boolean($declaration->hasIndex('oidc_users_user'))->isFalse('History must not recreate removed current uniqueness');
-            $this->boolean($declaration->getColumn('user_id')->getNotnull())->isFalse();
-            $this->variable($declaration->getColumn('user_id')->getDefault())->isNull();
-            $this->variable($declaration->getColumn('update')->getDefault())->isIdenticalTo($postgres ? true : '1');
-            $this->string($user->fieldMappings['update']->type)->isIdenticalTo(Types::BOOLEAN);
-            $this->integer(count($declaration->getForeignKeys()))->isIdenticalTo(1);
-            $this->boolean($declaration->hasForeignKey('fk_oidc_users_user_id'))->isTrue();
-            $freshWithoutKeys = (new BaselineSchema($freshManager))->build($platform, false)->getTable('glpi_oidc_users');
-            $this->array($freshWithoutKeys->getForeignKeys())->isEmpty();
-            $this->boolean($freshWithoutKeys->getIndex('oidc_users_user')->isUnique())->isTrue();
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->contains($pending))->isTrue();
-            $this->boolean($manager->isOpen())->isTrue();
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function testExistingPropertyAndIndexEditsDriveCurrentExpectationOnly(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $metadata = $manager->getClassMetadata(CronTask::class);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $metadata->fieldMappings['name']->length = 173;
-            $metadata->fieldMappings['param']->nullable = false;
-            $metadata->fieldMappings['state']->options['default'] = 2;
-            $metadata->fieldMappings['frequency']->type = Types::BIGINT;
-            $metadata->fieldMappings['lastcode']->options['comment'] = 'Current declaration changed';
-            unset($metadata->fieldMappings['comment']);
-            $modeIndex = $platform instanceof PostgreSQLPlatform ? 'glpi_crontasks_mode' : 'mode';
-            unset($metadata->table['indexes'][$modeIndex]);
-            $uniqueIndex = $platform instanceof PostgreSQLPlatform ? 'glpi_crontasks_unicity' : 'unicity';
-            $metadata->table['uniqueConstraints'][$uniqueIndex]['columns'] = ['name', 'itemtype'];
-            $metadata->table['indexes']['current_state_index'] = ['columns' => ['state', 'name']];
-            $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasks');
-            $this->integer($current->getColumn('name')->getLength())->isIdenticalTo(173);
-            $this->boolean($current->getColumn('param')->getNotnull())->isTrue();
-            $this->integer((int)$current->getColumn('state')->getDefault())->isIdenticalTo(2);
-            $this->string(Type::lookupName($current->getColumn('frequency')->getType()))->isIdenticalTo(Types::BIGINT);
-            $this->string($current->getColumn('lastcode')->getComment())->isIdenticalTo('Current declaration changed');
-            $this->boolean($current->hasColumn('comment'))->isFalse();
-            $this->boolean($current->hasIndex($modeIndex))->isFalse();
-            $this->array($current->getIndex($uniqueIndex)->getColumns())->isIdenticalTo(['name', 'itemtype']);
-            $this->array($current->getIndex('current_state_index')->getColumns())->isIdenticalTo(['state', 'name']);
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $fresh = (new BaselineSchema())->build($platform)->getTable('glpi_crontasks');
-            $this->integer($fresh->getColumn('name')->getLength())->isIdenticalTo(150);
-            $this->boolean($fresh->hasColumn('comment'))->isTrue();
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function testAssetModelPropertiesAndIndexesOwnCurrentSchema(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $models = [];
-            foreach ([
-                MonitorModel::class,
-                NetworkEquipmentModel::class,
-                PeripheralModel::class,
-                PhoneModel::class,
-                PrinterModel::class,
-                PassiveDCEquipmentModel::class,
-                EnclosureModel::class,
-                PDUModel::class,
-                RackModel::class,
-                DeviceBatteryModel::class,
-                DeviceCaseModel::class,
-                DeviceControlModel::class,
-                DeviceDriveModel::class,
-                DeviceFirmwareModel::class,
-                DeviceGenericModel::class,
-                DeviceGraphicCardModel::class,
-                DeviceHardDriveModel::class,
-                DeviceMemoryModel::class,
-                DeviceMotherBoardModel::class,
-                DeviceNetworkCardModel::class,
-                DevicePciModel::class,
-                DevicePowerSupplyModel::class,
-                DeviceProcessorModel::class,
-                DeviceSensorModel::class,
-                DeviceSoundCardModel::class,
-            ] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $table = $metadata->getTableName();
-                $metadata->fieldMappings['name']->length = 173;
-                $metadata->fieldMappings['name']->nullable = false;
-                $metadata->fieldMappings['name']->options['default'] = 'Current model';
-                $oldIndex = array_key_first(array_filter($metadata->table['indexes'] ?? [], static fn ($index) => $index['columns'] === ['product_number']));
-                $this->variable($oldIndex)->isNotNull();
-                unset($metadata->table['indexes'][$oldIndex]);
-                $metadata->table['uniqueConstraints'][$table . '_current_model_name'] = ['columns' => ['name', 'product_number']];
-                $flags = [];
-                foreach ($metadata->fieldMappings as $property => $field) {
-                    if ($field->type === Types::BOOLEAN) {
-                        $field->nullable = true;
-                        $field->options['default'] = true;
-                        $flags[] = $property;
-                    }
-                }
-                $models[] = [$metadata, $oldIndex, $flags];
-            }
-            $current = (new BaselineSchema($manager))->build($platform);
-            $freshManager = $this->manager($platform);
-            $fresh = (new BaselineSchema($freshManager))->build($platform);
-            foreach ($models as [$metadata, $oldIndex, $flags]) {
-                $table = $metadata->getTableName();
-                $declaration = $current->getTable($table);
-                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
-                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current model');
-                $this->boolean($declaration->hasIndex($oldIndex))->isFalse();
-                $this->array($declaration->getIndex($table . '_current_model_name')->getUnquotedColumns())->isIdenticalTo(['name', 'product_number']);
-                $this->boolean($declaration->getIndex($table . '_current_model_name')->isUnique())->isTrue();
-                $this->integer($fresh->getTable($table)->getColumn('name')->getLength())->isIdenticalTo(255);
-                $this->boolean($fresh->getTable($table)->getColumn('name')->getNotnull())->isFalse();
-                $this->boolean($fresh->getTable($table)->hasIndex($oldIndex))->isTrue();
-                $this->boolean($fresh->getTable($table)->hasIndex($table . '_current_model_name'))->isFalse();
-                foreach ($flags as $property) {
-                    $field = $metadata->fieldMappings[$property];
-                    $column = $declaration->getColumn($field->columnName);
-                    $this->string($field->type)->isIdenticalTo(Types::BOOLEAN);
-                    $this->string(Type::lookupName($column->getType()))->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
-                    $this->boolean($column->getNotnull())->isFalse();
-                    $this->variable($column->getDefault())->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
-                    $this->variable($fresh->getTable($table)->getColumn($field->columnName)->getDefault())->isIdenticalTo($platform instanceof PostgreSQLPlatform ? false : '0');
-                }
-            }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
-        }
+        $manager = $this->manager($platform);
+        $frozen = (new Baseline())->build($platform)->toSql($platform);
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
+        $this->$assertion($manager, $platform);
+        $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
+        $this->boolean($manager->getConnection()->isConnected())->isFalse();
     }
 
     public function testComputerModelOwnsBooleanStorageDefaultsAndNullability(): void
@@ -1871,307 +1552,54 @@ class CurrentSchema extends test
         }
     }
 
-    public function testCalendarPropertiesAndAssociationsOwnCurrentExpectation(): void
+    private function assertConfigMetadataEdits(EntityManager $manager, AbstractPlatform $platform): void
     {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            foreach ([Calendar::class, Holiday::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $metadata->fieldMappings['name']->length = 173;
-                $metadata->associationMappings['entities']->joinColumns[0]->nullable = true;
-                $metadata->associationMappings['entities']->joinColumns[0]->options['default'] = null;
-                unset($metadata->fieldMappings['comment']);
-            }
-            $segment = $manager->getClassMetadata(CalendarSegment::class);
-            $segment->fieldMappings['day']->options['comment'] = 'Current calendar day';
-            $segment->fieldMappings['day']->options['default'] = 3;
-            $segment->fieldMappings['begin']->nullable = false;
-            $link = $manager->getClassMetadata(CalendarHoliday::class);
-            unset($link->table['uniqueConstraints'][$platform instanceof PostgreSQLPlatform ? 'glpi_calendars_holidays_unicity' : 'unicity']);
-            $changed = (new BaselineSchema($manager))->build($platform);
-            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
-            foreach ([Calendar::class, Holiday::class] as $class) {
-                $table = $manager->getClassMetadata($class)->getTableName();
-                $declaration = $changed->getTable($table);
-                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-                $this->boolean($declaration->getColumn('entities_id')->getNotnull())->isFalse();
-                $this->variable($declaration->getColumn('entities_id')->getDefault())->isNull();
-                $this->boolean($declaration->hasColumn('comment'))->isFalse();
-            }
-            $declaration = $changed->getTable('glpi_calendarsegments');
-            $this->string($declaration->getColumn('day')->getComment())->isIdenticalTo('Current calendar day');
-            $this->variable($declaration->getColumn('day')->getDefault())->isEqualTo(3);
-            $this->boolean($declaration->getColumn('begin')->getNotnull())->isTrue();
-            $this->boolean($changed->getTable('glpi_calendars_holidays')->hasIndex(
-                $platform instanceof PostgreSQLPlatform ? 'glpi_calendars_holidays_unicity' : 'unicity'
-            ))->isFalse();
-            foreach ([Calendar::class, Holiday::class, CalendarSegment::class, CalendarHoliday::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
-                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
-                    ->isIdenticalTo(count($metadata->associationMappings));
-                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
-            }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
+        $metadata = $manager->getClassMetadata(Config::class);
+        $metadata->fieldMappings['context']->length = 173;
+        $metadata->fieldMappings['context']->nullable = false;
+        $metadata->fieldMappings['context']->options['default'] = 'current';
+        $metadata->fieldMappings['value']->type = Types::STRING;
+        $metadata->fieldMappings['value']->length = 311;
+        $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_configs_unicity' : 'unicity';
+        $metadata->table['uniqueConstraints'][$unique]['columns'] = ['name', 'context'];
+        $metadata->table['indexes']['current_config_name'] = ['columns' => ['name']];
+        $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
+        $this->integer($current->getColumn('context')->getLength())->isIdenticalTo(173);
+        $this->boolean($current->getColumn('context')->getNotnull())->isTrue();
+        $this->string($current->getColumn('context')->getDefault())->isIdenticalTo('current');
+        $this->string(Type::lookupName($current->getColumn('value')->getType()))->isIdenticalTo(Types::STRING);
+        $this->integer($current->getColumn('value')->getLength())->isIdenticalTo(311);
+        $this->array($current->getIndex($unique)->getColumns())->isIdenticalTo(['name', 'context']);
+        $this->array($current->getIndex('current_config_name')->getColumns())->isIdenticalTo(['name']);
+        $fresh = (new BaselineSchema($this->manager($platform)))->build($platform)->getTable('glpi_configs');
+        $this->integer($fresh->getColumn('context')->getLength())->isIdenticalTo(150);
+        $this->boolean($fresh->getColumn('context')->getNotnull())->isFalse();
+        $this->boolean($fresh->hasIndex('current_config_name'))->isFalse();
     }
 
-    public function testProfileFamilyDeclarationsOwnCurrentSchemaWithoutChangingHistory(): void
+    private function assertCronLogMetadataEdits(EntityManager $manager, AbstractPlatform $platform): void
     {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $profile = $manager->getClassMetadata(Profile::class);
-            $right = $manager->getClassMetadata(ProfileRight::class);
-            $user = $manager->getClassMetadata(ProfileUser::class);
-            $current = (new BaselineSchema($manager))->build($platform);
-            foreach ([Profile::class => ['is_default', 'create_ticket_on_login'],
-                ProfileUser::class => ['is_recursive', 'is_dynamic', 'is_default_profile']] as $class => $fields) {
-                $table = $current->getTable($manager->getClassMetadata($class)->getTableName());
-                foreach ($fields as $field) {
-                    $this->string(Type::lookupName($table->getColumn($field)->getType()))
-                        ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
-                }
-            }
-            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_profilerights_unicity' : 'unicity';
-            $interface = $platform instanceof PostgreSQLPlatform ? 'glpi_profiles_interface' : 'interface';
-            $this->boolean($current->getTable('glpi_profilerights')->getIndex($unique)->isUnique())->isTrue();
-            $profile->fieldMappings['name']->length = 173;
-            $profile->fieldMappings['name']->nullable = false;
-            $profile->fieldMappings['name']->options['default'] = 'Current profile';
-            $profile->fieldMappings['ticket_status']->options['comment'] = 'Current status declaration';
-            unset($profile->fieldMappings['comment'], $profile->table['indexes'][$interface]);
-            $profile->table['indexes']['current_profile_name'] = ['columns' => ['name']];
-            $right->fieldMappings['rights']->options['default'] = 7;
-            unset($right->table['uniqueConstraints'][$unique]);
-            $user->associationMappings['users']->joinColumns[0]->nullable = true;
-            $user->associationMappings['users']->joinColumns[0]->options['default'] = null;
-            $user->fieldMappings['is_dynamic']->options['default'] = true;
-
-            $changed = (new BaselineSchema($manager))->build($platform);
-            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
-            $declaration = $changed->getTable('glpi_profiles');
-            $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-            $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
-            $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current profile');
-            $this->string($declaration->getColumn('ticket_status')->getComment())->isIdenticalTo('Current status declaration');
-            $this->boolean($declaration->hasColumn('comment'))->isFalse();
-            $this->boolean($declaration->hasIndex($interface))->isFalse();
-            $this->boolean($declaration->hasIndex('current_profile_name'))->isTrue();
-            $this->variable($changed->getTable('glpi_profilerights')->getColumn('rights')->getDefault())->isEqualTo(7);
-            $this->boolean($changed->getTable('glpi_profilerights')->hasIndex($unique))->isFalse();
-            $this->boolean($changed->getTable('glpi_profiles_users')->getColumn('users_id')->getNotnull())->isFalse();
-            $this->variable($changed->getTable('glpi_profiles_users')->getColumn('users_id')->getDefault())->isNull();
-            $this->variable($changed->getTable('glpi_profiles_users')->getColumn('is_dynamic')->getDefault())
-                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? true : '1');
-            foreach ([Profile::class, ProfileRight::class, ProfileUser::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
-                $this->integer(count($changed->getTable($metadata->getTableName())->getForeignKeys()))
-                    ->isIdenticalTo(count($metadata->associationMappings));
-                $this->array($withoutKeys->getTable($metadata->getTableName())->getForeignKeys())->isEmpty();
-            }
-            $freshManager = $this->manager($platform);
-            $fresh = (new BaselineSchema($freshManager))->build($platform);
-            $declaration = $fresh->getTable('glpi_profiles');
-            $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(255);
-            $this->boolean($declaration->getColumn('name')->getNotnull())->isFalse();
-            $this->variable($declaration->getColumn('name')->getDefault())->isNull();
-            $this->boolean($declaration->hasColumn('comment'))->isTrue();
-            $this->boolean($declaration->hasIndex($interface))->isTrue();
-            $this->boolean($declaration->hasIndex('current_profile_name'))->isFalse();
-            $this->variable($fresh->getTable('glpi_profilerights')->getColumn('rights')->getDefault())->isEqualTo(0);
-            $this->boolean($fresh->getTable('glpi_profilerights')->hasIndex($unique))->isTrue();
-            $this->boolean($fresh->getTable('glpi_profiles_users')->getColumn('users_id')->getNotnull())->isTrue();
-            $this->variable($fresh->getTable('glpi_profiles_users')->getColumn('users_id')->getDefault())->isEqualTo(0);
-            $this->variable($fresh->getTable('glpi_profiles_users')->getColumn('is_dynamic')->getDefault())
-                ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? false : '0');
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function testDomainDropdownDeclarationsOwnSchemaWithoutChangingHistory(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $current = (new BaselineSchema($manager))->build($platform);
-            foreach ([DomainType::class, DomainRelation::class, DomainRecordType::class] as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $table = $metadata->getTableName();
-                $this->string(Type::lookupName($current->getTable($table)->getColumn('is_recursive')->getType()))
-                    ->isIdenticalTo($platform instanceof PostgreSQLPlatform ? Types::BOOLEAN : Types::SMALLINT);
-                $this->boolean($metadata->fieldMappings['is_recursive']->type === Types::BOOLEAN)->isTrue();
-                // Changes belong to properties and indexes, not the historical overlay.
-                $metadata->fieldMappings['name']->length = 173;
-                $metadata->fieldMappings['name']->nullable = false;
-                $metadata->fieldMappings['name']->options['default'] = 'Current domain label';
-                $metadata->associationMappings['entities']->joinColumns[0]->nullable = true;
-                $metadata->associationMappings['entities']->joinColumns[0]->options['default'] = null;
-                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
-                unset($metadata->table['indexes'][$index], $metadata->fieldMappings['comment']);
-            }
-            $changed = (new BaselineSchema($manager))->build($platform);
-            $withoutKeys = (new BaselineSchema($manager))->build($platform, false);
-            foreach ([DomainType::class, DomainRelation::class, DomainRecordType::class] as $class) {
-                $table = $manager->getClassMetadata($class)->getTableName();
-                $declaration = $changed->getTable($table);
-                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-                $this->integer(count((new ReflectionClass($class))->getAttributes(SchemaOwner::class)))->isIdenticalTo(1);
-                $this->boolean($declaration->getColumn('name')->getNotnull())->isTrue();
-                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo('Current domain label');
-                $this->boolean($declaration->getColumn('entities_id')->getNotnull())->isFalse();
-                $this->variable($declaration->getColumn('entities_id')->getDefault())->isNull();
-                $this->boolean($declaration->hasColumn('comment'))->isFalse();
-                $this->boolean($declaration->hasIndex($platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name'))->isFalse();
-                $this->integer(count($declaration->getForeignKeys()))->isIdenticalTo(1);
-                $this->array($withoutKeys->getTable($table)->getForeignKeys())->isEmpty();
-            }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function typeDeclarationProvider(): array
-    {
-        return [
-            'assets' => [[
-                ComputerType::class, MonitorType::class,
-                NetworkEquipmentType::class, PeripheralType::class,
-                PhoneType::class, PrinterType::class,
-            ], 'Current type', ['name', 'date_mod']],
-            'administration' => [[
-                BudgetType::class, ContactType::class, ContractType::class,
-                SupplierType::class, ProjectType::class, ProjectTaskType::class,
-            ], 'Current administration type', ['name', 'date_mod']],
-            'devices' => [[
-                DeviceBatteryType::class, DeviceCaseType::class, DeviceFirmwareType::class,
-                DeviceGenericType::class, DeviceMemoryType::class, DeviceSensorType::class,
-                DeviceSimcardType::class,
-            ], 'Current device type', ['name', 'comment']],
-        ];
-    }
-
-    /** @dataProvider typeDeclarationProvider */
-    public function testTypePropertiesAndIndexesOwnCurrentExpectation(array $classes, string $label, array $indexColumns): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $types = [];
-            foreach ($classes as $class) {
-                $metadata = $manager->getClassMetadata($class);
-                $table = $metadata->getTableName();
-                $name = $metadata->fieldMappings['name'];
-                $nullable = $name->nullable;
-                $default = $name->options['default'] ?? null;
-                $name->length = 173;
-                $name->nullable = !$nullable;
-                $name->options['default'] = $label;
-                $metadata->fieldMappings['comment']->type = Types::STRING;
-                $metadata->fieldMappings['comment']->length = 311;
-                $index = $platform instanceof PostgreSQLPlatform ? $table . '_name' : 'name';
-                unset($metadata->table['indexes'][$index]);
-                $metadata->table['indexes'][$table . '_current_label']['columns'] = $indexColumns;
-                $types[] = [$metadata, $nullable, $default, $index];
-            }
-            $current = (new BaselineSchema($manager))->build($platform);
-            $freshManager = $this->manager($platform);
-            $fresh = (new BaselineSchema($freshManager))->build($platform);
-            foreach ($types as [$metadata, $nullable, $default, $index]) {
-                $table = $metadata->getTableName();
-                $declaration = $current->getTable($table);
-                $this->integer($declaration->getColumn('name')->getLength())->isIdenticalTo(173);
-                $this->boolean($declaration->getColumn('name')->getNotnull())->isIdenticalTo($nullable);
-                $this->string($declaration->getColumn('name')->getDefault())->isIdenticalTo($label);
-                $this->string(Type::lookupName($declaration->getColumn('comment')->getType()))->isIdenticalTo(Types::STRING);
-                $this->integer($declaration->getColumn('comment')->getLength())->isIdenticalTo(311);
-                $this->boolean($declaration->hasIndex($index))->isFalse();
-                $this->array($declaration->getIndex($table . '_current_label')->getUnquotedColumns())->isIdenticalTo($indexColumns);
-                $original = $fresh->getTable($table);
-                $this->integer($original->getColumn('name')->getLength())->isIdenticalTo(255);
-                $this->boolean($original->getColumn('name')->getNotnull())->isIdenticalTo(!$nullable);
-                $this->variable($original->getColumn('name')->getDefault())->isIdenticalTo($default);
-                $this->string(Type::lookupName($original->getColumn('comment')->getType()))->isIdenticalTo(Types::TEXT);
-                $this->boolean($original->hasIndex($index))->isTrue();
-                $this->boolean($original->hasIndex($table . '_current_label'))->isFalse();
-                unset($metadata->table['indexes'][$table . '_current_label'], $metadata->fieldMappings['comment']);
-            }
-            $removed = (new BaselineSchema($manager))->build($platform);
-            foreach ($types as [$metadata]) {
-                $this->boolean($removed->getTable($metadata->getTableName())->hasColumn('comment'))->isFalse();
-            }
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-            $this->boolean($freshManager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function testConfigPropertyAndIndexEditsRemainIndependentOfFrozenHistory(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $metadata = $manager->getClassMetadata(Config::class);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $metadata->fieldMappings['context']->length = 173;
-            $metadata->fieldMappings['context']->nullable = false;
-            $metadata->fieldMappings['context']->options['default'] = 'current';
-            $metadata->fieldMappings['value']->type = Types::STRING;
-            $metadata->fieldMappings['value']->length = 311;
-            $unique = $platform instanceof PostgreSQLPlatform ? 'glpi_configs_unicity' : 'unicity';
-            $metadata->table['uniqueConstraints'][$unique]['columns'] = ['name', 'context'];
-            $metadata->table['indexes']['current_config_name'] = ['columns' => ['name']];
-            $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_configs');
-            $this->integer($current->getColumn('context')->getLength())->isIdenticalTo(173);
-            $this->boolean($current->getColumn('context')->getNotnull())->isTrue();
-            $this->string($current->getColumn('context')->getDefault())->isIdenticalTo('current');
-            $this->string(Type::lookupName($current->getColumn('value')->getType()))->isIdenticalTo(Types::STRING);
-            $this->integer($current->getColumn('value')->getLength())->isIdenticalTo(311);
-            $this->array($current->getIndex($unique)->getColumns())->isIdenticalTo(['name', 'context']);
-            $this->array($current->getIndex('current_config_name')->getColumns())->isIdenticalTo(['name']);
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $fresh = (new BaselineSchema($this->manager($platform)))->build($platform)->getTable('glpi_configs');
-            $this->integer($fresh->getColumn('context')->getLength())->isIdenticalTo(150);
-            $this->boolean($fresh->getColumn('context')->getNotnull())->isFalse();
-            $this->boolean($fresh->hasIndex('current_config_name'))->isFalse();
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
-    }
-
-    public function testCronLogJoinColumnOptionsAreCurrentMetadataAuthority(): void
-    {
-        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
-            $manager = $this->manager($platform);
-            $metadata = $manager->getClassMetadata(CronTaskLog::class);
-            $join = $metadata->associationMappings['task']->joinColumns[0];
-            $this->variable($join->options['default'] ?? null)->isIdenticalTo($platform instanceof PostgreSQLPlatform ? 0 : null);
-            $join->options['default'] = 17;
-            $join->options['comment'] = 'Current task reference';
-            $join->nullable = true;
-            $metadata->fieldMappings['content']->length = 173;
-            $index = $platform instanceof PostgreSQLPlatform ? 'glpi_crontasklogs_date' : 'date';
-            unset($metadata->table['indexes'][$index]);
-            $frozen = (new Baseline())->build($platform)->toSql($platform);
-            $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
-            $this->integer((int)$current->getColumn('crontasks_id')->getDefault())->isIdenticalTo(17);
-            $this->string($current->getColumn('crontasks_id')->getComment())->isIdenticalTo('Current task reference');
-            $this->boolean($current->getColumn('crontasks_id')->getNotnull())->isFalse();
-            $this->integer($current->getColumn('content')->getLength())->isIdenticalTo(173);
-            $this->boolean($current->hasIndex($index))->isFalse();
-            $this->array((new Baseline())->build($platform)->toSql($platform))->isIdenticalTo($frozen);
-            $fresh = (new BaselineSchema($this->manager($platform)))->build($platform)->getTable('glpi_crontasklogs');
-            $this->boolean($fresh->getColumn('crontasks_id')->getNotnull())->isTrue();
-            $this->variable($fresh->getColumn('crontasks_id')->getDefault())->isEqualTo($platform instanceof PostgreSQLPlatform ? 0 : null);
-            $this->integer($fresh->getColumn('content')->getLength())->isIdenticalTo(255);
-            $this->boolean($fresh->hasIndex($index))->isTrue();
-            $this->array((new BaselineSchema($manager))->build($platform, false)->getTable('glpi_crontasklogs')->getForeignKeys())->isEmpty();
-            $this->boolean($manager->getConnection()->isConnected())->isFalse();
-        }
+        $metadata = $manager->getClassMetadata(CronTaskLog::class);
+        $join = $metadata->associationMappings['task']->joinColumns[0];
+        $this->variable($join->options['default'] ?? null)->isIdenticalTo($platform instanceof PostgreSQLPlatform ? 0 : null);
+        $join->options['default'] = 17;
+        $join->options['comment'] = 'Current task reference';
+        $join->nullable = true;
+        $metadata->fieldMappings['content']->length = 173;
+        $index = $platform instanceof PostgreSQLPlatform ? 'glpi_crontasklogs_date' : 'date';
+        unset($metadata->table['indexes'][$index]);
+        $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasklogs');
+        $this->integer((int)$current->getColumn('crontasks_id')->getDefault())->isIdenticalTo(17);
+        $this->string($current->getColumn('crontasks_id')->getComment())->isIdenticalTo('Current task reference');
+        $this->boolean($current->getColumn('crontasks_id')->getNotnull())->isFalse();
+        $this->integer($current->getColumn('content')->getLength())->isIdenticalTo(173);
+        $this->boolean($current->hasIndex($index))->isFalse();
+        $fresh = (new BaselineSchema($this->manager($platform)))->build($platform)->getTable('glpi_crontasklogs');
+        $this->boolean($fresh->getColumn('crontasks_id')->getNotnull())->isTrue();
+        $this->variable($fresh->getColumn('crontasks_id')->getDefault())->isEqualTo($platform instanceof PostgreSQLPlatform ? 0 : null);
+        $this->integer($fresh->getColumn('content')->getLength())->isIdenticalTo(255);
+        $this->boolean($fresh->hasIndex($index))->isTrue();
+        $this->array((new BaselineSchema($manager))->build($platform, false)->getTable('glpi_crontasklogs')->getForeignKeys())->isEmpty();
     }
 
     public function testIdentityAndQueueMetadataOwnCurrentTables(): void

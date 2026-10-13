@@ -63,6 +63,58 @@ use itsmng\Database\Repository\UserRepository;
 
 class NotificationTargetTicket extends DbTestCase
 {
+    public function testRemovingAnonymousAssigneeRetainsItsNotificationAddress(): void
+    {
+        global $CFG_GLPI, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $configuration = $CFG_GLPI;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $CFG_GLPI['use_notifications'] = false;
+            $ticket = $this->createItem(Ticket::class, [
+                'name' => $this->getUniqueString(), 'content' => 'Anonymous assignee',
+                'entities_id' => Session::getActiveEntity(),
+            ]);
+            $assignee = $this->createItem(User::class, ['name' => $this->getUniqueString()]);
+            $this->createItem(Ticket_User::class, [
+                'tickets_id' => $ticket->getID(), 'users_id' => $assignee->getID(),
+                'type' => CommonITILActor::ASSIGN,
+            ]);
+            $email = 'former-assignee@example.test';
+            $actor = $this->createItem(Ticket_User::class, [
+                'tickets_id' => $ticket->getID(), 'users_id' => null,
+                'type' => CommonITILActor::ASSIGN, 'use_notification' => 1, 'alternative_email' => $email,
+            ]);
+            $this->variable($actor->fields['users_id'])->isNull();
+            $targets = [];
+            $plugins->setValue(null, [...$active, 'anonymous_assignee_fixture']);
+            $PLUGIN_HOOKS['item_add_targets']['anonymous_assignee_fixture'][LegacyNotificationTargetTicket::class] =
+                static function (LegacyNotificationTargetTicket $target) use (&$targets): void {
+                    $targets[] = $target;
+                };
+            $CFG_GLPI['use_notifications'] = true;
+            $CFG_GLPI['notifications_mailing'] = true;
+            $this->boolean($actor->delete(['id' => $actor->getID()], true))->isTrue();
+            $former = array_values(array_filter($targets, static fn ($target): bool =>
+                ($target->options['_old_user']['alternative_email'] ?? null) === $email));
+            $this->array($former)->hasSize(1);
+            $target = $former[0];
+            $target->clearAddressesList();
+            $target->setMode(Notification_NotificationTemplate::MODE_MAIL)->setEvent(NotificationEventMailing::class);
+            $target->addOldAssignTechnician();
+            $this->array(array_keys($target->target))->isIdenticalTo([$email]);
+            $this->integer($target->target[$email]['users_id'])->isIdenticalTo(-1);
+            $this->string($target->target[$email]['language'])->isIdenticalTo($CFG_GLPI['language']);
+        } finally {
+            $plugins->setValue(null, $active);
+            $PLUGIN_HOOKS = $hooks;
+            $CFG_GLPI = $configuration;
+        }
+    }
+
     public function testAttachmentSnapshotKeepsTimelinePrivacyDuplicatesAndCurrentReads(): void
     {
         global $DB;
@@ -360,7 +412,7 @@ class NotificationTargetTicket extends DbTestCase
             $selected->fields['users_id_lastupdater'] = $b;
             $selected->selected = [['users_id' => $b], ['users_id' => $a], ['users_id' => $b]];
             $expected = $target->getDataForObject($selected, $options, true);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             foreach (range(1, 4) as $round) {
                 $data = $target->getDataForObject($selected, $options, true);

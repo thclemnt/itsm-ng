@@ -35,6 +35,9 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
         $parameters['driverClass'] = PostgresDriver::class;
         $parameters['wrapperClass'] = self::class;
         unset($parameters['driver']);
+        $configuration = $configuration === null ? new Configuration() : clone $configuration;
+        $middlewares = array_filter($configuration->getMiddlewares(), static fn ($middleware): bool => !$middleware instanceof SqlDebugMiddleware);
+        $configuration->setMiddlewares([...$middlewares, new SqlDebugMiddleware()]);
         $connection = DriverManager::getConnection($parameters, $configuration);
         $connection->timezone = $parameters['timezone'] ?? 'UTC';
         $connection->setNestTransactionsWithSavepoints(true);

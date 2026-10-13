@@ -439,7 +439,7 @@ final class CriteriaBuilder
      **/
     public static function addOrderBy($itemtype, $ID, $order)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
         // Security test for order
         if ($order != "ASC") {
             $order = "DESC";
@@ -492,8 +492,16 @@ final class CriteriaBuilder
                 }
                 return " ORDER BY `" . $table . $addtable . "`.`name` {$order}";
             case "glpi_networkequipments.ip":
-            case "glpi_ipaddresses.name":
                 return " ORDER BY INET_ATON(`{$table}{$addtable}`.`{$field}`) {$order} ";
+            case "glpi_ipaddresses.name":
+                // SQLProvider includes the numeric address components in SELECT,
+                // including for the grouped/DISTINCT all/view fallback.
+                $nulls = $DB->getProvider() === 'pgsql' ? ($order === 'ASC' ? ' NULLS FIRST' : ' NULLS LAST') : '';
+                $keys = array_map(
+                    static fn ($field) => $DB->quoteName($field->alias) . ' ' . $order . $nulls,
+                    SortBuilder::fields($itemtype, (int)$ID, new Dialect($DB))
+                );
+                return ' ORDER BY ' . implode(', ', $keys);
         }
         //// Default cases
         // Link with plugin tables
@@ -510,17 +518,10 @@ final class CriteriaBuilder
         if (isset($searchopt[$ID]["datatype"])) {
             switch ($searchopt[$ID]["datatype"]) {
                 case "date_delay":
-                    $interval = "MONTH";
-                    if (isset($searchopt[$ID]['delayunit'])) {
-                        $interval = $searchopt[$ID]['delayunit'];
-                    }
-                    $add_minus = '';
-                    if (isset($searchopt[$ID]["datafields"][3])) {
-                        $add_minus = "- `{$table}{$addtable}`.`" . $searchopt[$ID]["datafields"][3] . "`";
-                    }
-                    return " ORDER BY ADDDATE(`{$table}{$addtable}`.`" . $searchopt[$ID]["datafields"][1] . "`,
-                                         INTERVAL (`{$table}{$addtable}`.`" . $searchopt[$ID]["datafields"][2] . "` {$add_minus})
-                                         {$interval}) {$order} ";
+                    // ProjectionBuilder already computes this date through the
+                    // selected database's date arithmetic.
+                    $nulls = $DB->getProvider() === 'pgsql' ? ($order === 'ASC' ? ' NULLS FIRST' : ' NULLS LAST') : '';
+                    return ' ORDER BY ' . $DB->quoteName("ITEM_{$itemtype}_{$ID}") . ' ' . $order . $nulls;
             }
         }
         return " ORDER BY `ITEM_{$itemtype}_{$ID}` {$order} ";
@@ -958,7 +959,7 @@ final class CriteriaBuilder
                         }
                     }
                     $regs[1] .= $regs[2];
-                    return $link . " (INET_ATON(`{$table}`.`{$field}`) " . $regs[1] . " INET_ATON('" . $regs[3] . "')) ";
+                    return $link . ' (' . (new Dialect($DB))->compareIPv4($table, $regs[1], $regs[3]) . ') ';
                 }
                 break;
             case "glpi_tickets.status":

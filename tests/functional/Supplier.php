@@ -85,7 +85,7 @@ class Supplier extends DbTestCase
             $this->string($first)->contains('Total = 2');
             $name = 'Fresh projection ' . $this->getUniqueString();
             $DB->getDoctrineConnection()->update('glpi_computers', ['name' => $name], ['id' => $items[0]->getID()]);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             ob_start();
             $supplier->showInfocoms();

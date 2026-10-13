@@ -9,7 +9,7 @@ final class MotherboardSubjects extends StagedTypedItemMigration
 {
     use ComponentSubjectMigration;
 
-    public const PHASE = '20261013_motherboard_subjects';
+    public const PHASE = '2.2.0.motherboard_subjects';
 
     private static ?array $snapshot = null;
 

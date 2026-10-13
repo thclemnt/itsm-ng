@@ -16,8 +16,8 @@ use RuntimeException;
 /** Frozen direct commercial supplier, helpdesk visibility and type authorization. */
 final class DomainIntegration
 {
-    public const PHASE = '20261006_domain_supplier_helpdesk_rights';
-    public const ADOPTION = '20261006_domains_plugin_adoption_v1';
+    public const PHASE = '2.2.0.domain_supplier_helpdesk_rights';
+    public const ADOPTION = '2.2.0.domains_plugin_adoption_v1';
     public const FORMAT = 'infotel-domains-2.1.0-completed-v1';
 
     public function plan(Connection $connection): array

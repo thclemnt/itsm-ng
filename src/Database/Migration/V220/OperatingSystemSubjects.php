@@ -9,7 +9,7 @@ use Doctrine\DBAL\Connection;
 /** Frozen OS assignment subjects; component dropdown roles remain independent. */
 final class OperatingSystemSubjects extends StagedTypedItemMigration
 {
-    public const PHASE = '20261006_operating_system_subjects';
+    public const PHASE = '2.2.0.operating_system_subjects';
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {

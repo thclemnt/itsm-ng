@@ -4,7 +4,7 @@
 
 namespace itsmng\Database\Migration\Frozen\InitialOwnersV1;
 
-/** Proposed initial table facts, pending application declaration qualification. */
+/** Frozen final parent declarations for the first ORM release. */
 final class NetworkPort extends InitialOwnerAdoption
 {
     public const TABLE = 'glpi_networkports';

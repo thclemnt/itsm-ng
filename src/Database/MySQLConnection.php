@@ -126,8 +126,10 @@ final class MySQLConnection implements Middleware
     public static function configuration(?Configuration $configuration = null): Configuration
     {
         $configuration = $configuration === null ? new Configuration() : clone $configuration;
-        $middlewares = array_values(array_filter($configuration->getMiddlewares(), static fn (Middleware $middleware): bool => !$middleware instanceof self));
-        $configuration->setMiddlewares([...$middlewares, new self()]);
+        $middlewares = array_values(array_filter($configuration->getMiddlewares(), static fn (Middleware $middleware): bool =>
+            !$middleware instanceof self && !$middleware instanceof SqlDebugMiddleware));
+        // Ownership remains the outer wrapper, including native command cleanup.
+        $configuration->setMiddlewares([...$middlewares, new SqlDebugMiddleware(), new self()]);
         $configuration->setSchemaManagerFactory(new MySQLSchemaManagerFactory());
         return $configuration;
     }

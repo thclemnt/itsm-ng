@@ -494,7 +494,7 @@ class Entity extends DbTestCase
 
         // Warm the ordinary reader before measuring the sixteen public lookups below.
         LegacyEntity::getEntityIDByTag('_identifier_reader_warmup');
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
 
         foreach ([
@@ -611,7 +611,7 @@ class Entity extends DbTestCase
         $adapter = new DBmysql();
         $this->calling($adapter)->getDoctrineConnection = $probe;
         $original = $DB;
-        $counter = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $counter = \DbTestCase::ormManagerCounter();
         $registry = Type::getTypeRegistry();
         $text = $registry->get(Types::TEXT);
         try {

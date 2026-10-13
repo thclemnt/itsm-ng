@@ -793,7 +793,7 @@ class Computer extends DbTestCase
             $hostModel = $computers[$host];
             $expectedLinks = ['Monitor' => [(int)$monitor->getID() => (int)$monitor->getID()]];
             $this->array($repository->linkedItems('Computer', $host))->isIdenticalTo($expectedLinks);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->array($hostModel->getLinkedItems())->isIdenticalTo($expectedLinks);
             // The linked-item projection creates no manager.

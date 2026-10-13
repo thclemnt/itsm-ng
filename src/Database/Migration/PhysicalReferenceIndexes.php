@@ -12,9 +12,9 @@ use itsmng\Database\PhysicalIndexSchema;
 use RuntimeException;
 
 /** Frozen forward repair of missing physical FK lookup coverage; no row changes. */
-final class PhysicalReferenceIndexes implements ReleaseMigration
+final class PhysicalReferenceIndexes
 {
-    public const VERSION = 'schema.physical_reference_indexes.v1';
+    public const PHASE = '2.2.0.physical_reference_indexes';
 
     // Captured from the 15426dad current property/association declarations.
     // Do not consult later entity metadata during historical replay.
@@ -89,11 +89,6 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
         ['glpi_users', 'default_requesttypes_id', 'IDX_F7E175BF7F248429'],
     ];
 
-    public function version(): string
-    {
-        return self::VERSION;
-    }
-
     /** Frozen DBAL declarations; names never substitute for column coverage. */
     public static function declarations(): array
     {
@@ -152,8 +147,5 @@ final class PhysicalReferenceIndexes implements ReleaseMigration
         if ($missing) {
             throw new RuntimeException('Physical reference index migration did not converge: ' . implode(', ', array_keys($missing)));
         }
-        // This index-only release does not supersede the preceding subject
-        // policy or its retained native proof; terminal replay must retain it.
-        (new SensorSubjects())->verify($connection);
     }
 }

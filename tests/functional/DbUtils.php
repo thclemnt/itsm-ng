@@ -106,7 +106,7 @@ class DbUtils extends DbTestCase
         $this->integer($id)->isGreaterThan(0);
         $utils = new DbUtilsModel();
         $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
@@ -609,7 +609,7 @@ class DbUtils extends DbTestCase
         $software = $this->createItem(Software::class, ['name' => $name, 'entities_id' => 0]);
         $predicate = ['name' => $name];
         $this->integer($this->testedInstance->countElementsInTable('glpi_softwares', $predicate))->isIdenticalTo(1);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         $request = [
             'INNER JOIN' => [
@@ -1175,7 +1175,7 @@ class DbUtils extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         $scopeRows = (new EntityScopeReadOperation())->rows($DB, 'glpi_entities', ['id'], ['id' => 0]);
         $this->array($scopeRows)->isIdenticalTo([['id' => 0]]);
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->array((new EntityScopeReadOperation())->rows($DB, 'glpi_entities', ['id'], ['id' => 0]))

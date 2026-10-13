@@ -188,7 +188,7 @@ class Contract extends DbTestCase
             };
             $this->string($read())->contains('Contract rendering computer')
                 ->contains('Contract rendering monitor')->notContains('Hidden contract template');
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $connection->update('glpi_computers', ['name' => 'Fresh contract computer'], ['id' => $assets['computer']->id]);
             $renamed = $read();
@@ -434,7 +434,7 @@ class Contract extends DbTestCase
         $originalName = $connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id = ?', [$supplier_id]);
         $translation = ['itemtype' => 'Supplier', 'items_id' => $supplier_id,
             'language' => 'x_' . bin2hex(random_bytes(4)), 'field' => 'name'];
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $created = 0;
         $read = static function () use ($contract, $factories, &$created): string {
             $before = $factories->getValue();

@@ -191,7 +191,7 @@ class ComputerVirtualMachine extends DbTestCase
                 [Types::INTEGER, Types::BOOLEAN]
             );
             $_SESSION['glpishow_count_on_tabs'] = true;
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->string($obj->getTabNameForItem($computer))->isIdenticalTo(
                 VirtualMachineModel::createTabEntry(VirtualMachineModel::getTypeName(), $expected)

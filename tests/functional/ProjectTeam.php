@@ -333,7 +333,7 @@ class ProjectTeam extends DbTestCase
             $target->addTeamContacts();
             $target->addTeamSuppliers();
             $this->array($target->target)->hasSize(25)->hasKey('fresh@example.test')->hasKey('supplier@example.test');
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             for ($repeat = 0; $repeat < 8; ++$repeat) {
                 $target->target = [];

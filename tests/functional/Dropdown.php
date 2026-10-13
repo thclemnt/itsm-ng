@@ -138,7 +138,7 @@ class Dropdown extends DbTestCase
         $child = $this->createItem(Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent->getID()]);
         $id = (int)$child->getID();
         $expected = getEntitiesRestrictCriteria('glpi_suppliers', '', [$id], true);
-        $counter = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $counter = \DbTestCase::ormManagerCounter();
         $before = $counter->getValue();
         $operation = new EntityScopeReadOperation();
         $this->array($operation->criteria('glpi_suppliers', '', [$id], true))->isIdenticalTo($expected);
@@ -1012,6 +1012,50 @@ class Dropdown extends DbTestCase
               'title'  =>  $netpoint->getName() . ' - ' . $location->getName() . ' - ' . $netpoint->fields['comment']
            ]
         ]);
+    }
+
+    public function testNetpointDropdownFindsOutletsWithoutLocation(): void
+    {
+        $session = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity('_test_root_entity', true);
+            $entity = (int)Session::getActiveEntity();
+            $name = $this->getUniqueString();
+            $unlocated = $this->createItem(\Netpoint::class, [
+                'name' => $name, 'entities_id' => $entity, 'locations_id' => 0,
+            ]);
+            $location = $this->createItem(\Location::class, [
+                'name' => $this->getUniqueString(), 'entities_id' => $entity,
+            ]);
+            $located = $this->createItem(\Netpoint::class, [
+                'name' => $name, 'entities_id' => $entity, 'locations_id' => $location->getID(),
+            ]);
+            // Import must reuse the same unlocated outlet instead of creating duplicates.
+            $netpoint = new \Netpoint();
+            foreach ([null, 0, '0'] as $selection) {
+                $input = ['name' => $name, 'entities_id' => $entity, 'locations_id' => $selection];
+                $this->integer($netpoint->findID($input))->isIdenticalTo($unlocated->getID());
+            }
+            $input = ['name' => $name, 'entities_id' => $entity];
+            $this->integer($netpoint->findID($input))->isIdenticalTo($unlocated->getID());
+            $input['locations_id'] = $location->getID();
+            $this->integer($netpoint->findID($input))->isIdenticalTo($located->getID());
+            foreach (['', 'Computer'] as $deviceType) {
+                $options = [
+                    'searchText' => $name, 'entity_restrict' => $entity,
+                    'devtype' => $deviceType, 'locations_id' => '0',
+                ];
+                $result = LegacyDropdown::getDropdownNetpoint($options, false);
+                $this->array(array_column($result['results'], 'id'))->isIdenticalTo([$unlocated->getID()]);
+
+                $options['locations_id'] = $location->getID();
+                $result = LegacyDropdown::getDropdownNetpoint($options, false);
+                $this->array(array_column($result['results'], 'id'))->isIdenticalTo([$located->getID()]);
+            }
+        } finally {
+            $_SESSION = $session;
+        }
     }
 
     public function dataGetValueWithUnit()

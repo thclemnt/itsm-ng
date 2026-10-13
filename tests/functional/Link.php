@@ -185,7 +185,7 @@ class Link extends DbTestCase
             $tab = new LinkModel();
             $this->string($tab->getTabNameForItem($computer))
                 ->isIdenticalTo(LinkModel::createTabEntry(LinkModel::getTypeName(Session::getPluralNumber()), $expected));
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeCount = $factories->getValue();
             $connection->update('glpi_links', ['is_recursive' => false], ['id' => $links[0]], ['is_recursive' => Types::BOOLEAN]);
             $this->string($tab->getTabNameForItem($computer))
@@ -377,7 +377,7 @@ class Link extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         Orm::withReadConnection($connection, static function (): void {
         });
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         $this->array(LinkModel::generateLinkContents('[DOMAIN]', $computer, false))->isIdenticalTo(['before.example']);
         $this->array(LinkModel::generateLinkContents('[MAC]', $computer, false))

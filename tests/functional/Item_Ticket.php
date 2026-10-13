@@ -79,7 +79,7 @@ class Item_Ticket extends DbTestCase
         $previous = $ticket_cost->getLastCostForItem($tickets_id);
         $this->integer((int)$previous['id'])->isIdenticalTo($ticketcosts_id);
         $this->integer((int)$previous['cost_fixed'])->isIdenticalTo(100);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         try {
             $this->integer($connection->update('glpi_ticketcosts', ['actiontime' => 60, 'cost_fixed' => 125], ['id' => $ticketcosts_id]))

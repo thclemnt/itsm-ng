@@ -9,7 +9,7 @@ final class MemorySubjects extends StagedTypedItemMigration
 {
     use ComponentSubjectMigration;
 
-    public const PHASE = '20261013_memory_subjects';
+    public const PHASE = '2.2.0.memory_subjects';
 
     private static ?array $snapshot = null;
 

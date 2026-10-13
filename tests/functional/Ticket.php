@@ -540,7 +540,7 @@ class Ticket extends DbTestCase
             }
         };
         $model->fields = $ticket->fields;
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         $calls = [];
         try {
@@ -747,7 +747,7 @@ class Ticket extends DbTestCase
         $connection = $DB->getDoctrineConnection();
         Orm::withReadConnection($connection, static function (): void {
         });
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         $this->integer(RequestType::getDefault('helpdesk'))->isIdenticalTo($helpdeskId);
         $this->integer(RequestType::getDefault('followup'))->isIdenticalTo($followupId);
@@ -1000,7 +1000,7 @@ class Ticket extends DbTestCase
             $expected = [];
             $hookRows = [];
             $hookFactories = [];
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeCalls = 0;
             $plugins->setValue(null, [...$active, 'timeline_author_fixture']);
             $PLUGIN_HOOKS['pre_show_item'] = ['timeline_author_fixture' =>
@@ -1057,12 +1057,12 @@ class Ticket extends DbTestCase
                 }
                 public function getUsers($type)
                 {
-                    $this->lastRequesterFactories = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+                    $this->lastRequesterFactories = (\DbTestCase::ormManagerCounter())->getValue();
                     return [];
                 }
             };
             $display->fields = $ticket->fields;
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $this->output(fn () => $display->showTimeline(746))
                 ->contains('Followup promotion source')
                 ->contains('viewitemitilfollowup' . min($followups));
@@ -1186,7 +1186,7 @@ class Ticket extends DbTestCase
         $manager->getEventManager()->addEventListener([Events::postLoad], $loads);
         $reader = new UserDisplayReadOperation($manager->getConnection());
         $defaultFont = '"Bitstream Vera Sans", arial, Tahoma, "Sans serif"';
-        $fontFactories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $fontFactories = \DbTestCase::ormManagerCounter();
         $fontAllocations = 0;
         Orm::withConnection($manager->getConnection(), static fn (EntityManager $scope): mixed => null);
         try {
@@ -1555,7 +1555,7 @@ class Ticket extends DbTestCase
         $this->array($model->getActors($parent->id))->isIdenticalTo($grouped);
         $parentModel = new $parentName();
         $parentModel->fields['id'] = $parent->id;
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         try {
             $probe = new ScalarReadProbe($em->getConnection());
             $direct = new ITILActorReadOperation($probe);
@@ -3518,7 +3518,7 @@ class Ticket extends DbTestCase
                     $connection = $DB->getDoctrineConnection();
                     // Warm the canonical metadata, then observe legacy writes without another factory.
                     $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
-                    $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                    $factories = \DbTestCase::ormManagerCounter();
                     $otherTicket = $this->createItem('Ticket', [
                         'name' => 'Timeline live subject change',
                         'content' => 'Subject for the live followup change',
@@ -3571,9 +3571,9 @@ class Ticket extends DbTestCase
                             $counts->close();
                             $this->boolean($manager->contains($sentinel))->isTrue();
                             // A complete public count reenters ownership without clearing the outer read.
-                            $beforeNested = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+                            $beforeNested = (\DbTestCase::ormManagerCounter())->getValue();
                             $this->integer($item->getTimelineItemCount())->isIdenticalTo(9);
-                            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue())->isGreaterThan($beforeNested);
+                            $this->integer((\DbTestCase::ormManagerCounter())->getValue())->isGreaterThan($beforeNested);
                             $this->boolean($manager->contains($sentinel))->isTrue();
                         } finally {
                             $counts->close();
@@ -5900,7 +5900,7 @@ class Ticket extends DbTestCase
         // Warm the two selector operations without enclosing permission-helper callbacks.
         $groupRows = iterator_to_array(User::getSqlSearchResult(false, 'groups'));
         $this->array(array_map('intval', array_column($groupRows, 'id')))->contains((int)$normal_id);
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         $this->array(iterator_to_array(User::getSqlSearchResult(false, 'groups')))->isIdenticalTo($groupRows);
         $this->integer($managers->getValue() - $beforeManagers)->isIdenticalTo(

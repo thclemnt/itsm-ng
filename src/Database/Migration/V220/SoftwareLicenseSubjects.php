@@ -7,7 +7,7 @@ namespace itsmng\Database\Migration\V220;
 /** Licence assignment rows remain independent; no new uniqueness or deduplication. */
 final class SoftwareLicenseSubjects extends SoftwareAssignmentSubjects
 {
-    public const PHASE = '20261011_software_license_subjects';
+    public const PHASE = '2.2.0.software_license_subjects';
 
     protected function phase(): string
     {

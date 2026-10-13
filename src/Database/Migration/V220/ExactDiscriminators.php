@@ -17,7 +17,7 @@ use RuntimeException;
 /** Frozen byte-exact subject identities; application properties own current policy. */
 final class ExactDiscriminators
 {
-    public const PHASE = '20261010_exact_subject_discriminators';
+    public const PHASE = '2.2.0.exact_subject_discriminators';
 
     public static function definitions(): array
     {

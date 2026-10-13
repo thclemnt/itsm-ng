@@ -27,19 +27,12 @@ use itsmng\Database\Installer;
 use itsmng\Database\Migration\History as Releases;
 use itsmng\Database\Migration\InitialOwners;
 use itsmng\Database\Migration\ComponentParents;
-use itsmng\Database\Migration\ComponentParentExpansions;
-use itsmng\Database\Migration\GraphicCardParents;
 use itsmng\Database\Migration\GraphicCardParents\Definition as GraphicCardDefinition;
-use itsmng\Database\Migration\IPAddressParents;
 use itsmng\Database\Migration\IPAddressParents\Definition as IPAddressDefinition;
-use itsmng\Database\Migration\NetworkNameParents;
 use itsmng\Database\Migration\NetworkNameParents\Definition as NetworkNameDefinition;
-use itsmng\Database\Migration\NonnullableFlags;
-use itsmng\Database\Migration\NotepadParents;
 use itsmng\Database\Migration\NotepadParents\Definition as NoteParentDefinition;
 use itsmng\Database\Migration\PhysicalReferenceIndexes;
 use itsmng\Database\Migration\ReleaseMigration;
-use itsmng\Database\Migration\SensorSubjects;
 use itsmng\Database\Migration\SensorSubjects\Definition;
 use itsmng\Database\Migration\Version220;
 use itsmng\Database\Migration\V220\Baseline;
@@ -214,17 +207,11 @@ class History extends test
         }
     }
 
-    public function testSensorForwardDeclarationIsFrozenAndUsesTheExistingLedger(): void
+    public function testSensorDeclarationBelongsToTheSingleRelease(): void
     {
         $definition = Definition::class;
-        $release = new SensorSubjects();
-        $this->string($release->version())->isNotIdenticalTo(Version220::VERSION);
-        $this->string($release->version())->isNotIdenticalTo($definition::PHASE);
-        $this->array(Releases::versions())->isIdenticalTo([
-            Version220::VERSION, $release->version(), PhysicalReferenceIndexes::VERSION,
-            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
-            ComponentParentExpansions::VERSION, NonnullableFlags::VERSION, NotepadParents::VERSION,
-        ]);
+        $this->array(Releases::versions())->isIdenticalTo([Version220::VERSION]);
+        $this->array(Version220::PHASES)->contains($definition::PHASE);
         foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
             $table = new Table('glpi_items_devicesensors');
             $table->addColumn('itemtype', 'string');
@@ -347,51 +334,25 @@ class History extends test
         };
     }
 
-    public function testExperimentalCheckpointsDoNotPublishAnOrmRelease(): void
+    public function testOnlyCompletedSingleTransitionPublishesTheOrmRelease(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
-        $versions = [
-            '2.2.0', SensorSubjects::VERSION, PhysicalReferenceIndexes::VERSION,
-            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
-            ComponentParentExpansions::VERSION, NonnullableFlags::VERSION, NotepadParents::VERSION,
-        ];
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo($versions);
-        // Internal checkpoints share the existing ledger but cannot publish their releases.
-        $componentPhases = array_map(static fn (string $class): string => $class::PHASE, array_values(ComponentParents::DEFINITIONS));
-        $expansionPhases = array_map(static fn (string $class): string => $class::PHASE, ComponentParentExpansions::DEFINITIONS);
-        $connection->states = array_fill_keys(
-            [
-                ...Version220::PHASES, Definition::PHASE, NetworkNameDefinition::PHASE,
-                IPAddressDefinition::PHASE, GraphicCardDefinition::PHASE, ...$componentPhases,
-                ...$expansionPhases, NoteParentDefinition::PHASE, InitialOwners::PHASE,
-            ],
-            ['complete' => true]
-        );
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
+        $connection->states = array_fill_keys(Version220::PHASES, ['complete' => true]);
         $original = $connection->states;
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo($versions);
+        $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
         $this->array($connection->states)->isIdenticalTo($original);
         $connection->states[Version220::VERSION] = ['complete' => true];
-        $connection->states[SensorSubjects::VERSION] = ['complete' => true];
-        $connection->states[PhysicalReferenceIndexes::VERSION] = ['complete' => true];
-        $this->array(Releases::pendingVersions($connection))->isIdenticalTo([
-            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
-            ComponentParentExpansions::VERSION, NonnullableFlags::VERSION, NotepadParents::VERSION,
-        ]);
-        foreach ([
-            NetworkNameParents::VERSION, IPAddressParents::VERSION, GraphicCardParents::VERSION, ComponentParents::VERSION,
-            ComponentParentExpansions::VERSION, NonnullableFlags::VERSION, NotepadParents::VERSION,
-        ] as $version) {
-            $connection->states[$version] = ['complete' => true];
-        }
         $this->array(Releases::pendingVersions($connection))->isEmpty();
         unset($connection->states[InitialOwners::PHASE]);
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
         $connection->states[InitialOwners::PHASE] = ['complete' => true];
         $connection->states[Baseline::PHASE] = ['complete' => false, 'origin' => 'installed', 'next' => 1];
         $this->array(Releases::pendingVersions($connection))->isIdenticalTo(['2.2.0']);
-        $this->integer($connection->catalogueReads)->isIdenticalTo(6);
-        $this->integer($connection->journalReads)->isIdenticalTo(6);
+        $this->integer($connection->catalogueReads)->isIdenticalTo(5);
+        $this->integer($connection->journalReads)->isIdenticalTo(5);
     }
+
 }
 
 /** Observe installer SQL without opening a native connection or executing DDL. */

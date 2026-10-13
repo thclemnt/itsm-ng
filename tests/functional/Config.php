@@ -580,7 +580,7 @@ class Config extends DbTestCase
             try {
                 $_SESSION['glpiID'] = $id;
                 $this->boolean($scopedRead($connection))->isTrue();
-                $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                $factories = \DbTestCase::ormManagerCounter();
                 $beforeFactories = $factories->getValue();
                 for ($repeat = 0; $repeat < 3; ++$repeat) {
                     $this->boolean($scopedRead($connection))->isTrue();
@@ -1695,7 +1695,7 @@ class Config extends DbTestCase
                 $before = $manager;
             });
             $writes = $memory->planWrites;
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $constructions = $factories->getValue();
             $criteria = ['context' => $context, 'id' => new QuerySubQuery([
                 'SELECT' => 'id', 'FROM' => 'glpi_configs', 'WHERE' => ['context' => $context],
@@ -2195,7 +2195,7 @@ class Config extends DbTestCase
             $expected = ['z-key' => 'first', 'a-key' => 'last', 'NULL' => 'NULL'];
             $this->array($ordinary->values($context))->isIdenticalTo($expected);
             $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             for ($repeat = 0; $repeat < 3; ++$repeat) {
                 $this->array(ConfigModel::getConfigurationValues($context))->isIdenticalTo($expected);

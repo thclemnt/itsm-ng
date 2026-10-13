@@ -263,6 +263,27 @@ class Oidc extends CommonDBTM
                         if ($email !== null && $email !== '' && !UserEmail::isEmailForUser($id, $email)) {
                             (new UserEmail())->add(['users_id' => $id, 'email' => $email, 'is_dynamic' => 0]);
                         }
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                        $user = new User();
+                        if ($user->getFromDB($id)) {
+                            // OIDC authorization always uses the external login context,
+                            // including accounts retaining another stored authentication type.
+                            $input = (new RuleRightCollection())->processAllRules(
+                                array_column(Group_User::getUserGroups($id), 'id'),
+                                $user->fields,
+                                [
+                                    'type' => Auth::EXTERNAL,
+                                    'login' => $user->fields['name'],
+                                    'email' => UserEmail::getDefaultForUser($id),
+                                ]
+                            );
+                            $input['_ruleright_process'] = true;
+                            OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
+                            if (!$user->update($input)) {
+                                throw new RuntimeException('Unable to apply OIDC authorization rules.');
+                            }
+                        }
+                        OwnershipUpdateUnit::assertResolvedWriter($database, $connection);
                     }
                 );
             }

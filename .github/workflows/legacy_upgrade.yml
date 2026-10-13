@@ -1,0 +1,77 @@
+name: Pre-ORM upgrade
+
+on: [pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade:
+    name: ITSM-NG 2.1.7 to current / ${{ matrix.database.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - image: mariadb:11.8
+            label: MariaDB 11.8
+            client: mariadb
+            tzinfo: mariadb-tzinfo-to-sql
+            health: mariadb-admin ping
+          - image: mysql:8.4
+            label: MySQL 8.4
+            client: mysql
+            tzinfo: mysql_tzinfo_to_sql
+            health: mysqladmin ping
+    env:
+      ITSM_UPGRADE_DB_NAME: itsm_test_legacy_upgrade
+      ITSM_UPGRADE_DB_USER: test
+      ITSM_UPGRADE_DB_PASSWORD: test
+      ITSM_UPGRADE_WORK_DIR: ${{ github.workspace }}/../legacy-upgrade
+    services:
+      database:
+        image: ${{ matrix.database.image }}
+        env:
+          MYSQL_DATABASE: itsm_test_legacy_upgrade
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "${{ matrix.database.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mysqli, pdo_mysql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath, apcu, redis
+          coverage: none
+      - name: Install current PHP dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare timezone data
+        run: |
+          docker exec "${{ job.services.database.id }}" "${{ matrix.database.tzinfo }}" /usr/share/zoneinfo | docker exec -i "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest mysql
+          docker exec "${{ job.services.database.id }}" "${{ matrix.database.client }}" -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%'"
+      - name: Install historical source, populate and upgrade through public commands
+        run: bash .github/actions/test_legacy-upgrade.sh
+      - name: Retain upgrade diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-upgrade-${{ matrix.database.client }}
+          path: |
+            ${{ env.ITSM_UPGRADE_WORK_DIR }}/*.log
+            ${{ env.ITSM_UPGRADE_WORK_DIR }}/legacy-composer.lock
+            ${{ env.ITSM_UPGRADE_WORK_DIR }}/before.json
+            ${{ env.ITSM_UPGRADE_WORK_DIR }}/files/_log/
+          if-no-files-found: ignore

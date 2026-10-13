@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-namespace itsmng\Database\Migration\Frozen\V1;
+namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
@@ -10,19 +10,58 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\V220\IncomingProjectionReferences;
 use itsmng\Database\MySQLGeneratedColumnInspection;
 use itsmng\Database\NativeCheckCatalog;
 use itsmng\Database\NativeSubjectSchema;
 use RuntimeException;
 
-/** Unpublished v1 adoption algorithm for the explicitly frozen parent shapes. */
-abstract class SingleOpenParentAdoption
+/** Direct released-schema adoption of the final 2.2.0 parent branches. */
+abstract class OpenParentAdoption
 {
     protected const DISCRIMINATOR_NULLABLE = false;
     protected const DISCRIMINATOR_LENGTH = 100;
 
-    abstract public static function policy(AbstractPlatform $platform): array;
+    /** kind => [column, target table, physical index, foreign key]. */
+    protected const OWNERS = [];
+
+    public static function policy(AbstractPlatform $platform): array
+    {
+        $quote = $platform->quoteIdentifier(...);
+        $raw = $quote('itemtype');
+        $kind = $platform instanceof AbstractMySQLPlatform ? 'CAST(' . $raw . ' AS BINARY)' : $raw;
+        $opaque = $quote('opaque_parent_id');
+        $branches = $cases = $unselected = [];
+        $types = ['opaque_parent_id' => 'bigint'];
+        foreach (static::OWNERS as $choice => [$column]) {
+            $owner = $quote($column);
+            $selected = $kind . ' IN (' . $platform->quoteStringLiteral($choice) . ')';
+            $cases[] = 'WHEN ' . $selected . ' THEN COALESCE(' . $owner . ', 0)';
+            $branch = [$selected, '(' . $owner . ' IS NULL OR ' . $owner . ' > 0)', $opaque . ' IS NULL'];
+            if (static::DISCRIMINATOR_NULLABLE) {
+                array_unshift($branch, $raw . ' IS NOT NULL');
+            }
+            foreach (static::OWNERS as $other => [$otherColumn]) {
+                if ($other !== $choice) {
+                    $branch[] = $quote($otherColumn) . ' IS NULL';
+                }
+            }
+            $branches[] = '(' . implode(' AND ', $branch) . ')';
+            $unselected[] = $kind . ' NOT IN (' . $platform->quoteStringLiteral($choice) . ')';
+            $types[$column] = 'bigint';
+        }
+        $unknown = [static::DISCRIMINATOR_NULLABLE
+            ? '(' . $raw . ' IS NULL OR ' . implode(' AND ', $unselected) . ')'
+            : implode(' AND ', $unselected)];
+        foreach (static::OWNERS as [$column]) {
+            $unknown[] = $quote($column) . ' IS NULL';
+        }
+        $unknown[] = $opaque . ' IS NOT NULL';
+        $branches[] = '(' . implode(' AND ', $unknown) . ')';
+        return ['projection' => 'CASE ' . implode(' ', $cases) . ' ELSE ' . $opaque . ' END',
+            'constraint' => static::CHECK, 'check' => implode(' OR ', $branches),
+            'discriminators' => ['itemtype'], 'integer_types' => $types,
+            'string_selections' => ['itemtype' => array_keys(static::OWNERS)], 'open_string_fallback' => true];
+    }
 
     /** Preview never creates receipts, columns or data. */
     public function plan(Connection $connection): array
@@ -32,14 +71,14 @@ abstract class SingleOpenParentAdoption
         $this->verifyColumns($connection, legacy: $state === null);
         if ($state === null) {
             if (!$table->hasColumn('items_id') || $this->generated($connection)
-                || $table->hasColumn(static::OWNER) || $table->hasColumn('opaque_parent_id')) {
-                throw new RuntimeException('' . static::LABEL . ' adoption requires the genuine stored legacy identity or its original owned checkpoint.');
+                || array_filter(array_keys($this->columns()), $table->hasColumn(...))) {
+                throw new RuntimeException(static::LABEL . ' adoption requires the genuine stored legacy identity or its original owned checkpoint.');
             }
             $this->audit($connection, 'items_id');
         } else {
             $this->assertSource($connection, $state);
         }
-        return [static::TABLE => ['adopted_kind' => static::KIND, 'opaque_other_kinds' => true,
+        return [static::TABLE => ['adopted_kinds' => array_keys(static::OWNERS), 'opaque_other_kinds' => true,
             'stages' => ['columns', 'copy', 'constraints', 'projection', 'verified'],
             'generated' => $this->generated($connection), 'checkpoint' => $state['phase'] ?? null]];
     }
@@ -53,7 +92,7 @@ abstract class SingleOpenParentAdoption
         }
         $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
         if ($mysql && $connection->isTransactionActive()) {
-            throw new RuntimeException('' . static::LABEL . ' adoption must run outside a MySQL application transaction.');
+            throw new RuntimeException(static::LABEL . ' adoption must run outside a MySQL application transaction.');
         }
         $apply = function () use ($connection, $progress): void {
             $platform = $connection->getDatabasePlatform();
@@ -98,7 +137,7 @@ abstract class SingleOpenParentAdoption
                 Ledger::save($connection, static::PHASE, $state);
             }
             $this->assertSource($connection, $state);
-            foreach ([static::OWNER => null, 'opaque_parent_id' => 0] as $column => $default) {
+            foreach ($this->columns() as $column => $default) {
                 $before = $manager->introspectTable(static::TABLE);
                 if ($before->hasColumn($column)) {
                     $actual = $before->getColumn($column);
@@ -119,12 +158,18 @@ abstract class SingleOpenParentAdoption
             if (!$this->generated($connection) && $manager->introspectTable(static::TABLE)->hasColumn('items_id')) {
                 $this->assertSource($connection, $state);
                 $kind = $platform instanceof AbstractMySQLPlatform ? 'CAST(itemtype AS BINARY)' : 'itemtype';
-                $sql = 'UPDATE ' . static::TABLE . " SET " . static::OWNER . " = CASE WHEN $kind IN ('" . static::KIND . "') AND items_id > 0 THEN items_id ELSE NULL END, "
-                    . "opaque_parent_id = CASE WHEN $kind IN ('" . static::KIND . "') THEN NULL ELSE items_id END";
+                $set = $selected = [];
+                foreach (static::OWNERS as $literal => [$column]) {
+                    $test = $kind . ' IN (' . $platform->quoteStringLiteral($literal) . ')';
+                    $set[] = $platform->quoteIdentifier($column) . ' = CASE WHEN ' . $test . ' AND items_id > 0 THEN items_id ELSE NULL END';
+                    $selected[] = $test;
+                }
+                $set[] = 'opaque_parent_id = CASE WHEN ' . implode(' OR ', $selected) . ' THEN NULL ELSE items_id END';
+                $sql = 'UPDATE ' . static::TABLE . ' SET ' . implode(', ', $set);
                 $connection->executeStatement($sql);
                 $projection = static::policy($platform)['projection'];
                 if ($this->identityHash($connection, '(' . $projection . ')') !== $state['source_hash']) {
-                    throw new RuntimeException('' . static::LABEL . ' copied ownership does not preserve the source identity.');
+                    throw new RuntimeException(static::LABEL . ' copied ownership does not preserve the source identity.');
                 }
                 $state['phase'] = 'copied';
                 Ledger::save($connection, static::PHASE, $state);
@@ -209,21 +254,26 @@ abstract class SingleOpenParentAdoption
         $manager = $connection->createSchemaManager();
         $before = $manager->introspectTable(static::TABLE);
         $after = clone $before;
-        if (!$after->hasIndex(static::INDEX)) {
-            $after->addIndex([static::OWNER], static::INDEX);
-        } elseif ($after->getIndex(static::INDEX)->getUnquotedColumns() !== [static::OWNER]) {
-            throw new RuntimeException('Conflicting ' . static::LOWER_LABEL . ' owning lookup index.');
-        }
-        if (!$after->hasForeignKey(static::FOREIGN)) {
-            $after->addForeignKeyConstraint(static::TARGET, [static::OWNER], ['id'], ['onDelete' => 'RESTRICT'], static::FOREIGN);
-        } else {
-            $this->verifyForeign($connection, $after->getForeignKey(static::FOREIGN));
+        foreach (static::OWNERS as [$owner, $target, $index, $foreign]) {
+            if (!$after->hasIndex($index)) {
+                $after->addIndex([$owner], $index);
+            } elseif ($after->getIndex($index)->getUnquotedColumns() !== [$owner]) {
+                throw new RuntimeException('Conflicting ' . static::LOWER_LABEL . ' owning lookup index.');
+            }
+            if (!$after->hasForeignKey($foreign)) {
+                $after->addForeignKeyConstraint($target, [$owner], ['id'], ['onDelete' => 'RESTRICT'], $foreign);
+            } else {
+                $this->verifyForeign($connection, $after->getForeignKey($foreign), $owner, $target);
+            }
         }
         foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after)) as $sql) {
             $connection->executeStatement($sql);
             $progress && $progress('constraints', $sql);
         }
-        $this->verifyForeign($connection, $manager->introspectTable(static::TABLE)->getForeignKey(static::FOREIGN));
+        $actual = $manager->introspectTable(static::TABLE);
+        foreach (static::OWNERS as [$owner, $target, , $foreign]) {
+            $this->verifyForeign($connection, $actual->getForeignKey($foreign), $owner, $target);
+        }
         $catalog = NativeCheckCatalog::snapshot($connection, static::TABLE);
         $check = $catalog['checks'][static::TABLE][static::CHECK] ?? null;
         if ($check === null) {
@@ -253,17 +303,25 @@ abstract class SingleOpenParentAdoption
         if ($identity === 'items_id') {
             $identity = 'n.items_id';
         } else {
-            foreach (['itemtype', static::OWNER, 'opaque_parent_id'] as $field) {
+            foreach (['itemtype', ...array_keys($this->columns())] as $field) {
                 $identity = str_replace($connection->getDatabasePlatform()->quoteIdentifier($field), 'n.' . $connection->getDatabasePlatform()->quoteIdentifier($field), $identity);
             }
         }
-        $invalid = (static::DISCRIMINATOR_NULLABLE ? '' : 'n.itemtype IS NULL OR ')
-            . "$identity IS NULL OR ($kind IN ('" . static::KIND . "') AND ($identity < 0 OR ($identity > 0 AND p.id IS NULL)))";
-        $rows = $connection->fetchAllAssociative('SELECT n.id, n.itemtype, ' . $identity . ' AS items_id FROM ' . static::TABLE
-            . ' n LEFT JOIN ' . static::TARGET . ' p ON p.id = ' . $identity . ' WHERE ' . $invalid . ' ORDER BY n.id LIMIT 5');
-        if ($rows) {
-            throw new RuntimeException('Invalid canonical ' . static::KIND . ' ' . static::PARENT_LABEL . '; resolve negative/orphan/null source identities explicitly; no rows were repaired. Samples: ' . json_encode($rows, JSON_THROW_ON_ERROR));
+        foreach (static::OWNERS as $literal => [, $target]) {
+            $invalid = (static::DISCRIMINATOR_NULLABLE ? '' : 'n.itemtype IS NULL OR ')
+                . $identity . ' IS NULL OR (' . $kind . ' IN (' . $connection->getDatabasePlatform()->quoteStringLiteral($literal)
+                . ') AND (' . $identity . ' < 0 OR (' . $identity . ' > 0 AND p.id IS NULL)))';
+            $rows = $connection->fetchAllAssociative('SELECT n.id, n.itemtype, ' . $identity . ' AS items_id FROM ' . static::TABLE
+                . ' n LEFT JOIN ' . $target . ' p ON p.id = ' . $identity . ' WHERE ' . $invalid . ' ORDER BY n.id LIMIT 5');
+            if ($rows) {
+                throw new RuntimeException('Invalid canonical ' . $literal . ' ' . static::PARENT_LABEL . '; resolve negative/orphan/null source identities explicitly; no rows were repaired. Samples: ' . json_encode($rows, JSON_THROW_ON_ERROR));
+            }
         }
+    }
+
+    private function columns(): array
+    {
+        return array_fill_keys(array_column(static::OWNERS, 0), null) + ['opaque_parent_id' => 0];
     }
 
     private function assertSource(Connection $connection, array $state): void
@@ -277,7 +335,7 @@ abstract class SingleOpenParentAdoption
             throw new RuntimeException('Missing ' . static::LOWER_LABEL . ' source identity without a copied ownership checkpoint.');
         }
         if (($state['complete'] ?? false) !== true && $this->identityHash($connection, $identity) !== $state['source_hash']) {
-            throw new RuntimeException('' . static::LABEL . ' identities changed after the owned adoption audit. Stop writers and reconcile the original checkpoint; no data was repaired.');
+            throw new RuntimeException(static::LABEL . ' identities changed after the owned adoption audit. Stop writers and reconcile the original checkpoint; no data was repaired.');
         }
         $this->audit($connection, $identity);
     }
@@ -291,9 +349,9 @@ abstract class SingleOpenParentAdoption
         return hash_final($hash);
     }
 
-    private function verifyForeign(Connection $connection, ForeignKeyConstraint $foreign): void
+    private function verifyForeign(Connection $connection, ForeignKeyConstraint $foreign, string $owner, string $target): void
     {
-        if ($foreign->getLocalColumns() !== [static::OWNER] || $foreign->getForeignTableName() !== static::TARGET
+        if ($foreign->getLocalColumns() !== [$owner] || $foreign->getForeignTableName() !== $target
             || $foreign->getForeignColumns() !== ['id'] || !in_array($foreign->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true)
             || !in_array($foreign->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
             throw new RuntimeException('Conflicting native ' . static::LOWER_LABEL . ' owning FK.');
@@ -303,10 +361,10 @@ abstract class SingleOpenParentAdoption
                 'SELECT DELETE_RULE AS delete_rule, UPDATE_RULE AS update_rule, '
                 . 'UNIQUE_CONSTRAINT_SCHEMA AS target_schema, REFERENCED_TABLE_NAME AS foreign_table, DATABASE() AS current_schema '
                 . 'FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME=? AND CONSTRAINT_NAME=?',
-                [static::TABLE, static::FOREIGN]
+                [static::TABLE, $foreign->getName()]
             );
             $valid = (int)$connection->fetchOne('SELECT @@SESSION.foreign_key_checks') === 1
-                && is_array($native) && $native['target_schema'] === $native['current_schema'] && $native['foreign_table'] === static::TARGET
+                && is_array($native) && $native['target_schema'] === $native['current_schema'] && $native['foreign_table'] === $target
                 && in_array($native['delete_rule'], ['RESTRICT', 'NO ACTION'], true)
                 && in_array($native['update_rule'], ['RESTRICT', 'NO ACTION'], true);
         } else {
@@ -314,7 +372,7 @@ abstract class SingleOpenParentAdoption
                 'SELECT c.convalidated, c.condeferrable, c.condeferred, c.confdeltype, c.confupdtype, '
                 . "COALESCE(to_jsonb(c)->>'conenforced', 'true') AS enforced, c.confrelid=to_regclass(?) AS visible_target "
                 . 'FROM pg_catalog.pg_constraint c WHERE c.conrelid=to_regclass(?) AND c.conname=? AND c.contype=?',
-                [static::TARGET, static::TABLE, static::FOREIGN, 'f']
+                [$target, static::TABLE, $foreign->getName(), 'f']
             );
             $valid = is_array($native) && in_array($native['convalidated'], [true, 1, '1', 't'], true)
                 && in_array($native['visible_target'], [true, 1, '1', 't'], true)
@@ -324,7 +382,7 @@ abstract class SingleOpenParentAdoption
                 && in_array($native['confdeltype'], ['r', 'a'], true) && in_array($native['confupdtype'], ['r', 'a'], true);
         }
         if (!$valid) {
-            throw new RuntimeException('' . static::LABEL . ' owning FK is missing, changed, unvalidated, deferred or unenforced.');
+            throw new RuntimeException(static::LABEL . ' owning FK is missing, changed, unvalidated, deferred or unenforced.');
         }
     }
 
@@ -333,7 +391,7 @@ abstract class SingleOpenParentAdoption
     {
         if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform
             && (int)$connection->fetchOne('SELECT @@SESSION.foreign_key_checks') !== 1) {
-            throw new RuntimeException('' . static::LABEL . ' adoption requires enabled native foreign key checks.');
+            throw new RuntimeException(static::LABEL . ' adoption requires enabled native foreign key checks.');
         }
         $manager = $connection->createSchemaManager();
         $table = $manager->introspectTable(static::TABLE);
@@ -356,21 +414,23 @@ abstract class SingleOpenParentAdoption
                 [static::TABLE, 'itemtype']
             );
             if (!in_array($deterministic, [true, 1, '1', 't'], true)) {
-                throw new RuntimeException('' . static::LABEL . ' exact adoption requires its existing deterministic discriminator collation; no source spelling/collation was rewritten.');
+                throw new RuntimeException(static::LABEL . ' exact adoption requires its existing deterministic discriminator collation; no source spelling/collation was rewritten.');
             }
         }
-        $target = $manager->introspectTable(static::TARGET)->getColumn('id');
-        if (Type::lookupName($target->getType()) !== 'bigint' || !$target->getNotnull() || $target->getUnsigned()) {
-            throw new RuntimeException('Parent target ' . static::TARGET . ' identity must be nonnull BIGINT.');
+        foreach (static::OWNERS as [, $targetTable]) {
+            $target = $manager->introspectTable($targetTable)->getColumn('id');
+            if (Type::lookupName($target->getType()) !== 'bigint' || !$target->getNotnull() || $target->getUnsigned()) {
+                throw new RuntimeException('Parent target ' . $targetTable . ' identity must be nonnull BIGINT.');
+            }
         }
         if ($legacy || ($table->hasColumn('items_id') && !$this->generated($connection))) {
             $identity = $table->getColumn('items_id');
             if (Type::lookupName($identity->getType()) !== 'bigint' || !$identity->getNotnull() || $identity->getUnsigned() || $identity->getAutoincrement() || (string)$identity->getDefault() !== '0') {
-                throw new RuntimeException('' . static::LABEL . ' stored source identity must be nonnull BIGINT with legacy zero default.');
+                throw new RuntimeException(static::LABEL . ' stored source identity must be nonnull BIGINT with legacy zero default.');
             }
             return;
         }
-        foreach ([static::OWNER => null, 'opaque_parent_id' => 0] as $name => $default) {
+        foreach ($this->columns() as $name => $default) {
             if (!$table->hasColumn($name)) {
                 // A legitimate journal can still precede this column's owned DDL.
                 if ((Ledger::state($connection, static::PHASE)['complete'] ?? false) === true) {
@@ -388,7 +448,7 @@ abstract class SingleOpenParentAdoption
         if ($table->hasColumn('items_id') && $this->generated($connection)) {
             $identity = $table->getColumn('items_id');
             if (Type::lookupName($identity->getType()) !== 'bigint' || $identity->getNotnull() || $identity->getUnsigned() || $identity->getAutoincrement() || $identity->getDefault() !== null) {
-                throw new RuntimeException('' . static::LABEL . ' projected identity must be nullable BIGINT without a default.');
+                throw new RuntimeException(static::LABEL . ' projected identity must be nullable BIGINT without a default.');
             }
         }
     }
@@ -398,16 +458,18 @@ abstract class SingleOpenParentAdoption
         $this->verifyColumns($connection);
         $this->assertSource($connection, Ledger::state($connection, static::PHASE) ?? []);
         $table = $connection->createSchemaManager()->introspectTable(static::TABLE);
-        if (!$table->hasForeignKey(static::FOREIGN)) {
-            throw new RuntimeException('Missing native ' . static::LOWER_LABEL . ' owning FK.');
+        foreach (static::OWNERS as [$owner, $target, $index, $foreign]) {
+            if (!$table->hasForeignKey($foreign)) {
+                throw new RuntimeException('Missing native ' . static::LOWER_LABEL . ' owning FK.');
+            }
+            $this->verifyForeign($connection, $table->getForeignKey($foreign), $owner, $target);
+            if (!$table->hasIndex($index) || $table->getIndex($index)->getUnquotedColumns() !== [$owner]) {
+                throw new RuntimeException('Missing native ' . static::LOWER_LABEL . ' owning lookup index.');
+            }
         }
-        $this->verifyForeign($connection, $table->getForeignKey(static::FOREIGN));
         $differences = NativeSubjectSchema::differences($connection, [static::TABLE => ['items_id' => static::policy($connection->getDatabasePlatform())]]);
         if ($differences) {
             throw new RuntimeException(implode("\n", $differences));
-        }
-        if (!$table->hasIndex(static::INDEX) || $table->getIndex(static::INDEX)->getUnquotedColumns() !== [static::OWNER]) {
-            throw new RuntimeException('Missing native ' . static::LOWER_LABEL . ' owning lookup index.');
         }
         if ($indexes) {
             foreach (Ledger::state($connection, static::PHASE)['indexes'] as $index) {

@@ -35,6 +35,12 @@
 
 class DbTestCase extends \GLPITestCase
 {
+    /** Shared probe for behavior tests that enforce a manager allocation budget. */
+    public static function ormManagerCounter(): \ReflectionProperty
+    {
+        return new \ReflectionProperty(\itsmng\Database\Orm::class, 'unitsOfWork');
+    }
+
     public function beforeTestMethod($method)
     {
         global $DB;

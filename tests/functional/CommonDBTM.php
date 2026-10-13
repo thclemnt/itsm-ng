@@ -1112,7 +1112,7 @@ class CommonDBTM extends DbTestCase
         // Repeated ordinary model reads share the selected connection's manager.
         $reloaded = new Computer();
         $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
-        $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $creations = \DbTestCase::ormManagerCounter();
         $beforeCreations = $creations->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->boolean($reloaded->getFromDB($computer->getID()))->isTrue();
@@ -1697,7 +1697,7 @@ class CommonDBTM extends DbTestCase
             $this->array($emptyModels)->isEmpty();
 
             $connection = $DB->getDoctrineConnection();
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->boolean((new Infocom())->isActivatedForDevice('Computer', $id))->isTrue();
             $this->integer($factories->getValue() - $before)->isIdenticalTo(0);

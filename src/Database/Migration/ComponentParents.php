@@ -15,10 +15,10 @@ use itsmng\Database\Migration\ComponentParents\CaseDefinition;
 use itsmng\Database\Migration\ComponentParents\SimcardDefinition;
 use itsmng\Database\Migration\ComponentParents\PciDefinition;
 
-/** Frozen Computer branches; other configured component parents remain opaque. */
-final class ComponentParents implements ReleaseMigration
+/** Adopt each final component parent set directly from released stored identities. */
+final class ComponentParents
 {
-    public const VERSION = 'schema.component_parents.v1';
+    public const PHASE = '2.2.0.component_parents';
     public const DEFINITIONS = [
         'glpi_items_devicenetworkcards' => NetworkCardDefinition::class,
         'glpi_items_devicegenerics' => GenericDefinition::class,
@@ -30,11 +30,6 @@ final class ComponentParents implements ReleaseMigration
         'glpi_items_devicesimcards' => SimcardDefinition::class,
         'glpi_items_devicepcis' => PciDefinition::class,
     ];
-
-    public function version(): string
-    {
-        return self::VERSION;
-    }
 
     public function plan(Connection $connection): array
     {
@@ -57,7 +52,6 @@ final class ComponentParents implements ReleaseMigration
 
     public function verify(Connection $connection): void
     {
-        (new GraphicCardParents())->verify($connection);
         foreach (self::DEFINITIONS as $class) {
             (new $class())->verify($connection);
         }

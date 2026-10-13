@@ -40,6 +40,7 @@ use itsmng\Database\LegacyResult;
 use itsmng\Database\LegacyStatement;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\OwnershipUpdateUnit;
+use itsmng\Database\SqlDebugMiddleware;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -187,13 +188,12 @@ class DBmysql extends DBAdapter
 
     private function executeResult(string $query, callable $execute)
     {
-        global $CFG_GLPI, $DEBUG_SQL, $GLPI, $SQL_TOTAL_REQUEST;
-        $debug = !empty($CFG_GLPI['debug_sql']) && ($_SESSION['glpi_use_mode'] ?? null) === Session::DEBUG_MODE;
+        global $GLPI;
         $start = microtime(true);
         $this->lastError = '';
         $this->lastErrno = 0;
         try {
-            $result = $execute();
+            $result = SqlDebugMiddleware::record($query, $execute);
             $this->affected = (int)$result->rowCount();
             if ($result->columnCount() === 0) {
                 $result->free();
@@ -214,15 +214,6 @@ class DBmysql extends DBAdapter
             $elapsed = microtime(true) - $start;
             if ($this->execution_time === true) {
                 $this->execution_time = $elapsed;
-            }
-            if ($debug) {
-                $SQL_TOTAL_REQUEST++;
-                $DEBUG_SQL['queries'][$SQL_TOTAL_REQUEST] = $query;
-                $DEBUG_SQL['times'][$SQL_TOTAL_REQUEST] = $elapsed;
-                $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affected;
-                if ($this->lastError !== '') {
-                    $DEBUG_SQL['errors'][$SQL_TOTAL_REQUEST] = $this->lastError;
-                }
             }
         }
     }

@@ -15,7 +15,7 @@ use RuntimeException;
 /** Frozen zero/one flag domains; integer storage, valid NULLs and defaults survive. */
 final class BooleanDomains
 {
-    public const PHASE = '20261008_boolean_domains';
+    public const PHASE = '2.2.0.boolean_domains';
 
     public static function definitions(): array
     {
@@ -65,7 +65,7 @@ final class BooleanDomains
                 }
                 $integer = in_array($actual['data_type'], ['tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint'], true);
                 $nativeBoolean = !$catalog['mysql'] && $actual['data_type'] === 'boolean';
-                if (!$nativeBoolean && (!$integer || (!$catalog['mysql'] && !$pending($definition['conversion_version'])))) {
+                if (!$nativeBoolean && (!$integer || !$catalog['mysql'])) {
                     $problems[] = 'Unsupported boolean storage: ' . $key . ' (' . $actual['data_type'] . ')';
                     continue;
                 }

@@ -551,7 +551,7 @@ class Auth extends DbTestCase
                 ->notContains(__('Authentication on mail server'))
                 ->notContains(__('Authentication on a LDAP directory'))
                 ->notContains(__('External authentications'));
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->array(ApplicationAuth::getLoginAuthMethods())->isIdenticalTo($expected);
             $connection->update(

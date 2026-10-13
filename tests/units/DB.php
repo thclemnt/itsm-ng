@@ -58,6 +58,27 @@ use itsmng\Database\PostgresParameters;
 
 class DB extends \GLPITestCase
 {
+    public function testJoinedUpdateAcceptsQualifiedTargetColumns(): void
+    {
+        global $DB;
+        $target = 'test_update_target';
+        $joined = 'test_update_joined';
+        try {
+            $this->boolean($DB->query("CREATE TEMPORARY TABLE $target (id INTEGER PRIMARY KEY, name VARCHAR(50))"))->isTrue();
+            $this->boolean($DB->query("CREATE TEMPORARY TABLE $joined (id INTEGER PRIMARY KEY, selected INTEGER)"))->isTrue();
+            $this->boolean($DB->query("INSERT INTO $target VALUES (1, 'before'), (2, 'before')"))->isTrue();
+            $this->boolean($DB->query("INSERT INTO $joined VALUES (1, 1), (2, 0)"))->isTrue();
+            $joins = ['LEFT JOIN' => [$joined => ['ON' => [$target => 'id', $joined => 'id']]]];
+            $this->boolean($DB->update($target, [$target . '.name' => 'joined'], [$joined . '.selected' => 1], $joins))->isTrue();
+            $this->boolean($DB->update($target, [$target . '.name' => 'plain'], ['id' => 2]))->isTrue();
+            $this->array(array_column(iterator_to_array($DB->request(['FROM' => $target, 'ORDER' => 'id'])), 'name'))
+                ->isIdenticalTo(['joined', 'plain']);
+        } finally {
+            $DB->query("DROP TABLE IF EXISTS $joined");
+            $DB->query("DROP TABLE IF EXISTS $target");
+        }
+    }
+
     public function testReadSessionRetainsCustomConfigurationAndEntryRouteAcrossStages(): void
     {
         $parameters = ['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0', 'wrapperClass' => MySQLManagedConnection::class];

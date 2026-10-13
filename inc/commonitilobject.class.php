@@ -1693,14 +1693,14 @@ abstract class CommonITILObject extends CommonDBTM
             && in_array($this->oldvalues['status'], $statuses)
             && !in_array($this->fields['status'], $statuses)
         ) {
-            $users_id_reject = 0;
+            $users_id_reject = null;
             // set last updater if interactive user
             if (!Session::isCron()) {
-                $users_id_reject = Session::getLoginUserID();
+                $users_id_reject = Session::getLoginUserID() ?: null;
             }
 
             //Mark existing solutions as refused
-            $DB->update(
+            $updated = $DB->update(
                 ITILSolution::getTable(),
                 [
                   'status'             => CommonITILValidation::REFUSED,
@@ -1719,6 +1719,9 @@ abstract class CommonITILObject extends CommonDBTM
                   'LIMIT'  => 1
                 ]
             );
+            if (!$updated) {
+                throw new RuntimeException('Unable to mark the reopened item solution as refused.');
+            }
 
             //Delete existing survey
             $inquest = new TicketSatisfaction();

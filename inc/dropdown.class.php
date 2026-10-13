@@ -3644,7 +3644,7 @@ class Dropdown
                 $extra_and['NOT'] = ['glpi_networkports.itemtype' => 'NetworkEquipment'];
                 if (isset($post["locations_id"]) && ($post["locations_id"] >= 0)) {
                     $location_restrict = true;
-                    $criteria['WHERE']['glpi_netpoints.locations_id'] = $post['locations_id'];
+                    $criteria['WHERE']['glpi_netpoints.locations_id'] = (int)$post['locations_id'] === 0 ? null : $post['locations_id'];
                 }
             }
 
@@ -3661,7 +3661,7 @@ class Dropdown
             $criteria['WHERE']['glpi_networkportethernets.netpoints_id'] = null;
         } elseif (isset($post["locations_id"]) && ($post["locations_id"] >= 0)) {
             $location_restrict = true;
-            $criteria['WHERE']['glpi_netpoints.locations_id'] = $post['locations_id'];
+            $criteria['WHERE']['glpi_netpoints.locations_id'] = (int)$post['locations_id'] === 0 ? null : $post['locations_id'];
         }
 
         $iterator = $DB->request($criteria);

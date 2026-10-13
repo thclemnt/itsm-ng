@@ -13,6 +13,7 @@ use Doctrine\ORM\NonUniqueResultException;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
+use itsmng\Database\AuthenticationType;
 use itsmng\Database\BooleanValue;
 use itsmng\Database\CookieCredential;
 use itsmng\Database\Entity\AuthMail;
@@ -636,6 +637,11 @@ final class UserRepository
                 $query->set('u.' . $field, ':' . $field)
                     ->setParameter($field, $values[$column] === null ? null : $this->em->getReference($mapping->targetEntity, $values[$column]));
             }
+        }
+        if (in_array($type, [AuthenticationType::Local->value, AuthenticationType::Mail->value], true)) {
+            $query->set('u.user_dn', 'NULL')
+                ->set('u.sync_field', 'NULL')
+                ->set('u.date_sync', 'NULL');
         }
         $query->set('u.auth_source_code', ':code')
             ->setParameter('code', $values['auth_source_code'], Types::INTEGER)

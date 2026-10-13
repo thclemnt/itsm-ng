@@ -331,7 +331,7 @@ class NotificationTarget extends DbTestCase
                     $this->boolean($DB->update('glpi_users', ['language' => count($seen) === 1 ? 'fr_FR' : 'de_DE'], ['id' => $id]))->isTrue();
                 },
             ]];
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             Orm::read($DB, static fn (EntityManager $manager): int => $manager->getUnitOfWork()->size());
             $beforeFactories = $factories->getValue();
             $target->obj = $reminder;

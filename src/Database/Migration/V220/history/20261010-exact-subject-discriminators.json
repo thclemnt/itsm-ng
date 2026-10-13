@@ -1,20 +1,18 @@
 {
-    "version": "20261010_exact_subject_discriminators",
+    "version": "2.2.0.exact_subject_discriminators",
     "source": "741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e",
     "prerequisites": [
-        "20261001_baseline_legacy_2_2",
-        "20261001_baseline_seed",
-        "20261001_legacy_to_orm_bigint",
-        "20261002_postgres_boolean_flags",
-        "20261003_project_assets",
-        "20261004_category_boolean_flags",
-        "20261005_appliance_assets",
-        "20261005_appliance_recipients",
-        "20261006_operating_system_subjects",
-        "20261006_domain_document_subjects",
-        "20261006_domain_supplier_helpdesk_rights",
-        "20261007_identifier_sequence_widths",
-        "20261008_boolean_domains"
+        "2.2.0.baseline_legacy_2_2",
+        "2.2.0.baseline_seed",
+        "2.2.0.legacy_to_orm_bigint",
+        "2.2.0.project_assets",
+        "2.2.0.category_boolean_flags",
+        "2.2.0.appliance_assets",
+        "2.2.0.appliance_recipients",
+        "2.2.0.operating_system_subjects",
+        "2.2.0.domain_document_subjects",
+        "2.2.0.domain_supplier_helpdesk_rights",
+        "2.2.0.boolean_domains"
     ],
     "tables": {
         "glpi_alerts": {
@@ -1736,7 +1734,7 @@
         }
     },
     "adoption_markers": [
-        "20261001_baseline_legacy_2_2",
-        "20261001_baseline_seed"
+        "2.2.0.baseline_legacy_2_2",
+        "2.2.0.baseline_seed"
     ]
 }

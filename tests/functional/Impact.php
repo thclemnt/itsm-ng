@@ -148,7 +148,7 @@ class Impact extends \DbTestCase
                     ob_end_clean();
                 }
             };
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             $html = $render();
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'Priority rendering reuses the existing request manager');
@@ -323,7 +323,7 @@ class Impact extends \DbTestCase
             $edge = $this->addDbEdge($computer2, $computer3);
             $this->string($impact->getTabNameForItem($computer2))
                 ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $before = $factories->getValue();
             $this->string($impact->getTabNameForItem($computer2))
                 ->isIdenticalTo(ImpactModel::createTabEntry('Impact analysis', 2));
@@ -373,7 +373,7 @@ class Impact extends \DbTestCase
         $adapter = new ImpactAdapterProbe();
         $this->calling($adapter)->getDoctrineConnection = $probe;
         $this->calling($adapter)->getProvider = $DB->getProvider();
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         try {
             $_SESSION['glpishow_count_on_tabs'] = true;
             $CFG_GLPI['impact_asset_types'][$class] = true;
@@ -522,7 +522,7 @@ class Impact extends \DbTestCase
                 $class::getForeignKeyField() => $object->getID()]))->isGreaterThan(0);
             $objects[$bucket] = $object;
         }
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
         $graph = ImpactModel::buildGraph($computer);
         $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0, 'A populated graph reuses the existing request manager');

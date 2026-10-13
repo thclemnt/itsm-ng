@@ -2409,7 +2409,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
                 $content .= "</div>";
             }
             $content .= "<div class='flex-break'></div>";
-            if ($itemtype === 'ProjectTask' && $item['projecttasktypes_id'] !== 0) {
+            if ($itemtype === 'ProjectTask' && !empty($item['projecttasktypes_id'])) {
                 $typematches = array_filter($alltypes, function ($t) use ($item) {
                     return $t['id'] === $item['projecttasktypes_id'];
                 });
@@ -2444,7 +2444,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
             $card['content'] = $content;
             $card['_team'] = $item['_team'];
             $card['_readonly'] = $item['_readonly'];
-            $columns[$item['projectstates_id']]['items'][] = $card;
+            $columns[$item['projectstates_id'] ?? 0]['items'][] = $card;
         }
 
         // If no specific columns were asked for, drop empty columns.

@@ -436,7 +436,7 @@ class Group_User extends DbTestCase
         $this->array($group_users)->hasSize(1);
         $this->integer((int)$group_users[0]['id'])->isIdenticalTo($uid2);
 
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 16; ++$repeat) {
             $this->array(LegacyGroup_User::getGroupUsers($gid, ['is_manager' => 1]))->isIdenticalTo($group_users);
@@ -504,7 +504,7 @@ class Group_User extends DbTestCase
         $this->array($group_users)->hasSize(1);
         $this->integer((int)$group_users[0]['id'])->isIdenticalTo($gid2);
 
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 16; ++$repeat) {
             $this->array(LegacyGroup_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]))->isIdenticalTo($group_users);

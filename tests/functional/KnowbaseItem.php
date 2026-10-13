@@ -119,7 +119,7 @@ class KnowbaseItem extends DbTestCase
                 ['id' => $translations[0]->id],
                 ['language' => Types::STRING, 'id' => Types::BIGINT]
             ))->isIdenticalTo(1);
-            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $creations = \DbTestCase::ormManagerCounter();
             $before = $creations->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $this->integer(KnowbaseItemTranslation::getNumberOfTranslationsForItem($item))->isIdenticalTo(6);

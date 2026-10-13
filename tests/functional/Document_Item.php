@@ -225,7 +225,7 @@ class Document_Item extends DbTestCase
                 ['filename' => 'Current.txt'],
                 ['id' => $documents[0]->getID()]
             ))->isTrue();
-            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $creations = \DbTestCase::ormManagerCounter();
             $before = $creations->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $this->array(getLinkedDocumentsForItem('Ticket', $ticket->getID()))->isIdenticalTo($expected('Current.txt'));

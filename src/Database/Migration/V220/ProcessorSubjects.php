@@ -10,7 +10,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 /** Frozen Computer-or-stock ownership; device, entity and inventory payload remain independent. */
 final class ProcessorSubjects extends StagedTypedItemMigration
 {
-    public const PHASE = '20261012_processor_subjects';
+    public const PHASE = '2.2.0.processor_subjects';
 
     private static ?array $snapshot = null;
 

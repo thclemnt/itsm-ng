@@ -103,7 +103,7 @@ class SavedSearch_User extends DbTestCase
 
         // Warm value reads borrow the owner; a nested read must preserve its outer identity map.
         $connection = $DB->getDoctrineConnection();
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $this->array(SavedSearch::getDefaultParameters((int)$uid, 'Ticket'))->isIdenticalTo($bk);
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {

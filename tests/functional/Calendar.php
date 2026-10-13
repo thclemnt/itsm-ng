@@ -65,6 +65,63 @@ require_once dirname(__DIR__) . '/fixtures/ScalarReadProbe.php';
 
 class Calendar extends DbTestCase
 {
+    public function testCalculationsReadHolidaysOnceAndSeeSubsequentEdits(): void
+    {
+        global $DB, $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST;
+        $saved = [$CFG_GLPI, $_SESSION, $DEBUG_SQL, $SQL_TOTAL_REQUEST];
+        try {
+            $calendar = $this->createItem('Calendar', ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            foreach (range(1, 5) as $day) {
+                $this->createItem('CalendarSegment', ['calendars_id' => $calendar->getID(), 'day' => $day, 'begin' => '08:00:00', 'end' => '20:00:00']);
+            }
+            $holiday = $this->createItem('Holiday', ['name' => $this->getUniqueString(), 'entities_id' => 0,
+                'begin_date' => '2026-10-05', 'end_date' => '2026-10-05', 'is_perpetual' => false]);
+            $this->createItem('Calendar_Holiday', ['calendars_id' => $calendar->getID(), 'holidays_id' => $holiday->getID()]);
+            $calendar->getFromDB($calendar->getID());
+            $CFG_GLPI['debug_sql'] = true;
+            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $calculate = function (callable $operation) use (&$DEBUG_SQL): mixed {
+                $DEBUG_SQL['queries'] = [];
+                $result = $operation();
+                $queries = array_filter($DEBUG_SQL['queries'], static fn (string $sql): bool =>
+                    str_starts_with($sql, 'SELECT') && str_contains($sql, 'glpi_calendars_holidays'));
+                $this->array($queries)->hasSize(1, 'All dates in one calculation share one holiday snapshot');
+                return $result;
+            };
+            $active = fn () => $calendar->getActiveTimeBetween('2026-10-05 08:00:00', '2026-10-12 08:00:00');
+            $end = fn () => $calendar->computeEndDate('2026-10-05 08:00:00', 5 * DAY_TIMESTAMP, 0, true);
+            $this->integer($calculate($active))->isIdenticalTo(48 * HOUR_TIMESTAMP);
+            $this->string($calculate($end))->isIdenticalTo('2026-10-13 08:00:00');
+            $this->boolean($calendar->isHoliday('2026-10-05'))->isTrue();
+
+            // An interrupted calculation must release its snapshot as well.
+            $interrupted = new class () extends \Calendar {
+                public bool $interrupt = true;
+
+                public function isHoliday($date)
+                {
+                    $result = parent::isHoliday($date);
+                    if ($this->interrupt) {
+                        $this->interrupt = false;
+                        throw new \RuntimeException('Interrupt calculation');
+                    }
+                    return $result;
+                }
+            };
+            $interrupted->fields = $calendar->fields;
+            $this->exception(fn () => $interrupted->getActiveTimeBetween('2026-10-05 08:00:00', '2026-10-12 08:00:00'))
+                ->isInstanceOf(\RuntimeException::class);
+            $DB->getDoctrineConnection()->update('glpi_holidays', ['begin_date' => '2026-11-05', 'end_date' => '2026-11-05'], ['id' => $holiday->getID()]);
+            $this->boolean($calendar->isHoliday('2026-10-05'))->isFalse();
+            $this->integer($calculate($active))->isIdenticalTo(60 * HOUR_TIMESTAMP);
+            $this->string($calculate($end))->isIdenticalTo('2026-10-12 08:00:00');
+            $this->integer($calculate(fn () => $interrupted->getActiveTimeBetween('2026-10-05 08:00:00', '2026-10-12 08:00:00')))
+                ->isIdenticalTo(60 * HOUR_TIMESTAMP);
+        } finally {
+            [$CFG_GLPI, $_SESSION, $DEBUG_SQL, $SQL_TOTAL_REQUEST] = $saved;
+        }
+    }
+
     public function testClosureDisplayKeepsRightsValuesAndLiveOwners(): void
     {
         global $DB;
@@ -494,7 +551,7 @@ class Calendar extends DbTestCase
             $this->boolean($calendar->isHoliday($date))->isIdenticalTo($expected);
         }
 
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->boolean($calendar->isHoliday('2019-07-12'))->isTrue();
@@ -719,7 +776,7 @@ class Calendar extends DbTestCase
         $this->integer($expected)->isGreaterThan(HOUR_TIMESTAMP);
         $read = static fn (): int => CalendarSegmentModel::getActiveTimeBetween($other_id, 1, '00:00:00', '24:00:00');
         $this->integer($read())->isIdenticalTo($expected);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->integer($read())->isIdenticalTo($expected);

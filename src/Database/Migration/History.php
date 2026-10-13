@@ -22,17 +22,14 @@ use Throwable;
 final class History
 {
     /** Append subsequent ORM releases here, in dependency order. */
-    private const MIGRATIONS = [Version220::class, SensorSubjects::class, PhysicalReferenceIndexes::class, NetworkNameParents::class, IPAddressParents::class, GraphicCardParents::class, ComponentParents::class, ComponentParentExpansions::class, NonnullableFlags::class, NotepadParents::class];
+    private const MIGRATIONS = [Version220::class];
 
     /** @var list<ReleaseMigration> */
     private array $migrations;
 
-    private bool $initialOwners;
-
     /** An explicit chain also permits focused release-order contracts. */
     public function __construct(?array $migrations = null)
     {
-        $this->initialOwners = $migrations === null;
         $this->migrations = $migrations ?? array_map(static fn (string $class): ReleaseMigration => new $class(), self::MIGRATIONS);
     }
 
@@ -45,9 +42,6 @@ final class History
     {
         $states = Ledger::states($connection);
         $pending = array_values(array_filter(self::versions(), static fn (string $version): bool => !self::complete($version, $states)));
-        if (InitialOwners::pending($states) && !in_array(Version220::VERSION, $pending, true)) {
-            $pending[] = Version220::VERSION;
-        }
         return $pending;
     }
 
@@ -68,14 +62,11 @@ final class History
         $pending = [];
         $details = [];
         $deferred = [];
-        $internal = [];
-        $unapplied = false;
         foreach ($this->migrations as $migration) {
             $version = $migration->version();
             if (!self::complete($version, $states)) {
                 $pending[] = $version;
                 if (($states[$version]['applied'] ?? false) !== true) {
-                    $unapplied = true;
                     if ($details) {
                         $deferred[] = $version;
                     } else {
@@ -85,19 +76,8 @@ final class History
                     }
                 }
             }
-            if ($this->initialOwners && $version === NotepadParents::VERSION && InitialOwners::pending($states)) {
-                if ($unapplied) {
-                    $internal[] = InitialOwners::PHASE;
-                } else {
-                    $details = (new InitialOwners())->plan($connection);
-                }
-            }
         }
-        if ($this->initialOwners && InitialOwners::pending($states) && !in_array(Version220::VERSION, $pending, true)) {
-            $pending[] = Version220::VERSION;
-        }
-        return ['complete' => !$pending, 'pending' => $pending, 'deferred_releases' => $deferred,
-            'deferred_internal_stages' => $internal] + $details;
+        return ['complete' => !$pending, 'pending' => $pending, 'deferred_releases' => $deferred] + $details;
     }
 
     public function baseline(Connection $connection, ?callable $progress = null): void
@@ -145,12 +125,6 @@ final class History
                 $migration->verify($connection);
                 // Later MySQL DDL may commit before a subsequent release fails.
                 Ledger::save($connection, $version, ['complete' => false, 'applied' => true]);
-            }
-            if ($this->initialOwners && $version === NotepadParents::VERSION
-                && (InitialOwners::pending($states) || $position === $terminal)) {
-                // The internal stage precedes future releases. Once completed,
-                // a later owner may already have durable partial MySQL DDL.
-                (new InitialOwners())->apply($connection, $progress);
             }
         }
         $differences = (new SchemaCheck())->differences($connection);

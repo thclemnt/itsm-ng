@@ -15,7 +15,7 @@ use RuntimeException;
 /** Frozen raw seed import before adoption, independent of current ORM metadata. */
 final class Seeds
 {
-    public const PHASE = '20261001_baseline_seed';
+    public const PHASE = '2.2.0.baseline_seed';
 
     public static function rows(?callable $translate = null): array
     {
@@ -23,22 +23,12 @@ final class Seeds
         return require __DIR__ . '/history/20261001-seeds.php';
     }
 
-    /** Explicit historical input completion; never infer legacy implicit defaults. */
+    /** Validate every explicit seed before writing; never infer legacy implicit defaults. */
     public static function prepare(Schema $schema, array $rows): array
     {
-        $inputs = json_decode(file_get_contents(__DIR__ . '/history/20261001-seed-inputs.json'), true, 512, JSON_THROW_ON_ERROR);
-        foreach ($inputs as $name => $fields) {
-            if (!isset($rows[$name])) {
-                throw new RuntimeException('Historical seed input has no source rows: ' . $name);
-            }
-            foreach ($fields as $field => $value) {
-                $schema->getTable($name)->getColumn($field);
-            }
-        }
         foreach ($rows as $name => &$records) {
             $table = $schema->getTable($name);
             foreach ($records as &$record) {
-                $record += $inputs[$name] ?? [];
                 foreach ($record as $field => $value) {
                     $column = $table->getColumn($field);
                     if ($column->getNotnull() && $value === null) {

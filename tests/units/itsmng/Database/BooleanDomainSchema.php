@@ -16,7 +16,6 @@ use itsmng\Database\BooleanDomainSchema as Schema;
 use itsmng\Database\BooleanValue;
 use itsmng\Database\CheckConstraintSupport;
 use itsmng\Database\LegacyValues;
-use itsmng\Database\Migration\V220\Booleans;
 use itsmng\Database\Migration\V220\CategoryFlags;
 use itsmng\Database\Migration\V220\DomainIntegration;
 use itsmng\Database\Migration\V220\References;
@@ -255,14 +254,12 @@ class BooleanDomainSchema extends AtoumTest
         $this->boolean(strlen(Schema::name(str_repeat('table_', 15), 'flag')) <= 63)->isTrue('Owned check name fits both providers');
     }
 
-    public function testFrozenBooleanHistoryRetainsItsOriginalPhaseAllowances(): void
+    public function testFrozenBooleanHistoryDefinesTheSingleRelease(): void
     {
         $snapshot = json_decode(file_get_contents(dirname(__DIR__, 4) . '/src/Database/Migration/V220/history/20261008-boolean-domains.json'), true, flags: JSON_THROW_ON_ERROR)['tables'];
-        $this->boolean(array_sum(array_map(count(...), $snapshot)) === 402)->isTrue('Frozen historical milestone contains its original 402 flags');
+        $this->boolean(array_sum(array_map(count(...), $snapshot)) === 416)->isTrue('Single release defines all 416 flags');
         $this->boolean(count(array_filter($snapshot['glpi_users'], static fn ($definition) => $definition['nullable'])) === 11)->isTrue('Historical User inheritance retains eleven nullable flags');
         $this->boolean(!$snapshot['glpi_slms']['use_ticket_calendar']['baseline'] && !$snapshot['glpi_domains']['is_helpdesk_visible']['baseline'])->isTrue('Later fields are not prerequisites of the legacy baseline');
-        $this->boolean($snapshot['glpi_suppliers']['is_recursive']['conversion_version'] === Booleans::PHASE)->isTrue('Existing PG flags defer integer conversion only to their actual predecessor');
-        $this->boolean($snapshot['glpi_slms']['use_ticket_calendar']['conversion_version'] === null)->isTrue('SLM creation does not imply existing integer conversion');
         $this->boolean($snapshot['glpi_slms']['use_ticket_calendar']['creation_version'] === References::PHASE)->isTrue('Missing SLM flag requires pending adoption');
         $this->boolean($snapshot['glpi_domains']['is_helpdesk_visible']['creation_version'] === DomainIntegration::PHASE)->isTrue('Missing Domain flag requires its pending supplying phase');
         $this->boolean($snapshot['glpi_itilcategories']['is_incident']['nullability_version'] === CategoryFlags::PHASE && $snapshot['glpi_users']['compact_mode_ui']['nullability_version'] === null)->isTrue('Only actual historical nullability repair receives an allowance');

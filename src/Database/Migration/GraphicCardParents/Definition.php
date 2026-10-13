@@ -4,47 +4,20 @@
 
 namespace itsmng\Database\Migration\GraphicCardParents;
 
-use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
-use itsmng\Database\Migration\Frozen\V1\SingleOpenParentAdoption;
+use itsmng\Database\Migration\V220\OpenParentAdoption;
 
-/** Frozen v1 declarations: exact Computer branch, with all other parents opaque. */
-final class Definition extends SingleOpenParentAdoption
+/** Final 2.2.0 ownership, copied directly from the released stored identity. */
+final class Definition extends OpenParentAdoption
 {
-    public const PHASE = 'schema.graphiccard_parents.v1.ddl';
-    protected const TABLE = 'glpi_items_devicegraphiccards';
+    public const PHASE = '2.2.0.items_devicegraphiccards.parents';
+    public const TABLE = 'glpi_items_devicegraphiccards';
     protected const CHECK = 'glpi_items_devicegraphiccards_parent_kind';
-    protected const FOREIGN = 'fk_items_devicegraphiccards_computers_id';
-    protected const INDEX = 'glpi_items_devicegraphiccards_computer_owner';
-    protected const OWNER = 'computers_id';
-    protected const TARGET = 'glpi_computers';
-    protected const KIND = 'Computer';
     protected const LABEL = 'Graphic card';
     protected const LOWER_LABEL = 'Graphic card';
     protected const PARENT_LABEL = 'graphic card parents';
     protected const DISCRIMINATOR_NULLABLE = true;
     protected const DISCRIMINATOR_LENGTH = 255;
-
-    public static function policy(AbstractPlatform $platform): array
-    {
-        $quote = $platform->quoteIdentifier(...);
-        $rawKind = $quote('itemtype');
-        $kind = $rawKind;
-        if ($platform instanceof AbstractMySQLPlatform) {
-            $kind = 'CAST(' . $kind . ' AS BINARY)';
-        }
-        $owner = $quote('computers_id');
-        $opaque = $quote('opaque_parent_id');
-        return [
-            'projection' => "CASE WHEN $kind IN ('Computer') THEN COALESCE($owner, 0) ELSE $opaque END",
-            'constraint' => self::CHECK,
-            'check' => "($rawKind IS NOT NULL AND $kind IN ('Computer') AND ($owner IS NULL OR $owner > 0) AND $opaque IS NULL)"
-                . " OR (($rawKind IS NULL OR $kind NOT IN ('Computer')) AND $owner IS NULL AND $opaque IS NOT NULL)",
-            'discriminators' => ['itemtype'],
-            'integer_types' => ['opaque_parent_id' => 'bigint', 'computers_id' => 'bigint'],
-            'string_selections' => ['itemtype' => ['Computer']],
-            'open_string_fallback' => true,
-        ];
-    }
-
+    protected const OWNERS = [
+        'Computer' => ['computers_id', 'glpi_computers', 'glpi_items_devicegraphiccards_computer_owner', 'fk_items_devicegraphiccards_computers_id'],
+    ];
 }

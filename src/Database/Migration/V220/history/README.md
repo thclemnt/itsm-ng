@@ -12,8 +12,12 @@ reads this file for the 2.2.0 transition, its fresh-install replay and migration
 fixtures. Runtime CRUD and relationship discovery never
 read this snapshot.
 
-`20261001-seed-inputs.json` is a separate frozen input addendum for the original
-`20261001-seeds.php` records. It supplies the two omitted required TEXT comments
-as explicit empty strings, matching the frozen PostgreSQL defaults and legacy
-MySQL's prior values. It does not amend the original seed or baseline files,
-change DDL, infer defaults for other columns, or replay seeds during adoption.
+`20261001-seeds.php` contains the complete initial seed records, including explicit
+empty strings for the two required comment fields omitted by the old MySQL
+installer. Seeds are imported only for a fresh installation, never on adoption.
+
+The first ORM release supports only the released 2.1.3 data format and a fresh
+installation. The 2.2.0 checkpoint names journal recoverable work inside that
+single transition. They are not separately published application versions or
+compatibility contracts for development snapshots. Parent definitions contain
+the final owner sets: no Computer-only expansion state is installed first.

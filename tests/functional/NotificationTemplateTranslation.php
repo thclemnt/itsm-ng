@@ -215,7 +215,7 @@ class NotificationTemplateTranslation extends DbTestCase
             ], ['id' => $managed->id], [
                 'subject' => Types::STRING, 'content_text' => Types::TEXT, 'content_html' => Types::TEXT, 'id' => Types::BIGINT,
             ]))->isIdenticalTo(1);
-            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $creations = \DbTestCase::ormManagerCounter();
             $beforeCreations = $creations->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $current = $service->contentForLanguage($template->id, 'zz_ZZ');

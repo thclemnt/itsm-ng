@@ -193,6 +193,12 @@ final class SQLProvider
         $ORDER = " ORDER BY `id` ";
         foreach ($data['tocompute'] as $val) {
             if ($data['search']['sort'] == $val) {
+                if ($searchopt[$val]['table'] === 'glpi_ipaddresses' && $searchopt[$val]['field'] === 'name'
+                    && !isset($CFG_GLPI['union_search_type'][$data['itemtype']])) {
+                    foreach (SortBuilder::fields($data['itemtype'], (int)$val, $dialect) as $field) {
+                        $SELECT->add($field->sql, $field->alias, $field->aggregate, $field->boolean);
+                    }
+                }
                 $ORDER = CriteriaBuilder::addOrderBy($data['itemtype'], $data['search']['sort'], $data['search']['order']);
             }
         }

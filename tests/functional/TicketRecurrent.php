@@ -670,7 +670,7 @@ class TicketRecurrent extends DbTestCase
         $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
         $this->boolean($segment->update(['id' => $segmentId, 'begin' => '11:00:00']))->isTrue();
         $this->string($calculate())->isIdenticalTo('2026-10-13 09:00:00');
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $allocated = $factories->getValue();
         for ($i = 0; $i < 16; ++$i) {
             $value = $calculate();

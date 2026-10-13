@@ -217,8 +217,8 @@ class Netpoint extends CommonDropdown
                'FROM'   => $this->getTable(),
                'WHERE'  => [
                   'name'         => $input['name'],
-                  'locations_id' => $input["locations_id"] ?? 0
-               ] + getEntitiesRestrictCriteria($this->getTable(), $input['entities_id'], $this->maybeRecursive())
+                  'locations_id' => (int)($input['locations_id'] ?? 0) === 0 ? null : $input['locations_id']
+               ] + getEntitiesRestrictCriteria($this->getTable(), '', $input['entities_id'], $this->maybeRecursive())
             ]);
 
             // Check twin :

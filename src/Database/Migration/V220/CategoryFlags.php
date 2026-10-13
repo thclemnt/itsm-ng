@@ -17,7 +17,7 @@ use RuntimeException;
 /** Frozen category flags; current entity metadata cannot rewrite this upgrade. */
 final class CategoryFlags
 {
-    public const PHASE = '20261004_category_boolean_flags';
+    public const PHASE = '2.2.0.category_boolean_flags';
 
     private const COLUMNS = ['is_incident', 'is_request', 'is_problem'];
 

@@ -81,7 +81,7 @@ class IPNetwork extends DbTestCase
         $this->output(static fn () => NetworkName::showForItem($fqdn))
             ->contains($networkname->fields['name'])->contains($alias->fields['name'])->contains('10.42.0.10');
         $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(1);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         try {
             $this->integer(NetworkName::countForItem($fqdn))->isIdenticalTo(1);
@@ -222,7 +222,7 @@ class IPNetwork extends DbTestCase
         $initial = Network::searchNetworks('contains', $condition, 0, false);
         $this->array(array_map('intval', array_column($initial, 'id')))->isIdenticalTo([$ipnetworks_id]);
         $this->string($initial[0]['name'])->isIdenticalTo($ipnetwork->fields['name']);
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $before = $factories->getValue();
         try {
             $this->integer($connection->update('glpi_ipnetworks', ['name' => 'Current matching network'], ['id' => $ipnetworks_id]))

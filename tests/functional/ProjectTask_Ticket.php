@@ -374,7 +374,7 @@ class ProjectTask_Ticket extends DbTestCase
         }
 
         // Each value boundary is already warm; completed reads must reuse its private manager.
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $before = $managers->getValue();
         for ($repeat = 0; $repeat < 16; ++$repeat) {
             LegacyProjectTask::getTotalEffectiveDuration($task_id);

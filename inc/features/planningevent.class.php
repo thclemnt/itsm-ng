@@ -279,7 +279,7 @@ trait PlanningEvent
     {
         // Set new user if initial user have been deleted
         if (
-            isset($this->fields['users_id'])
+            $this->isField('users_id')
             && $this->fields['users_id'] == 0
             && $uid = Session::getLoginUserID()
         ) {

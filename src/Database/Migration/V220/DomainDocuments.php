@@ -20,8 +20,8 @@ use RuntimeException;
 /** Frozen expansion of document subjects; document ownership remains independent. */
 final class DomainDocuments extends StagedTypedItemMigration implements PendingSubjectShape
 {
-    public const PHASE = '20261006_domain_document_subjects';
-    public const GENERAL_RECEIPT = '20261006_domain_documents_deferred_v1';
+    public const PHASE = '2.2.0.domain_document_subjects';
+    public const GENERAL_RECEIPT = '2.2.0.domain_documents_deferred_v1';
     public const GENERAL_FORMAT = 'infotel-domain-documents-deferred-v1';
 
     /** Frozen old ownership can precede this stage's appended subject column. */

@@ -17,7 +17,7 @@ use RuntimeException;
 /** Frozen data prerequisite; validates the remapped graph before adoption DDL. */
 final class DomainsPluginAdoption
 {
-    public const RECEIPT = '20261006_domains_plugin_adoption_v1';
+    public const RECEIPT = '2.2.0.domains_plugin_adoption_v1';
     private const CURRENT_IMPORT = '20261006_domains_plugin_import_v1';
 
     /** Source-only preview deliberately does not claim canonical preflights passed. */

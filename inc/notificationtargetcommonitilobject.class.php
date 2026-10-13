@@ -326,11 +326,14 @@ abstract class NotificationTargetCommonITILObject extends NotificationTarget
              && $this->options['_old_user']['use_notification']
         ) {
             $user = new User();
-            $user->getFromDB($this->options['_old_user']['users_id']);
-
-            $author_email = UserEmail::getDefaultForUser($user->fields['id']);
-            $author_lang  = $user->fields["language"];
-            $author_id    = $user->fields['id'];
+            $author_email = '';
+            $author_lang = $CFG_GLPI['language'];
+            $author_id = -1;
+            if ($user->getFromDB($this->options['_old_user']['users_id'])) {
+                $author_email = UserEmail::getDefaultForUser($user->fields['id']);
+                $author_lang = $user->fields['language'];
+                $author_id = $user->fields['id'];
+            }
 
             if (
                 !empty($this->options['_old_user']['alternative_email'])

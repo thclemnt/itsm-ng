@@ -16,13 +16,8 @@ use RuntimeException;
 /** One internal stage of canonical adoption, never a separately published release. */
 final class InitialOwners
 {
-    public const PHASE = '202610_initial_multi_owners_v1';
+    public const PHASE = '2.2.0.initial_multi_owners_v1';
     public const DEFINITIONS = [NetworkPort::class, RegisteredID::class, ComputerItem::class];
-
-    public static function pending(array $states): bool
-    {
-        return ($states[self::PHASE]['complete'] ?? false) !== true;
-    }
 
     public function plan(Connection $connection): array
     {

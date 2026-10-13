@@ -58,6 +58,31 @@ final class Dialect
             : 'CONCAT(' . implode(', ', $expressions) . ')';
     }
 
+    public function compareIPv4(string $alias, string $operator, string $address): string
+    {
+        if (!in_array($operator, ['<', '<=', '>', '>='], true)) {
+            throw new InvalidArgumentException('Invalid IP comparison');
+        }
+        // Preserve INET_ATON's one-to-four-part IPv4 input convention without
+        // casting arbitrary stored text to PostgreSQL inet (IPv6 is not IPv4).
+        $parts = explode('.', $address);
+        $number = 0;
+        $valid = count($parts) <= 4;
+        foreach ($parts as $index => $part) {
+            $last = $index === count($parts) - 1;
+            $width = $last ? 5 - count($parts) : 1;
+            if (!ctype_digit($part) || (float)$part >= 256 ** $width) {
+                $valid = false;
+                break;
+            }
+            $number = $number * (256 ** $width) + (int)$part;
+        }
+        $value = $valid ? (string)$number : 'NULL';
+        $version = $this->quote($alias . '.version');
+        $binary = $this->quote($alias . '.binary_3');
+        return '(CASE WHEN ' . $version . ' = 4 THEN ' . $binary . ' END) ' . $operator . ' ' . $value;
+    }
+
     /** @param array<string, string> $order SQL expression => ASC/DESC */
     public function aggregate(string $expression, bool $distinct = true, array $order = [], string $separator = Search::LONGSEP): string
     {

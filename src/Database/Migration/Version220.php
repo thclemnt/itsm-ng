@@ -14,14 +14,12 @@ use itsmng\Database\Migration\V220\ApplianceRecipients;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\BatterySubjects;
 use itsmng\Database\Migration\V220\BooleanDomains;
-use itsmng\Database\Migration\V220\Booleans;
 use itsmng\Database\Migration\V220\CategoryFlags;
 use itsmng\Database\Migration\V220\DomainDocuments;
 use itsmng\Database\Migration\V220\DomainIntegration;
 use itsmng\Database\Migration\V220\DomainsPluginAdoption;
 use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\V220\HardDriveSubjects;
-use itsmng\Database\Migration\V220\IdentifierSequences;
 use itsmng\Database\Migration\V220\MemorySubjects;
 use itsmng\Database\Migration\V220\MotherboardSubjects;
 use itsmng\Database\Migration\V220\OperatingSystemSubjects;
@@ -34,13 +32,18 @@ use itsmng\Database\Migration\V220\RetiredMarketplaceDefaults;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
 use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
+use itsmng\Database\Migration\SensorSubjects\Definition as SensorSubjects;
+use itsmng\Database\Migration\NetworkNameParents\Definition as NetworkNameParents;
+use itsmng\Database\Migration\IPAddressParents\Definition as IPAddressParents;
+use itsmng\Database\Migration\GraphicCardParents\Definition as GraphicCardParents;
+use itsmng\Database\Migration\NotepadParents\Definition as NotepadParents;
 use RuntimeException;
 use Session;
 
 /**
  * The single frozen 2.1.3 data-format to 2.2.0 ORM transition.
  * Frozen helpers in V220 and their phase IDs are internal checkpoints, not releases.
- * Retaining those keys lets interrupted MySQL installations resume their captured DDL.
+ * Each checkpoint lets interrupted MySQL installations resume their captured DDL.
  */
 final class Version220 implements ReleaseMigration
 {
@@ -52,11 +55,10 @@ final class Version220 implements ReleaseMigration
     }
 
     /** Internal checkpoints in the existing ledger, never separately published versions. */
-    public const PHASES = [
+    public const CORE_PHASES = [
         Baseline::PHASE,
         Seeds::PHASE,
         References::PHASE,
-        Booleans::PHASE,
         ProjectAssets::PHASE,
         CategoryFlags::PHASE,
         ApplianceAssets::PHASE,
@@ -64,7 +66,6 @@ final class Version220 implements ReleaseMigration
         OperatingSystemSubjects::PHASE,
         DomainDocuments::PHASE,
         DomainIntegration::PHASE,
-        IdentifierSequences::PHASE,
         BooleanDomains::PHASE,
         ExactDiscriminators::PHASE,
         SoftwareInstallationSubjects::PHASE,
@@ -75,6 +76,33 @@ final class Version220 implements ReleaseMigration
         HardDriveSubjects::PHASE,
         BatterySubjects::PHASE,
         PowerSupplySubjects::PHASE,
+    ];
+
+    private const CORE = '2.2.0.reference_conversion';
+
+    /** Dependency-ordered work within this one released transition. */
+    private const FINAL_STAGES = [
+        SensorSubjects::class,
+        PhysicalReferenceIndexes::class,
+        NetworkNameParents::class,
+        IPAddressParents::class,
+        GraphicCardParents::class,
+        ComponentParents::class,
+        NotepadParents::class,
+        InitialOwners::class,
+    ];
+
+    public const PHASES = [
+        ...self::CORE_PHASES,
+        self::CORE,
+        SensorSubjects::PHASE,
+        NetworkNameParents::PHASE,
+        IPAddressParents::PHASE,
+        GraphicCardParents::PHASE,
+        ComponentParents::PHASE,
+        PhysicalReferenceIndexes::PHASE,
+        NotepadParents::PHASE,
+        InitialOwners::PHASE,
     ];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
@@ -88,6 +116,13 @@ final class Version220 implements ReleaseMigration
     {
         CheckConstraintSupport::assertSupported($connection);
         LegacyAdoptionEligibility::assertConnection($connection);
+        if ((Ledger::state($connection, self::CORE)['complete'] ?? false) === true) {
+            $plans = [];
+            foreach (self::FINAL_STAGES as $class) {
+                $plans[$class::PHASE] = (new $class())->plan($connection);
+            }
+            return ['phases' => self::pendingPhases(Ledger::states($connection)), 'stages' => $plans];
+        }
         $this->assertSource($connection);
         if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
             (new ExactDiscriminators())->verify($connection);
@@ -138,9 +173,8 @@ final class Version220 implements ReleaseMigration
     /** All pending canonical audits, without recursively planning a source prerequisite. */
     private function canonicalPlan(Connection $connection): array
     {
-        $booleans = (new Booleans())->plan($connection);
         $domainDocuments = new DomainDocuments();
-        return ['phases' => self::pendingPhases(Ledger::states($connection)), 'legacy' => (new References())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets())->plan($connection), 'category_flags' => (new CategoryFlags())->plan($connection), 'appliance_assets' => (new ApplianceAssets())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration())->plan($connection), 'identifier_sequences' => (new IdentifierSequences())->plan($connection), 'boolean_domains' => (new BooleanDomains())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects())->plan($connection), 'processor_subjects' => (new ProcessorSubjects())->plan($connection), 'motherboard_subjects' => (new MotherboardSubjects())->plan($connection), 'memory_subjects' => (new MemorySubjects())->plan($connection), 'hard_drive_subjects' => (new HardDriveSubjects())->plan($connection), 'battery_subjects' => (new BatterySubjects())->plan($connection), 'power_supply_subjects' => (new PowerSupplySubjects())->plan($connection)];
+        return ['phases' => self::pendingPhases(Ledger::states($connection)), 'legacy' => (new References())->plan($connection), 'project_assets' => (new ProjectAssets())->plan($connection), 'category_flags' => (new CategoryFlags())->plan($connection), 'appliance_assets' => (new ApplianceAssets())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration())->plan($connection), 'boolean_domains' => (new BooleanDomains())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects())->plan($connection), 'processor_subjects' => (new ProcessorSubjects())->plan($connection), 'motherboard_subjects' => (new MotherboardSubjects())->plan($connection), 'memory_subjects' => (new MemorySubjects())->plan($connection), 'hard_drive_subjects' => (new HardDriveSubjects())->plan($connection), 'battery_subjects' => (new BatterySubjects())->plan($connection), 'power_supply_subjects' => (new PowerSupplySubjects())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -149,17 +183,7 @@ final class Version220 implements ReleaseMigration
         if (($baseline['origin'] ?? null) !== 'installed') {
             return false;
         }
-        if (array_key_exists('installation_complete', $baseline)) {
-            return $baseline['installation_complete'] !== true;
-        }
-        // Early experimental installers completed these four checkpoints. Their
-        // existing schema needs the remaining transition, not a fresh install.
-        foreach ([Baseline::PHASE, Seeds::PHASE, References::PHASE, Booleans::PHASE] as $version) {
-            if ((Ledger::state($connection, $version)['complete'] ?? false) !== true) {
-                return true;
-            }
-        }
-        return false;
+        return ($baseline['installation_complete'] ?? true) === false;
     }
 
     /** Journal each MySQL table creation; PostgreSQL also retains all-or-nothing DDL. */
@@ -180,7 +204,7 @@ final class Version220 implements ReleaseMigration
                 if ($existing) {
                     throw new RuntimeException('Baseline replay requires an empty database or its own unfinished journal; use adoption for an existing installation.');
                 }
-                $state = ['complete' => false, 'origin' => 'installed', 'next' => 0];
+                $state = ['complete' => false, 'origin' => 'installed', 'installation_complete' => false, 'next' => 0];
                 Ledger::save($connection, Baseline::PHASE, $state);
             }
             foreach (array_values($schema->getTables()) as $offset => $table) {
@@ -231,8 +255,29 @@ final class Version220 implements ReleaseMigration
         $database->synchronizeSequences();
     }
 
-    /** Adopt validated existing data; never replay installation seeds onto it. */
+    /** Adopt the released schema directly, retaining only this transition's recovery checkpoints. */
     public function apply(Connection $connection, ?callable $progress = null): void
+    {
+        CheckConstraintSupport::assertSupported($connection);
+        LegacyAdoptionEligibility::assertConnection($connection);
+        if ((Ledger::state($connection, self::CORE)['complete'] ?? false) !== true) {
+            $this->applyCore($connection, $progress);
+            Postconditions::assert($connection);
+            Ledger::save($connection, self::CORE, ['complete' => true]);
+        }
+        $progress && $progress('Starting final 2.2.0 ownership');
+        foreach (self::FINAL_STAGES as $class) {
+            $stage = new $class();
+            $stage->apply($connection, $progress);
+            // Stateless DDL helpers have no per-statement journal: their plans
+            // inspect actual definitions on retry. Record their group only once.
+            if (in_array($class, [PhysicalReferenceIndexes::class, ComponentParents::class], true)) {
+                Ledger::save($connection, $class::PHASE, ['complete' => true]);
+            }
+        }
+    }
+
+    private function applyCore(Connection $connection, ?callable $progress): void
     {
         CheckConstraintSupport::assertSupported($connection);
         // Admit provenance under the same lock before source remapping,
@@ -265,8 +310,6 @@ final class Version220 implements ReleaseMigration
         // without writing before older nontransactional adoption DDL.
         (new BatterySubjects())->plan($connection);
         (new PowerSupplySubjects())->plan($connection);
-        // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
-        (new Booleans())->plan($connection);
         // Unsupported plugin kinds and invalid subjects refuse before
         // identifier widening or any other nontransactional adoption DDL.
         (new ProjectAssets())->plan($connection);
@@ -275,7 +318,6 @@ final class Version220 implements ReleaseMigration
         (new DomainIntegration())->plan($connection);
         (new BooleanDomains())->plan($connection, true);
         (new References())->apply($connection, $progress);
-        (new Booleans())->apply($connection);
         (new ProjectAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets: ' . $phase));
         (new CategoryFlags())->apply($connection);
         (new ApplianceAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceAssets: ' . $phase));
@@ -283,7 +325,6 @@ final class Version220 implements ReleaseMigration
         (new OperatingSystemSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects: ' . $phase));
         $domainDocuments->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments: ' . $phase));
         (new DomainIntegration())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration: ' . $phase));
-        (new IdentifierSequences())->apply($connection, $progress);
         (new BooleanDomains())->apply($connection, $progress);
         (new ExactDiscriminators())->apply($connection, $progress);
         (new SoftwareInstallationSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareInstallationSubjects: ' . $phase));
@@ -308,5 +349,8 @@ final class Version220 implements ReleaseMigration
             throw new RuntimeException('The frozen retired marketplace archival prerequisite is still pending.');
         }
         Postconditions::assert($connection);
+        foreach (self::FINAL_STAGES as $class) {
+            (new $class())->verify($connection);
+        }
     }
 }

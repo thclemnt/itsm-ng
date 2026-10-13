@@ -13,7 +13,7 @@ final class Definition extends StagedTypedItemMigration
 {
     // History owns the outer completion receipt; this checkpoint retains native
     // projection/CHECK proof across nontransactional MySQL DDL interruptions.
-    public const PHASE = 'schema.sensor_subjects.v1.ddl';
+    public const PHASE = '2.2.0.sensor_subjects.ddl';
 
     protected function phase(): string
     {

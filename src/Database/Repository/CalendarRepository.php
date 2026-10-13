@@ -95,6 +95,18 @@ final class CalendarRepository
         $segments = array_map(static fn ($row) => [
             'day' => $row['dayNumber'], 'begin' => $row['startTime'], 'end' => $row['endTime'],
         ], $rows);
+        return new CalendarSchedule($segments, $this->holidayValues($calendar));
+    }
+
+    /** One detached holiday snapshot for all dates in an application calculation. */
+    public function holidaySchedule(int $calendar): CalendarSchedule
+    {
+        return new CalendarSchedule([], $this->holidayValues($calendar));
+    }
+
+    /** @return list<Holiday> Scalar projections do not retain association proxies or a manager. */
+    private function holidayValues(int $calendar): array
+    {
         $rows = $this->closureQuery($calendar)
             ->select('holiday.begin_date AS startDate', 'holiday.end_date AS endDate', 'holiday.is_perpetual AS perpetual')
             ->getQuery()
@@ -107,7 +119,7 @@ final class CalendarRepository
             $holiday->is_perpetual = $row['perpetual'];
             $holidays[] = $holiday;
         }
-        return new CalendarSchedule($segments, $holidays);
+        return $holidays;
     }
 
     /** @return list<CalendarHoliday> Every owning membership retains its individual link identity. */

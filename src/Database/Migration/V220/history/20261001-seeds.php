@@ -7819,54 +7819,67 @@ $tables['glpi_rulecriterias'] = [
 
 $tables['glpi_rulerightparameters'] = [
    [
+      'comment' => '',
       'id'    => 1,
       'name'  => '(LDAP)Organization',
       'value' => 'o',
    ], [
+      'comment' => '',
       'id'    => '2',
       'name'  => '(LDAP)Common Name',
       'value' => 'cn',
    ], [
+      'comment' => '',
       'id'    => '3',
       'name'  => '(LDAP)Department Number',
       'value' => 'departmentnumber',
    ], [
+      'comment' => '',
       'id'    => '4',
       'name'  => '(LDAP)Email',
       'value' => 'mail',
    ], [
+      'comment' => '',
       'id'    => '5',
       'name'  => 'Object Class',
       'value' => 'objectclass',
    ], [
+      'comment' => '',
       'id'    => '6',
       'name'  => '(LDAP)User ID',
       'value' => 'uid',
    ], [
+      'comment' => '',
       'id'    => '7',
       'name'  => '(LDAP)Telephone Number',
       'value' => 'phone',
    ], [
+      'comment' => '',
       'id'    => '8',
       'name'  => '(LDAP)Employee Number',
       'value' => 'employeenumber',
    ], [
+      'comment' => '',
       'id'    => '9',
       'name'  => '(LDAP)Manager',
       'value' => 'manager',
    ], [
+      'comment' => '',
       'id'    => '10',
       'name'  => '(LDAP)DistinguishedName',
       'value' => 'dn',
    ], [
+      'comment' => '',
       'id'    => '12',
       'name'  => '(AD)User ID',
       'value' => 'samaccountname',
    ], [
+      'comment' => '',
       'id'    => '13',
       'name'  => '(LDAP) Title',
       'value' => 'title',
    ], [
+      'comment' => '',
       'id'    => '14',
       'name'  => '(LDAP) MemberOf',
       'value' => 'memberof',
@@ -8007,21 +8020,27 @@ $tables['glpi_softwarelicensetypes'] = [
 
 $tables['glpi_ssovariables'] = [
    [
+      'comment' => '',
       'id'   => 1,
       'name' => 'HTTP_AUTH_USER',
    ], [
+      'comment' => '',
       'id'   => 2,
       'name' => 'REMOTE_USER',
    ], [
+      'comment' => '',
       'id'   => 3,
       'name' => 'PHP_AUTH_USER',
    ], [
+      'comment' => '',
       'id'   => 4,
       'name' => 'USERNAME',
    ], [
+      'comment' => '',
       'id'   => 5,
       'name' => 'REDIRECT_REMOTE_USER',
    ], [
+      'comment' => '',
       'id'   => 6,
       'name' => 'HTTP_REMOTE_USER',
    ],

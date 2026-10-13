@@ -271,7 +271,7 @@ class TicketTask extends DbTestCase
                 $this->integer($custom::$loads)->isIdenticalTo(2);
                 $this->string($customRows[0][2])->contains('Custom task reader');
             }
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $allocated = $factories->getValue();
             for ($i = 0; $i < 16; ++$i) {
                 $currentTasks = $type::getTaskList('todo', false);

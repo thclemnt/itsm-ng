@@ -212,7 +212,7 @@ class RuleTicket extends DbTestCase
 
             public function executeQuery(string $sql, array $params = [], array $types = [], ?QueryCacheProfile $qcp = null): Result
             {
-                $this->unitsAtQuery = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+                $this->unitsAtQuery = (\DbTestCase::ormManagerCounter())->getValue();
                 if ($this->failure !== null) {
                     throw $this->failure;
                 }
@@ -231,7 +231,7 @@ class RuleTicket extends DbTestCase
         };
         try {
             $DB = $adapter;
-            $units = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            $units = (\DbTestCase::ormManagerCounter())->getValue();
             $value = new class ($text) implements Stringable {
                 public int $conversions = 0;
 
@@ -252,7 +252,7 @@ class RuleTicket extends DbTestCase
             $this->array($selected->queries[0]['params'])->contains($text);
             $this->integer($selected->unitsAtQuery)->isIdenticalTo($units);
             $DB = $adapter;
-            $units = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            $units = (\DbTestCase::ormManagerCounter())->getValue();
             $failure = new InvalidDbalArgument('Refused MAC identity read');
             $selected->failure = $failure;
             $this->exception(static fn () => $rule->executeActions([], ['entities_id' => $computer->getEntityID()]))->isIdenticalTo($failure);

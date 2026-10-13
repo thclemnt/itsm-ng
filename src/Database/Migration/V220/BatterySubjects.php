@@ -9,7 +9,7 @@ final class BatterySubjects extends StagedTypedItemMigration
 {
     use ComponentSubjectMigration;
 
-    public const PHASE = '20261014_battery_subjects';
+    public const PHASE = '2.2.0.battery_subjects';
 
     private static ?array $snapshot = null;
 

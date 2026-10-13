@@ -347,7 +347,7 @@ class Reservation extends DbTestCase
                 }
             };
             // Empty public partitions require neither entity metadata nor a manager.
-            $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $factories = \DbTestCase::ormManagerCounter();
             $beforeFactories = $factories->getValue();
             $this->string($render(0))->notContains('reservationitems_id=');
             $this->integer($factories->getValue() - $beforeFactories)->isIdenticalTo(0);

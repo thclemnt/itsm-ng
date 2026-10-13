@@ -74,7 +74,7 @@ class ProcessSoftwareCategoryRulesCommand extends AbstractCommand
         ];
         if (!$input->getOption('all')) {
             $query['WHERE'] = [
-               'softwarecategories_id' => 0
+               'softwarecategories_id' => null
             ];
         }
 

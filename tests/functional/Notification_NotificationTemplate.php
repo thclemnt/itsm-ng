@@ -117,7 +117,7 @@ class Notification_NotificationTemplate extends DbTestCase
                 ['id' => $bindings[0]->id],
                 ['mode' => Types::STRING, 'id' => Types::BIGINT]
             ))->isIdenticalTo(1);
-            $creations = new ReflectionProperty(Orm::class, 'unitsOfWork');
+            $creations = \DbTestCase::ormManagerCounter();
             $before = $creations->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $currentNotification = array_column($service->bindingsForNotification($parents[0]->id), null, 'id');

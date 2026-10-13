@@ -17,7 +17,7 @@ final class Postconditions
 {
     public static function assert(Connection $connection): void
     {
-        if (Version220::pendingPhases(Ledger::states($connection))) {
+        if (array_filter(Version220::CORE_PHASES, static fn (string $phase): bool => (Ledger::state($connection, $phase)['complete'] ?? false) !== true)) {
             throw new RuntimeException('The 2.2.0 transition has unfinished internal checkpoints.');
         }
         (new ExactDiscriminators())->verify($connection);

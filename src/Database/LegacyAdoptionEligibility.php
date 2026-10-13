@@ -7,10 +7,6 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Connection;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\Baseline;
-use itsmng\Database\Migration\V220\DomainDocuments;
-use itsmng\Database\Migration\V220\DomainsPluginAdoption;
-use itsmng\Database\Migration\V220\DomainsPluginSnapshot;
-use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Migration\V220\Seeds;
 use RuntimeException;
 
@@ -103,19 +99,8 @@ final class LegacyAdoptionEligibility
         if (self::adopted($baseline) && self::adopted($seed)) {
             return 'canonical-adoption';
         }
-        $legacy = self::receipt($states, References::PHASE);
-        if (($legacy['complete'] ?? false) === true) {
-            // This is the established old completion receipt. It never recorded
-            // release provenance; do not invent fields or replay history on retry.
-            return 'canonical-adoption';
-        }
-        if (self::legacyJournal($legacy)) {
-            return 'canonical-retry';
-        }
-        if (self::domainJournal(self::receipt($states, DomainsPluginAdoption::RECEIPT), DomainsPluginSnapshot::FORMAT)
-            || self::domainJournal(self::receipt($states, DomainDocuments::GENERAL_RECEIPT), DomainDocuments::GENERAL_FORMAT)) {
-            return 'canonical-prerequisite-retry';
-        }
+        // A supported interrupted adoption retains its released source labels
+        // until final publication. Experimental checkpoints are not provenance.
         foreach (['itsmdbversion', 'dbversion'] as $field) {
             if (($release[$field] ?? null) !== self::HISTORICAL_FORMAT) {
                 throw new RuntimeException(self::diagnostic('Completed stable historical format is not proved: ' . $field . '=' . self::label($release[$field] ?? null)));
@@ -160,37 +145,6 @@ final class LegacyAdoptionEligibility
             throw new RuntimeException('Unrecognized canonical journal: ' . $version . '. Preserve its original state and reconcile it with the actual schema/source before retrying.');
         }
         return $state;
-    }
-
-    private static function legacyJournal(?array $state): bool
-    {
-        if (($state['complete'] ?? null) !== false || !is_array($state['identifiers'] ?? null) || !array_is_list($state['identifiers'])
-            || !is_int($state['next'] ?? null) || $state['next'] < 0 || $state['next'] > count($state['identifiers'])) {
-            return false;
-        }
-        foreach ($state['identifiers'] as $operation) {
-            if (!is_array($operation) || !is_string($operation['sql'] ?? null) || trim($operation['sql']) === '') {
-                return false;
-            }
-            foreach (['kind', 'table', 'name'] as $field) {
-                if (!is_string($operation[$field] ?? null)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private static function domainJournal(?array $state, string $format): bool
-    {
-        if (($state['format'] ?? null) !== $format || !is_string($state['fingerprint'] ?? null)
-            || !preg_match('/^[a-f0-9]{64}$/D', $state['fingerprint'])) {
-            return false;
-        }
-        if (($state['complete'] ?? null) === false) {
-            return ($state['phase'] ?? null) === 'validated';
-        }
-        return ($state['complete'] ?? null) === true && is_array($state['counts'] ?? null) && is_array($state['deferred_documents'] ?? null);
     }
 
     private static function label(mixed $value): string

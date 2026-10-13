@@ -1691,7 +1691,7 @@ class Planning extends CommonGLPI
                     $key = "groups_id_tech";
                     break;
                 case "user":
-                    $key = isset($item->fields['users_id_tech']) ? "users_id_tech" : "users_id";
+                    $key = $item->isField('users_id_tech') ? "users_id_tech" : "users_id";
                     break;
 
                 default:
@@ -2343,7 +2343,7 @@ class Planning extends CommonGLPI
                        ]
                     ];
 
-                    if (isset($item->fields['users_id_tech'])) {
+                    if ($item->isField('users_id_tech')) {
                         $update['users_id_tech'] = $item->fields['users_id_tech'];
                     }
 
@@ -2370,7 +2370,7 @@ class Planning extends CommonGLPI
                                     break;
 
                                 case "user":
-                                    if (isset($item->fields['users_id_tech'])) {
+                                    if ($item->isField('users_id_tech')) {
                                         $update['users_id_tech']  = $params['new_actor_items_id'];
                                         if (strtolower((string) $params['old_actor_itemtype']) === "group") {
                                             $update['groups_id_tech']  = 0;

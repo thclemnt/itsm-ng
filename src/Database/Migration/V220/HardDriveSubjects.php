@@ -9,7 +9,7 @@ final class HardDriveSubjects extends StagedTypedItemMigration
 {
     use ComponentSubjectMigration;
 
-    public const PHASE = '20261013_hard_drive_subjects';
+    public const PHASE = '2.2.0.hard_drive_subjects';
 
     private static ?array $snapshot = null;
 

@@ -15,6 +15,7 @@ use itsmng\Database\PostgresConnection;
 use itsmng\Database\PostgresParameters;
 use itsmng\Database\PostgresStatement;
 use itsmng\Database\SequenceSynchronizer;
+use itsmng\Database\SqlDebugMiddleware;
 
 class DBpgsql extends DBAdapter
 {
@@ -135,7 +136,6 @@ class DBpgsql extends DBAdapter
 
     private function executeResult(string $sql, callable $execute)
     {
-        global $DEBUG_SQL, $SQL_TOTAL_REQUEST, $CFG_GLPI;
         $start = microtime(true);
         $this->lastError = $this->sqlState = '';
         $this->affected = 0;
@@ -143,7 +143,7 @@ class DBpgsql extends DBAdapter
             throw new RuntimeException('PostgreSQL connection is not open.');
         }
         try {
-            $result = $execute();
+            $result = SqlDebugMiddleware::record($sql, $execute);
             if ($result instanceof LegacyResult) {
                 $this->affected = $result->num_rows;
                 return $result;
@@ -164,15 +164,6 @@ class DBpgsql extends DBAdapter
             $elapsed = microtime(true) - $start;
             if ($this->execution_time === true) {
                 $this->execution_time = $elapsed;
-            }
-            if (!empty($CFG_GLPI['debug_sql']) && ($_SESSION['glpi_use_mode'] ?? null) === Session::DEBUG_MODE) {
-                $SQL_TOTAL_REQUEST++;
-                $DEBUG_SQL['queries'][$SQL_TOTAL_REQUEST] = $sql;
-                $DEBUG_SQL['times'][$SQL_TOTAL_REQUEST] = $elapsed;
-                $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affected;
-                if ($this->lastError !== '') {
-                    $DEBUG_SQL['errors'][$SQL_TOTAL_REQUEST] = $this->lastError;
-                }
             }
         }
     }
@@ -290,6 +281,20 @@ class DBpgsql extends DBAdapter
 
     public function buildUpdate($table, $params, $clauses, array $joins = [])
     {
+        // PostgreSQL SET targets cannot be table-qualified, even for joined updates.
+        $assignments = [];
+        foreach ($params as $field => $value) {
+            if (str_contains($field, '.')) {
+                $qualified = static::quoteName($field);
+                $prefix = static::quoteName($table) . '.';
+                if (!str_starts_with($qualified, $prefix)) {
+                    throw new InvalidArgumentException('An UPDATE can only assign columns of its target table.');
+                }
+                $field = substr($qualified, strlen($prefix));
+            }
+            $assignments[$field] = $value;
+        }
+        $params = $assignments;
         $where = $clauses['WHERE'] ?? $clauses;
         if (!$where) {
             throw new RuntimeException('Cannot run an UPDATE query without WHERE clause!');

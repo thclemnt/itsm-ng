@@ -60,7 +60,7 @@ class Stat extends DbTestCase
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 1]);
         $this->array($measure('inter_solved'))->isIdenticalTo(['2025-01' => 1]);
         $this->float($measure('inter_avgsolvedtime')['2025-01'])->isEqualTo(200.0);
-        $monthlyFactories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $monthlyFactories = \DbTestCase::ormManagerCounter();
         $beforeMonthlyReads = $monthlyFactories->getValue();
         $create($entity, false, '2025-01-31 23:59:59', 600);
         $this->array($measure('inter_total'))->isIdenticalTo(['2025-01' => 2]);
@@ -165,7 +165,7 @@ class Stat extends DbTestCase
                 $this->string($warm)->contains('Report root entity')->contains('Report asset 0')
                     ->contains('Report asset 1')->contains('Report asset 2');
                 $this->integer(substr_count($warm, 'Report shared entity'))->isIdenticalTo(2);
-                $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+                $factories = \DbTestCase::ormManagerCounter();
                 $before = $factories->getValue();
                 $connection->update('glpi_entities', ['completename' => 'Renamed report entity'], ['id' => $entity]);
                 $connection->update('glpi_computers', ['name' => 'Renamed report asset'], ['id' => $assets[0]->id]);

@@ -39,6 +39,24 @@ use DbTestCase;
 
 class RuleSoftwareCategoryCollection extends DbTestCase
 {
+    public function testCommandProcessesOnlyUncategorizedSoftwareByDefault(): void
+    {
+        $this->login();
+        $category = new \SoftwareCategory();
+        $this->integer((int)$category->add(['name' => 'Command category']))->isGreaterThan(0);
+        $uncategorized = new \Software();
+        $this->integer((int)$uncategorized->add(['name' => 'Command uncategorized software', 'entities_id' => 0]))->isGreaterThan(0);
+        $categorized = new \Software();
+        $this->integer((int)$categorized->add([
+            'name' => 'Command categorized software', 'entities_id' => 0, 'softwarecategories_id' => $category->getID(),
+        ]))->isGreaterThan(0);
+        $command = new \Glpi\Console\Rules\ProcessSoftwareCategoryRulesCommand();
+        $tester = new \Symfony\Component\Console\Tester\CommandTester($command);
+        $this->integer($tester->execute([], ['verbosity' => \Symfony\Component\Console\Output\OutputInterface::VERBOSITY_VERY_VERBOSE]))->isIdenticalTo(0);
+        $this->string($tester->getDisplay())->contains('Processing software having id "' . $uncategorized->getID() . '"');
+        $this->string($tester->getDisplay())->notContains('Processing software having id "' . $categorized->getID() . '"');
+    }
+
     public function testPrepareInputDataForProcess()
     {
         $this->login();

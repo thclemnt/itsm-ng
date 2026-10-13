@@ -158,7 +158,7 @@ switch ($step) {
             ];
             break;
         }
-        if ($provider !== 'mysql' || !extension_loaded('mysqli')) {
+        if ($provider !== 'mysql' || !extension_loaded('pdo_mysql')) {
             $twig_vars = ['connect_error' => 'Select a supported database provider with its PHP extension installed.'];
             break;
         }

@@ -63,7 +63,8 @@ php bin/console db:install --db-type=pgsql --db-host=localhost --db-name=itsm --
 ```
 
 Existing installations must complete their historical application's upgrade to
-ITSM-NG 2.1.3 before adopting this branch. Preserve the database and original
+schema version 2.1.3 before adopting this branch (including ITSM-NG 2.1.7).
+Preserve the database and original
 `config/glpicrypt.key`; an existing installation must never receive a replacement
 key. Preview and apply the supported transition through the same configuration:
 
@@ -93,6 +94,33 @@ installation configured through `GLPI_CONFIG_DIR`, run `composer test:units` and
 empty, separately provisioned database named `itsm_test_*_migration`, selected by
 `ITSM_TEST_MIGRATION_DB` and accessible to the configured database role. The
 migration tests own and clean only that auxiliary fixture.
+
+The separate **Pre-ORM upgrade** workflow checks a real ITSM-NG 2.1.7 checkout
+at `bdfdcedf6fd039c984dc20374afa24f23decc537`, whose installer creates schema
+2.1.3. It uses that source's own dependencies and application dataset, runs the
+current public upgrade twice, checks the resulting schema, and verifies that
+account/password, asset, ticket, document, membership and rights data and the
+original encryption key survive. This covers MySQL and MariaDB; the historical
+application did not support PostgreSQL.
+
+To run the same check locally, install the current Composer dependencies and
+provision a separate empty MySQL/MariaDB database. Run with PHP 8.2:
+
+```sh
+ITSM_UPGRADE_DB_NAME=itsm_test_local_upgrade \
+ITSM_UPGRADE_DB_HOST=127.0.0.1 ITSM_UPGRADE_DB_PORT=3306 \
+ITSM_UPGRADE_DB_USER=test ITSM_UPGRADE_DB_PASSWORD=test \
+bash .github/actions/test_legacy-upgrade.sh
+```
+
+The database role needs all privileges on that disposable database and access
+to `mysql.time_zone_name`. The harness refuses a nonempty database and retains
+its database and diagnostics for inspection. `ITSM_UPGRADE_WORK_DIR` selects the
+diagnostics directory; `ITSM_LEGACY_SOURCE` can reuse an unmodified checkout of
+the pinned revision. No frontend build is required. The historical source has
+no Composer lock file, so its resolved dependency lock is retained with the
+diagnostics; security advisory blocking is disabled only for that isolated
+historical dependency installation.
 
 ## Translation
 

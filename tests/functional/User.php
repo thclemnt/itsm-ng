@@ -469,7 +469,7 @@ class User extends DbTestCase
         $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
         $this->array(UserEmail::getAllForUser($id))->isIdenticalTo($expectedEmails);
         $this->boolean(UserEmail::isEmailForUser($id, $expected['email']))->isTrue();
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->string(UserEmail::getDefaultForUser($id))->isIdenticalTo($expected['email']);
@@ -620,7 +620,7 @@ class User extends DbTestCase
         $this->string($expectedName)->isNotEmpty();
         $this->array(Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
         $this->array($sortedIds(array_values(Profile_User::getUserProfiles($id))))->isIdenticalTo($baselineIds);
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 3; ++$repeat) {
             $this->array(Profile_User::getEntitiesForProfileByUser($id, $profileId))->isIdenticalTo($expectedScope);
@@ -1891,6 +1891,33 @@ class User extends DbTestCase
         $this->array($user->prepareInputForAdd($input))->isIdenticalTo($expected);
     }
 
+    public function testChangeAuthMethodClearsLdapIdentityWhenSwitchingToInternal()
+    {
+        $this->login();
+        $ldap = $this->createItem(AuthLDAP::class, ['name' => $this->getUniqueString()]);
+        $mail = $this->createItem(AuthMail::class, ['name' => $this->getUniqueString()]);
+        foreach ([Auth::DB_GLPI => 0, Auth::MAIL => (int)$mail->getID()] as $type => $server) {
+            $user = $this->createItem(UserModel::class, [
+                'name' => $this->getUniqueString(),
+                'authtype' => Auth::LDAP,
+                'auths_id' => (int)$ldap->getID(),
+                'user_dn' => 'uid=ldap_to_internal,dc=test,dc=example',
+                'sync_field' => 'ldap-sync-value',
+                'date_sync' => $_SESSION['glpi_currenttime'],
+                'is_deleted_ldap' => 1,
+            ]);
+            $this->boolean(UserModel::changeAuthMethod([(int)$user->getID()], $type, $server))->isTrue();
+            $this->boolean($user->getFromDB($user->getID()))->isTrue();
+            $this->array($user->fields)
+                ->integer['authtype']->isIdenticalTo($type)
+                ->integer['auths_id']->isIdenticalTo($server)
+                ->integer['is_deleted_ldap']->isIdenticalTo(0);
+            foreach (['user_dn', 'sync_field', 'date_sync', 'authldaps_id'] as $field) {
+                $this->variable($user->fields[$field])->isNull();
+            }
+        }
+    }
+
     public function testCanonicalAuthenticationCreation()
     {
         $this->login();
@@ -2816,7 +2843,7 @@ class User extends DbTestCase
         $this->integer($uid)->isGreaterThan(0);
 
         $this->integer($user->getIdByField('phone', '+33123456789'))->isIdenticalTo($uid);
-        $managers = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $managers = \DbTestCase::ormManagerCounter();
         $beforeManagers = $managers->getValue();
         for ($repeat = 0; $repeat < 16; ++$repeat) {
             $this->integer($user->getIdByField('phone', '+33123456789'))->isIdenticalTo($uid);

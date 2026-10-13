@@ -497,7 +497,7 @@ class Domain extends DbTestCase
         ]);
 
         $expected = Entity::getEntitiesToNotify('use_domains_alert');
-        $factories = new ReflectionProperty(Orm::class, 'unitsOfWork');
+        $factories = \DbTestCase::ormManagerCounter();
         $beforeFactories = $factories->getValue();
         for ($repeat = 0; $repeat < 16; ++$repeat) {
             $this->array(Entity::getEntitiesToNotify('use_domains_alert'))->isIdenticalTo($expected);

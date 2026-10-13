@@ -15,7 +15,7 @@ use Throwable;
 /** Archive only the three unchanged children left by the released marketplace removal. */
 final class RetiredMarketplaceDefaults
 {
-    public const RECEIPT = '2.2.0_retired_marketplace_defaults';
+    public const RECEIPT = '2.2.0.retired_marketplace_defaults';
     private const FORMAT = 'released-2.1.3-marketplace-children-v1';
 
     // Complete physical rows from 5ecdf8e2a29:install/empty_data.php.

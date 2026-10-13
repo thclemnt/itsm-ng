@@ -178,7 +178,7 @@ class NotificationAjax extends DbTestCase
                     $this->integer($manager->getUnitOfWork()->size())->isIdenticalTo(0);
                 });
             };
-            $beforeCreations = (new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue();
+            $beforeCreations = (\DbTestCase::ormManagerCounter())->getValue();
             for ($repeat = 0; $repeat < 2; ++$repeat) {
                 $current = $select($inbox->pending($recipient));
                 $this->string($current[0]->title)->isIdenticalTo('Current browser title');
@@ -194,7 +194,7 @@ class NotificationAjax extends DbTestCase
             $this->boolean($inbox->acknowledge($ids[0], $recipient))->isTrue();
             $this->boolean($inbox->acknowledge($ids[0], $recipient))->isFalse();
             $this->array(array_column($select($inbox->pending($recipient)), 'id'))->isIdenticalTo([$ids[1]]);
-            $this->integer((new ReflectionProperty(Orm::class, 'unitsOfWork'))->getValue() - $beforeCreations)->isIdenticalTo(
+            $this->integer((\DbTestCase::ormManagerCounter())->getValue() - $beforeCreations)->isIdenticalTo(
                 0,
                 'Completed browser presentation and acknowledgement scopes reuse the selected private manager'
             );

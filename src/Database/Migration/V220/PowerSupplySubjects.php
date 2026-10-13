@@ -9,7 +9,7 @@ final class PowerSupplySubjects extends StagedTypedItemMigration
 {
     use ComponentSubjectMigration;
 
-    public const PHASE = '20261014_power_supply_subjects';
+    public const PHASE = '2.2.0.power_supply_subjects';
 
     private static ?array $snapshot = null;
 

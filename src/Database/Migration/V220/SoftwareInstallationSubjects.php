@@ -7,7 +7,7 @@ namespace itsmng\Database\Migration\V220;
 /** Frozen installation subjects retain their original version uniqueness. */
 final class SoftwareInstallationSubjects extends SoftwareAssignmentSubjects
 {
-    public const PHASE = '20261011_software_installation_subjects';
+    public const PHASE = '2.2.0.software_installation_subjects';
 
     protected function phase(): string
     {

@@ -16,7 +16,7 @@ use Doctrine\DBAL\Schema\Schema;
  */
 final class Baseline
 {
-    public const PHASE = '20261001_baseline_legacy_2_2';
+    public const PHASE = '2.2.0.baseline_legacy_2_2';
 
     public function build(AbstractPlatform $platform): Schema
     {
@@ -177,10 +177,10 @@ final class Baseline
         $table = $schema->createTable('`glpi_apiclients`');
         $table->addColumn('`id`', 'integer', ['autoincrement' => true]);
         $table->addColumn('`entities_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_recursive`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_recursive`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`name`', 'string', ['notnull' => false, 'length' => 255]);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
-        $table->addColumn('`is_active`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_active`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`ipv4_range_start`', 'bigint', ['notnull' => false]);
         $table->addColumn('`ipv4_range_end`', 'bigint', ['notnull' => false]);
         $table->addColumn('`ipv6`', 'string', ['notnull' => false, 'length' => 255]);
@@ -5113,9 +5113,9 @@ final class Baseline
         $table->addColumn('`tickettemplates_id_demand`', 'integer', ['default' => '0']);
         $table->addColumn('`changetemplates_id`', 'integer', ['default' => '0']);
         $table->addColumn('`problemtemplates_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_incident`', 'integer', ['default' => '1']);
-        $table->addColumn('`is_request`', 'integer', ['default' => '1']);
-        $table->addColumn('`is_problem`', 'integer', ['default' => '1']);
+        $table->addColumn('`is_incident`', $postgres ? 'boolean' : 'integer', $postgres ? ['default' => true] : ['default' => '1']);
+        $table->addColumn('`is_request`', $postgres ? 'boolean' : 'integer', $postgres ? ['default' => true] : ['default' => '1']);
+        $table->addColumn('`is_problem`', $postgres ? 'boolean' : 'integer', $postgres ? ['default' => true] : ['default' => '1']);
         $table->addColumn('`is_change`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
@@ -5342,8 +5342,8 @@ final class Baseline
         $table->addColumn('`id`', 'integer', ['autoincrement' => true]);
         $table->addColumn('`name`', 'string', ['default' => '', 'length' => 255]);
         $table->addColumn('`entities_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_recursive`', 'smallint', ['default' => '0']);
-        $table->addColumn('`is_deleted`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_recursive`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
+        $table->addColumn('`is_deleted`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`caller_num`', 'string', ['default' => '', 'length' => 255]);
         $table->addColumn('`caller_name`', 'string', ['default' => '', 'length' => 255]);
         $table->addColumn('`users_id`', 'integer', ['default' => '0']);
@@ -5382,7 +5382,7 @@ final class Baseline
         $table->addColumn('`mcc`', 'integer', ['notnull' => false]);
         $table->addColumn('`mnc`', 'integer', ['notnull' => false]);
         $table->addColumn('`entities_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_recursive`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_recursive`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         if ($postgres) {
@@ -8246,9 +8246,9 @@ final class Baseline
         $table->addColumn('`is_followup_default`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`is_mail_default`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`is_mailfollowup_default`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
-        $table->addColumn('`is_active`', 'smallint', ['default' => '1']);
-        $table->addColumn('`is_ticketheader`', 'smallint', ['default' => '1']);
-        $table->addColumn('`is_itilfollowup`', 'smallint', ['default' => '1']);
+        $table->addColumn('`is_active`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
+        $table->addColumn('`is_ticketheader`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
+        $table->addColumn('`is_itilfollowup`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
         $table->addColumn('`comment`', 'text', ['notnull' => false]);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
@@ -11299,11 +11299,11 @@ final class Baseline
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`entities_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_recursive`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_recursive`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`name`', 'string', ['notnull' => false, 'length' => 255]);
         $table->addColumn('`content`', 'text', ['notnull' => false]);
         $table->addColumn('`requesttypes_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_private`', 'smallint', ['default' => '0']);
+        $table->addColumn('`is_private`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`comment`', 'text', ['notnull' => false]);
         if ($postgres) {
             $table->setPrimaryKey(['`id`']);
@@ -11482,7 +11482,7 @@ final class Baseline
         $table->addColumn('`uuid`', 'string', ['notnull' => false, 'length' => 255]);
         $table->addColumn('`planningexternaleventtemplates_id`', 'integer', ['default' => '0']);
         $table->addColumn('`entities_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`is_recursive`', 'smallint', ['default' => '1']);
+        $table->addColumn('`is_recursive`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
         $table->addColumn('`date`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`users_id`', 'integer', ['default' => '0']);
         $table->addColumn('`users_id_guests`', 'text', ['notnull' => false]);
@@ -11494,7 +11494,7 @@ final class Baseline
         $table->addColumn('`rrule`', 'text', ['notnull' => false]);
         $table->addColumn('`state`', 'integer', ['default' => '0']);
         $table->addColumn('`planningeventcategories_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`background`', 'smallint', ['default' => '0']);
+        $table->addColumn('`background`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         if ($postgres) {
@@ -11546,7 +11546,7 @@ final class Baseline
         $table->addColumn('`rrule`', 'text', ['notnull' => false]);
         $table->addColumn('`state`', 'integer', ['default' => '0']);
         $table->addColumn('`planningeventcategories_id`', 'integer', ['default' => '0']);
-        $table->addColumn('`background`', 'smallint', ['default' => '0']);
+        $table->addColumn('`background`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => false] : ['default' => '0']);
         $table->addColumn('`date_mod`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         $table->addColumn('`date_creation`', 'datetimetz', $postgres ? ['notnull' => false] : ['notnull' => false, 'columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL']);
         if ($postgres) {
@@ -11958,7 +11958,7 @@ final class Baseline
         $table->addColumn('`id`', 'integer', ['autoincrement' => true]);
         $table->addColumn('`name`', 'string', ['notnull' => false, 'length' => 255]);
         $table->addColumn('`weight`', 'integer', ['default' => '1']);
-        $table->addColumn('`is_active`', 'smallint', ['default' => '1']);
+        $table->addColumn('`is_active`', $postgres ? 'boolean' : 'smallint', $postgres ? ['default' => true] : ['default' => '1']);
         $table->addColumn('`color`', 'string', ['notnull' => false, 'length' => 255]);
         $table->setPrimaryKey(['`id`']);
         if (!$postgres) {
