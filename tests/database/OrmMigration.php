@@ -43,6 +43,7 @@ use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
 use itsmng\Database\Migration\V220\PlanningEventGuests;
 use itsmng\Database\Migration\V220\Seeds;
+use itsmng\Database\Migration\V220\WideIdentifiers;
 use itsmng\Database\Migration\Version220;
 use itsmng\Database\NativeCheckCatalog;
 use itsmng\Database\NativeNonNegativeSchema;
@@ -468,6 +469,43 @@ class OrmMigration extends GLPITestCase
         } finally {
             $scoped->close();
         }
+    }
+
+    public function testIdentifierWideningPreservesGeneratedCheckLiterals(): void
+    {
+        $connection = $this->emptyFixture()->getDoctrineConnection();
+        $platform = $connection->getDatabasePlatform();
+        $table = 'glpi_certificates_items';
+        $quote = $platform->quoteIdentifier(...);
+        $connection->executeStatement('CREATE TABLE ' . $quote($table)
+            . " (id INTEGER NOT NULL PRIMARY KEY, label VARCHAR(50) NOT NULL, projected INTEGER GENERATED ALWAYS AS"
+            . " (CASE WHEN label = 'O''Reilly' THEN id + 1 ELSE 0 END) STORED,"
+            . " CONSTRAINT quoted_subject CHECK (projected > id AND label = 'O''Reilly'))"
+            . ($platform instanceof AbstractMySQLPlatform ? ' DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci' : ''));
+        if ($platform instanceof MySQLPlatform) {
+            $connection->executeStatement('ALTER TABLE ' . $quote($table)
+                . " ADD CONSTRAINT inactive_subject CHECK (label = 'inactive') NOT ENFORCED");
+        }
+        $connection->insert($table, ['id' => 7, 'label' => "O'Reilly"]);
+        $checks = static fn (): array => array_map(
+            static fn (array $check): array => array_intersect_key($check, array_flip(['clause', 'validated', 'enforced'])),
+            NativeCheckCatalog::snapshot($connection, $table)['checks'][$table]
+        );
+        $beforeChecks = $checks();
+        $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id');
+        $migration = new WideIdentifiers([$table => ['id', 'projected']]);
+        foreach ($migration->plan($connection) as $operation) {
+            $connection->executeStatement($operation['sql']);
+        }
+        $this->array($checks())->isIdenticalTo($beforeChecks);
+        $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id'))->isIdenticalTo($rows);
+        $connection->insert($table, ['id' => 3000000000, 'label' => "O'Reilly"]);
+        $this->integer((int)$connection->fetchOne('SELECT projected FROM ' . $quote($table) . ' WHERE id = 3000000000'))->isIdenticalTo(3000000001);
+        $this->exception(static fn () => $connection->transactional(
+            static fn () => $connection->insert($table, ['id' => 8, 'label' => 'wrong'])
+        ))->isInstanceOf(DbalException::class);
+        $this->array($migration->plan($connection))->isEmpty();
+        $this->fixtureCompleted = true;
     }
 
     public function testOrderedMembershipsBatchParentsAndResumeWithoutDuplicatingRows(): void
@@ -994,6 +1032,14 @@ class OrmMigration extends GLPITestCase
         $restore = 'ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($policy['constraint'])
             . ' CHECK (' . $originalCheck . ')'
             . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+        if ($platform instanceof MySQLPlatform) {
+            // MySQL's CHECK_CLAUSE escapes literal delimiters for its catalog;
+            // SHOW CREATE emits executable SQL and preserves the frozen clause.
+            $create = $connection->fetchAssociative('SHOW CREATE TABLE ' . $quote($table));
+            $found = preg_match('/^\s*(CONSTRAINT ' . preg_quote($quote($policy['constraint']), '/') . ' CHECK .+)$/m', $create['Create Table'], $match);
+            $this->integer($found)->isIdenticalTo(1);
+            $restore = 'ALTER TABLE ' . $quote($table) . ' ADD ' . rtrim($match[1], ',');
+        }
         $ledger = Ledger::states($connection);
         $connection->executeStatement($drop);
         try {

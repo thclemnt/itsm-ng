@@ -6,11 +6,13 @@ namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\MySQLGeneratedColumnInspection;
+use itsmng\Database\NativeCheckCatalog;
 use RuntimeException;
 
 /** Widen in place, preserving data, sequences and all existing constraint definitions. */
@@ -122,6 +124,8 @@ final class WideIdentifiers
             }
             // PostgreSQL cannot alter a source type while a stored generated column depends on it.
             $generated = $generatedColumns[$name];
+            $mysqlCreate = $generated && $platform instanceof MySQLPlatform
+                ? $connection->fetchAssociative('SHOW CREATE TABLE ' . $quote($name))['Create Table'] : null;
             $generatedNames = array_column($generated, 'column_name');
             $indexes = [];
             // Only generated columns require native index drop/restore. DBAL's
@@ -143,12 +147,24 @@ final class WideIdentifiers
                 $data = $column->toArray();
                 $type = in_array($column->getName(), $scope[$name] ?? [], true) ? 'BIGINT' : $column->getType()->getSQLDeclaration($data, $platform);
                 // Generated identity columns are signed, including COALESCE keys for unsigned legacy IDs.
-                $data['columnDefinition'] = trim($type) . ' GENERATED ALWAYS AS (' . $row['generation_expression'] . ') STORED';
-                if ($column->getNotnull()) {
-                    $data['columnDefinition'] .= ' NOT NULL';
-                }
-                if ($platform->supportsInlineColumnComments() && $column->getComment() !== '') {
-                    $data['columnDefinition'] .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
+                if ($mysqlCreate !== null) {
+                    // GENERATION_EXPRESSION has the same catalog-only literal escaping as CHECK_CLAUSE.
+                    $definition = self::mysqlDeclaration($mysqlCreate, $quote($column->getName()));
+                    if (in_array($column->getName(), $scope[$name] ?? [], true)) {
+                        $definition = preg_replace('/^(?:tinyint|smallint|mediumint|int|bigint)(?:\(\d+\))?(?: unsigned)?(?: zerofill)?(?=\s)/i', 'BIGINT', $definition, 1, $count);
+                        if ($count !== 1) {
+                            throw new RuntimeException('Cannot preserve generated identifier declaration: ' . $name . '.' . $column->getName());
+                        }
+                    }
+                    $data['columnDefinition'] = $definition;
+                } else {
+                    $data['columnDefinition'] = trim($type) . ' GENERATED ALWAYS AS (' . $row['generation_expression'] . ') STORED';
+                    if ($column->getNotnull()) {
+                        $data['columnDefinition'] .= ' NOT NULL';
+                    }
+                    if ($platform->supportsInlineColumnComments() && $column->getComment() !== '') {
+                        $data['columnDefinition'] .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
+                    }
                 }
                 $restoreGenerated[] = $operation('ALTER TABLE ' . $quote($name) . ' ADD ' . $platform->getColumnDeclarationSQL($quote($column->getName()), $data), 'add_column', $name, $column->getName());
                 if (!$platform->supportsInlineColumnComments() && $column->getComment() !== '') {
@@ -165,7 +181,7 @@ final class WideIdentifiers
                 $restoreGenerated[] = $operation($platform->getCreateIndexSQL($index, $quote($name)), 'add_index', $name, $index->getName());
             }
             if ($generated) {
-                $checks = $connection->fetchAllAssociative($postgres
+                $checks = $mysqlCreate !== null ? self::mysqlCheckDefinitions($connection, $name, $mysqlCreate) : $connection->fetchAllAssociative($postgres
                     ? "SELECT c.conname AS name, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = ? AND t.relname = ? AND c.contype = 'c'"
                     : "SELECT t.constraint_name AS name, CONCAT('CHECK (', c.check_clause, ')') AS definition FROM information_schema.table_constraints t JOIN information_schema.check_constraints c ON c.constraint_schema = t.constraint_schema AND c.constraint_name = t.constraint_name"
                         . ($platform instanceof MariaDBPlatform ? ' AND c.table_name = t.table_name' : '')
@@ -190,6 +206,26 @@ final class WideIdentifiers
             }
         }
         return array_merge($dropForeign, $dropChecks, $dropGenerated, $alter, $restoreGenerated, $restoreChecks, $restoreForeign);
+    }
+
+    /** MySQL's catalog CHECK_CLAUSE escapes literals and is not executable DDL. */
+    private static function mysqlCheckDefinitions(Connection $connection, string $table, string $create): array
+    {
+        $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
+        $definitions = [];
+        foreach (NativeCheckCatalog::snapshot($connection, $table)['checks'][$table] ?? [] as $name => $check) {
+            // Retain MySQL's versioned NOT ENFORCED suffix as well as its expression.
+            $definitions[] = ['name' => $name, 'definition' => self::mysqlDeclaration($create, 'CONSTRAINT ' . $quote($name))];
+        }
+        return $definitions;
+    }
+
+    private static function mysqlDeclaration(string $create, string $prefix): string
+    {
+        if (preg_match('/^\s*' . preg_quote($prefix, '/') . ' (.+)$/m', $create, $match) !== 1) {
+            throw new RuntimeException('Cannot preserve native declaration: ' . $prefix);
+        }
+        return rtrim($match[1], ',');
     }
 
     /** Only actual PostgreSQL sequence ownership gives authority to widen storage. */
