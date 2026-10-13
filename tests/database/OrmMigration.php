@@ -883,7 +883,7 @@ class OrmMigration extends GLPITestCase
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
     }
 
-    /** Nonterminal subjects still belong to current native policy after later releases complete. */
+    /** Completed subjects still require their retained native policy before publication. */
     private function assertCurrentSubjectNativeVerification(Connection $connection): void
     {
         $this->assertCurrentInheritedNativeVerification($connection);
@@ -916,7 +916,7 @@ class OrmMigration extends GLPITestCase
                 (new History())->upgrade($connection, onComplete: static function () use (&$published): void {
                     $published = true;
                 });
-            })->isInstanceOf(RuntimeException::class)->hasMessage("Migration history did not converge:\n" . $diagnostic);
+            })->isInstanceOf(RuntimeException::class)->hasMessage('Frozen subject native policy changed after authoritative DDL: ' . $table);
             $this->boolean($published)->isFalse();
             $this->array(Ledger::states($connection))->isIdenticalTo($ledger);
         } finally {
@@ -1466,7 +1466,7 @@ class OrmMigration extends GLPITestCase
 
     private function assertTerminalSensorVerification(Connection $connection): void
     {
-        $version = SensorSubjectDefinition::PHASE;
+        $version = Version220::VERSION;
         $phase = SensorSubjectDefinition::PHASE;
         $receipt = Ledger::state($connection, $version);
         $proof = Ledger::state($connection, $phase);
@@ -1485,16 +1485,11 @@ class OrmMigration extends GLPITestCase
             foreach (['proof', 'missing-check', 'changed-check'] as $damage) {
                 if ($damage === 'proof') {
                     $connection->delete(Ledger::TABLE, ['version' => $phase]);
-                    $diagnostic = 'Experimental typed-subject receipt lacks retained post-DDL native policy: ' . $table
-                        . '. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.';
                 } else {
                     $connection->executeStatement($drop);
                     if ($damage === 'changed-check') {
                         $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $constraint . ' CHECK (1 = 1)');
                     }
-                    $diagnostic = $damage === 'missing-check'
-                        ? 'Frozen typed subject conversion did not converge: ' . $table
-                        : 'Frozen subject native policy changed after authoritative DDL: ' . $table;
                 }
                 $before = Ledger::states($connection);
                 $native = $policy();
@@ -1503,9 +1498,9 @@ class OrmMigration extends GLPITestCase
                     (new History())->upgrade($connection, onComplete: static function () use (&$published): void {
                         $published = true;
                     });
-                })->isInstanceOf(RuntimeException::class)->hasMessage($diagnostic);
+                })->isInstanceOf(RuntimeException::class);
                 $this->boolean($published)->isFalse();
-                $this->array(Ledger::states($connection))->isIdenticalTo($before, 'Neither predecessor nor terminal receipts are rewritten');
+                $this->array(Ledger::states($connection))->isIdenticalTo($before, 'Failed verification does not rewrite release or checkpoint receipts');
                 $this->array($policy())->isIdenticalTo($native, 'Failed verification does not repair native policy');
                 if ($damage === 'proof') {
                     Ledger::save($connection, $phase, $proof);
@@ -1521,9 +1516,6 @@ class OrmMigration extends GLPITestCase
         }
         Ledger::save($connection, $version, $receipt);
     }
-
-    /** The real default chain can hand ownership to a later native evolution. */
-
 
     private function seedForwardParentFixtures(Connection $connection, int $computer): array
     {

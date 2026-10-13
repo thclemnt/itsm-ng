@@ -114,6 +114,7 @@ use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MySQLConnection;
 use itsmng\Database\PostgresConnection;
 use itsmng\Database\Orm;
+use itsmng\Database\RecordReadOperation;
 use itsmng\Database\UnsupportedCriteria;
 use LogicException;
 use itsmng\Database\OwnedMutationFrame;
@@ -139,6 +140,45 @@ require_once dirname(__DIR__) . '/fixtures/pluginbarfoo.php';
 
 class CommonDBTM extends DbTestCase
 {
+    public function testWarmScalarReadsReuseOnlyTheirSelectedManagersMetadata(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $read = static fn () => Orm::readRecord($DB, 'glpi_calendars', 'id', 1);
+        $expected = $read();
+        $this->array($expected)->hasKey('id');
+        $getCache = static fn () => Orm::withReadConnection($connection, static fn (EntityManager $manager) =>
+            $manager->getConfiguration()->getMetadataCache());
+        $cache = $getCache();
+        for ($repeat = 0; $repeat < 3; ++$repeat) {
+            $this->array($read())->isIdenticalTo($expected);
+            $this->object($getCache())->isIdenticalTo($cache, 'Warm reads do not allocate another metadata cache');
+        }
+        $other = $DB->getProvider() === 'pgsql'
+            ? PostgresConnection::create($connection->getParams())
+            : MySQLConnection::create($connection->getParams());
+        try {
+            Orm::withReadConnection($other, function (EntityManager $manager) use ($other, $cache, $expected): void {
+                $operation = new RecordReadOperation($other, $manager);
+                $this->array($operation->row('glpi_calendars', 'id', 1))->isIdenticalTo($expected);
+                $this->object($manager->getConfiguration()->getMetadataCache())->isNotIdenticalTo($cache);
+            });
+        } finally {
+            $other->close();
+        }
+        $custom = Orm::forConnection($connection);
+        $customCache = $custom->getConfiguration()->getMetadataCache();
+        $operation = new RecordReadOperation($connection, $custom);
+        try {
+            $this->array($operation->row('glpi_calendars', 'id', 1))->isIdenticalTo($expected);
+            $this->object($custom->getConfiguration()->getMetadataCache())->isIdenticalTo($customCache);
+        } finally {
+            $custom->clear();
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+    }
+
     public function testPublicSanitizedInfocomKindSurvivesValidationAndOneStorageDecode(): void
     {
         global $DB, $CFG_GLPI;

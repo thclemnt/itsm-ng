@@ -49,9 +49,10 @@ abstract class OpenParentAdoption
             $unselected[] = $kind . ' NOT IN (' . $platform->quoteStringLiteral($choice) . ')';
             $types[$column] = 'bigint';
         }
+        $unselected = count($unselected) === 1 ? $unselected[0] : '(' . implode(' AND ', $unselected) . ')';
         $unknown = [static::DISCRIMINATOR_NULLABLE
-            ? '(' . $raw . ' IS NULL OR ' . implode(' AND ', $unselected) . ')'
-            : implode(' AND ', $unselected)];
+            ? '(' . $raw . ' IS NULL OR ' . $unselected . ')'
+            : $unselected];
         foreach (static::OWNERS as [$column]) {
             $unknown[] = $quote($column) . ' IS NULL';
         }
@@ -418,8 +419,8 @@ abstract class OpenParentAdoption
             }
         }
         foreach (static::OWNERS as [, $targetTable]) {
-            $target = $manager->introspectTable($targetTable)->getColumn('id');
-            if (Type::lookupName($target->getType()) !== 'bigint' || !$target->getNotnull() || $target->getUnsigned()) {
+            $target = $manager->listTableColumns($targetTable)['id'] ?? null;
+            if ($target === null || Type::lookupName($target->getType()) !== 'bigint' || !$target->getNotnull() || $target->getUnsigned()) {
                 throw new RuntimeException('Parent target ' . $targetTable . ' identity must be nonnull BIGINT.');
             }
         }

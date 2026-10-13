@@ -26,9 +26,9 @@ final class Seeds
     /** Validate every explicit seed before writing; never infer legacy implicit defaults. */
     public static function prepare(Schema $schema, array $rows): array
     {
-        foreach ($rows as $name => &$records) {
+        foreach ($rows as $name => $records) {
             $table = $schema->getTable($name);
-            foreach ($records as &$record) {
+            foreach ($records as $record) {
                 foreach ($record as $field => $value) {
                     $column = $table->getColumn($field);
                     if ($column->getNotnull() && $value === null) {
@@ -44,9 +44,7 @@ final class Seeds
                     }
                 }
             }
-            unset($record);
         }
-        unset($records);
         return $rows;
     }
 

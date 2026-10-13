@@ -9,6 +9,9 @@ export ITSM_UPGRADE_DB_PORT=${ITSM_UPGRADE_DB_PORT:-3306}
 export ITSM_UPGRADE_DB_USER=${ITSM_UPGRADE_DB_USER:-test}
 export ITSM_UPGRADE_DB_PASSWORD=${ITSM_UPGRADE_DB_PASSWORD-test}
 export ITSM_UPGRADE_DB_NAME=${ITSM_UPGRADE_DB_NAME:-itsm_test_legacy_upgrade}
+if [[ -n "${ITSM_UPGRADE_DB_SOCKET:-}" ]]; then
+  export ITSM_UPGRADE_DB_HOST=localhost
+fi
 export ITSM_UPGRADE_WORK_DIR=${ITSM_UPGRADE_WORK_DIR:-$(mktemp -d)}
 mkdir -p "$ITSM_UPGRADE_WORK_DIR"
 ITSM_UPGRADE_WORK_DIR=$(cd "$ITSM_UPGRADE_WORK_DIR" && pwd)
@@ -35,6 +38,7 @@ if [[ -z "${ITSM_LEGACY_SOURCE:-}" ]]; then
   git -C "$ITSM_LEGACY_SOURCE" fetch --depth=1 https://github.com/thclemnt/itsm-ng.git "$legacy_revision"
   git -C "$ITSM_LEGACY_SOURCE" checkout -q --detach FETCH_HEAD
 fi
+ITSM_LEGACY_SOURCE=$(cd "$ITSM_LEGACY_SOURCE" && pwd)
 export ITSM_LEGACY_SOURCE
 test "$(git -C "$ITSM_LEGACY_SOURCE" rev-parse HEAD)" = "$legacy_revision"
 git -C "$ITSM_LEGACY_SOURCE" diff --quiet HEAD --

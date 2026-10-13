@@ -70,7 +70,10 @@ trait PrivateReadOwnership
     private function metadata(string $table, ?string $lookupColumn = null): ClassMetadata
     {
         $class = EntityRegistry::tables()[$table];
-        if ($this->suppliedManager && !$this->sharedManager) {
+        // A warm application manager already owns this exact metadata. Cache
+        // selection only affects discovery; do not rebuild adapters for a hit.
+        if ($this->suppliedManager && (!$this->sharedManager
+            || $this->manager->getMetadataFactory()->hasMetadataFor($class))) {
             return $this->manager->getClassMetadata($class);
         }
         // Only canonical source declarations enter the private persistent namespace.

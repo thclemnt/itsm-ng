@@ -143,10 +143,16 @@ abstract class InitialOwnerAdoption
             ? $this->inspectMysql($connection, $schema, $table)
             : $this->inspectPostgres($connection, $table);
         foreach (static::OWNERS as $literal => [, $target]) {
-            $targetTable = $connection->createSchemaManager()->introspectTable($target);
-            $targetId = $targetTable->getColumn('id');
-            if (Type::lookupName($targetId->getType()) !== 'bigint' || !$targetId->getNotnull() || $targetId->getUnsigned()
-                || $targetTable->getPrimaryKey()?->getUnquotedColumns() !== ['id']) {
+            $manager = $connection->createSchemaManager();
+            $targetId = $manager->listTableColumns($target)['id'] ?? null;
+            $primary = null;
+            foreach ($manager->listTableIndexes($target) as $index) {
+                if ($index->isPrimary()) {
+                    $primary = $index->getUnquotedColumns();
+                }
+            }
+            if ($targetId === null || Type::lookupName($targetId->getType()) !== 'bigint' || !$targetId->getNotnull() || $targetId->getUnsigned()
+                || $primary !== ['id']) {
                 throw new RuntimeException('Initial owning target must have a signed nonnull BIGINT identity: ' . $target);
             }
             if ($mysql && strcasecmp((string)$connection->fetchOne(
