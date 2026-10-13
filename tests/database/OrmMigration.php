@@ -470,6 +470,89 @@ class OrmMigration extends GLPITestCase
         }
     }
 
+    public function testOrderedMembershipsBatchParentsAndResumeWithoutDuplicatingRows(): void
+    {
+        global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST;
+        $saved = [$CFG_GLPI, $_SESSION, $DEBUG_SQL, $SQL_TOTAL_REQUEST];
+        $connection = $this->emptyFixture()->getDoctrineConnection();
+        try {
+            $CFG_GLPI['debug_sql'] = true;
+            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            foreach ([
+                [new PlanningEventGuests(), 'glpi_planningexternalevents', 'users_id_guests', 'glpi_users', 'planningexternalevents_id', 'users_id', 'event guest'],
+                [new NetworkPortAggregateOrigins(), 'glpi_networkportaggregates', 'networkports_id_list', 'glpi_networkports', 'networkportaggregates_id', 'networkports_id', 'aggregate origin'],
+            ] as [$migration, $source, $legacy, $parent, $owner, $member, $label]) {
+                $schema = new Schema();
+                foreach ([$source, $parent] as $name) {
+                    $table = $schema->createTable($name);
+                    $table->addColumn('id', 'bigint');
+                    $table->setPrimaryKey(['id']);
+                }
+                $schema->getTable($source)->addColumn($legacy, 'text', ['notnull' => false]);
+                foreach ($schema->toSql($connection->getDatabasePlatform()) as $sql) {
+                    $connection->executeStatement($sql);
+                }
+                $connection->executeStatement('INSERT INTO ' . $parent . ' (id) VALUES '
+                    . implode(', ', array_fill(0, 500, '(?)')), range(1, 500));
+                $expected = [1 => [1, 2], 2 => [2, 3], 3 => range(4, 501)];
+                foreach ([1 => [1, 1, 2], 2 => [2, 3], 3 => range(4, 501)] as $id => $ids) {
+                    $connection->insert($source, ['id' => $id, $legacy => json_encode($ids, JSON_THROW_ON_ERROR)]);
+                }
+                foreach (range(4, 23) as $id) {
+                    $connection->insert($source, ['id' => $id, $legacy => '']);
+                }
+                $this->exception(static fn () => $migration->apply($connection))->isInstanceOf(RuntimeException::class)
+                    ->hasMessage('Orphaned legacy ' . $label . ': 501');
+                $this->boolean($connection->createSchemaManager()->tablesExist([$migration::TABLE]))->isFalse();
+                $this->boolean($connection->createSchemaManager()->introspectTable($source)->hasColumn($legacy))->isTrue();
+
+                // A later plan rechecks parents after repair; duplicates share a bounded query.
+                $connection->insert($parent, ['id' => 501]);
+                $DEBUG_SQL['queries'] = [];
+                $plan = $migration->plan($connection);
+                $parentQueries = array_filter($DEBUG_SQL['queries'], static fn (string $sql): bool =>
+                    str_starts_with($sql, 'SELECT id FROM ' . $parent . ' WHERE id IN ('));
+                $this->array($parentQueries)->hasSize(2);
+                foreach ($parentQueries as $sql) {
+                    $this->integer(substr_count($sql, '?'))->isLessThanOrEqualTo(500);
+                }
+                foreach ($expected as $id => $ids) {
+                    $this->array($plan['rows'][$id])->isIdenticalTo($ids);
+                }
+
+                // Simulate interruption after table creation and a partial membership copy.
+                foreach ($plan['create_sql'] as $sql) {
+                    $connection->executeStatement($sql);
+                }
+                $connection->insert($migration::TABLE, [$owner => 1, $member => 2, 'position' => 0]);
+                $this->exception(static fn () => $migration->apply($connection))->isInstanceOf(RuntimeException::class);
+                $this->boolean($connection->createSchemaManager()->introspectTable($source)->hasColumn($legacy))->isTrue();
+                $connection->delete($migration::TABLE, [$owner => 1]);
+                foreach ($expected[1] as $position => $id) {
+                    $connection->insert($migration::TABLE, [$owner => 1, $member => $id, 'position' => $position]);
+                }
+                $DEBUG_SQL['queries'] = [];
+                $migration->apply($connection);
+                $copyQueries = array_filter($DEBUG_SQL['queries'], static fn (string $sql): bool =>
+                    str_starts_with($sql, 'SELECT COUNT(*) FROM ' . $migration::TABLE . ' WHERE ' . $owner . ' = '));
+                $this->array($copyQueries)->hasSize(3, 'Empty legacy lists do not issue per-row copy checks');
+                $this->boolean($connection->createSchemaManager()->introspectTable($source)->hasColumn($legacy))->isFalse();
+                foreach ($expected as $id => $ids) {
+                    $actual = $connection->fetchFirstColumn('SELECT ' . $member . ' FROM ' . $migration::TABLE
+                        . ' WHERE ' . $owner . ' = ? ORDER BY position, id', [$id]);
+                    $this->array(array_map('intval', $actual))->isIdenticalTo($ids);
+                }
+                $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $migration::TABLE . ' ORDER BY id');
+                $this->array($rows)->hasSize(502);
+                $migration->apply($connection);
+                $this->array($connection->fetchAllAssociative('SELECT * FROM ' . $migration::TABLE . ' ORDER BY id'))->isIdenticalTo($rows);
+            }
+            $this->fixtureCompleted = true;
+        } finally {
+            [$CFG_GLPI, $_SESSION, $DEBUG_SQL, $SQL_TOTAL_REQUEST] = $saved;
+        }
+    }
+
     public function testPublicInstallationPublishesConvergedHistory(): void
     {
         global $DB;

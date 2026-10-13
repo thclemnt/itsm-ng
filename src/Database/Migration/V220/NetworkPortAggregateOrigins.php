@@ -4,6 +4,7 @@
 
 namespace itsmng\Database\Migration\V220;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
@@ -62,6 +63,24 @@ final class NetworkPortAggregateOrigins
         return array_values($ids);
     }
 
+    /** Validate a bounded set once, including repeated IDs from different source rows. */
+    private static function assertParents(Connection $connection, array $ids): void
+    {
+        if ($ids === []) {
+            return;
+        }
+        $found = array_fill_keys($connection->fetchFirstColumn(
+            'SELECT id FROM glpi_networkports WHERE id IN (?)',
+            [array_values($ids)],
+            [ArrayParameterType::INTEGER]
+        ), true);
+        foreach ($ids as $id) {
+            if (!isset($found[$id])) {
+                throw new RuntimeException('Orphaned legacy aggregate origin: ' . $id);
+            }
+        }
+    }
+
     public function plan(Connection $connection): array
     {
         $manager = $connection->createSchemaManager();
@@ -73,11 +92,14 @@ final class NetworkPortAggregateOrigins
         }
         $rows = [];
         if ($hasList) {
-            foreach ($connection->fetchAllAssociative('SELECT id, networkports_id_list FROM glpi_networkportaggregates ORDER BY id') as $row) {
+            $parents = [];
+            foreach ($connection->iterateAssociative('SELECT id, networkports_id_list FROM glpi_networkportaggregates ORDER BY id') as $row) {
                 $ids = self::decode($row['networkports_id_list']);
                 foreach ($ids as $id) {
-                    if (!$connection->fetchOne('SELECT id FROM glpi_networkports WHERE id = ?', [$id])) {
-                        throw new RuntimeException('Orphaned legacy aggregate origin: ' . $id);
+                    $parents[$id] = $id;
+                    if (count($parents) === 500) {
+                        self::assertParents($connection, $parents);
+                        $parents = [];
                     }
                 }
                 if ($exists) {
@@ -88,6 +110,7 @@ final class NetworkPortAggregateOrigins
                 }
                 $rows[(int)$row['id']] = $ids;
             }
+            self::assertParents($connection, $parents);
         }
         $table = new Table(self::TABLE);
         self::configureTable($table);
@@ -148,7 +171,7 @@ final class NetworkPortAggregateOrigins
             }
             $connection->transactional(static function () use ($connection, $plan): void {
                 foreach ($plan['rows'] as $aggregate => $ids) {
-                    if ($connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' WHERE networkportaggregates_id = ?', [$aggregate])) {
+                    if ($ids === [] || $connection->fetchOne('SELECT COUNT(*) FROM ' . self::TABLE . ' WHERE networkportaggregates_id = ?', [$aggregate])) {
                         continue;
                     }
                     foreach ($ids as $position => $id) {
