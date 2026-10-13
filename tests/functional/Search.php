@@ -133,6 +133,7 @@ class Search extends DbTestCase
     {
         global $CFG_GLPI;
         $configuration = $CFG_GLPI;
+        $searchOptions = LegacySearch::$search;
         try {
             $this->login();
             $this->setEntity('_test_root_entity', true);
@@ -164,6 +165,9 @@ class Search extends DbTestCase
                         ->isIdenticalTo([$ids['192.0.2.20'], $ids['192.0.2.100']]);
                 }
             }
+            // Limit this sorting fixture to its relevant fields. A full Computer
+            // all-fields search exceeds MySQL/MariaDB's 61-table join limit.
+            LegacySearch::$search[Computer::class] = array_intersect_key($options, array_flip([1, 2, 80, $ip]));
             foreach (['all', 'view'] as $field) {
                 $data = $this->doSearch(Computer::class, [
                     'sort' => $ip, 'order' => 'ASC',
@@ -175,6 +179,7 @@ class Search extends DbTestCase
             }
         } finally {
             $CFG_GLPI = $configuration;
+            LegacySearch::$search = $searchOptions;
         }
     }
 
